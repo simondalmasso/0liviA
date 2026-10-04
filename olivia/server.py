@@ -141,6 +141,7 @@ class Gateway:
             "provider_ready": bool(available),
             "providers_configured": configured,
             "providers_available": available,
+            "hard_zero_cost": bool(self.settings.hard_zero_cost),
         })
 
     async def list_sessions(self, request: web.Request) -> web.Response:
