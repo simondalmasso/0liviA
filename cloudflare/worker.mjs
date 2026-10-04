@@ -372,7 +372,7 @@ async function openNvidiaStream(provider, messages, env) {
       signal: controller.signal,
       headers: {
         "content-type": "application/json",
-        "authorization": \`Bearer \${env.NVIDIA_API_KEY}\`,
+        "authorization": `Bearer ${env.NVIDIA_API_KEY}`,
       },
       body: JSON.stringify({
         model: provider.model,
@@ -391,7 +391,7 @@ async function openNvidiaStream(provider, messages, env) {
       ? (await readResponseTextLimited(response)).slice(0, 400)
       : "";
     controller.abort("upstream_rejected");
-    throw new Error(\`nvidia_http_\${response.status}:\${detail}\`);
+    throw new Error(`nvidia_http_${response.status}:${detail}`);
   }
   return {
     body: response.body,
@@ -461,7 +461,7 @@ async function prepareProviderStream(provider, messages, env) {
 }
 
 function encodeSse(data) {
-  return new TextEncoder().encode(\`data: \${JSON.stringify(data)}\\n\\n\`);
+  return new TextEncoder().encode(`data: ${JSON.stringify(data)}\\n\\n`);
 }
 
 function encodeDone() {
