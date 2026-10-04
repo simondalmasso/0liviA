@@ -53,7 +53,7 @@ Measure actual time-to-first-transcript, LLM first token, time-to-first-audio, i
 - Normal operation must not read from or write to the owner's PC filesystem.
 - The browser is a thin client: UI, microphone capture and playback only. No File System Access API, local shell, localhost agent, Desktop Commander, browser extension or local background service is part of 0liviA runtime.
 - Durable writes go only to Oracle runtime storage, GitHub, or explicitly configured remote storage.
-- Browser storage may keep only a non-sensitive session identifier and UI preferences; it is not a source of truth.
+- Do not persist 0liviA state in browser storage. Session selection is recovered from Oracle after authentication; client state is memory-only for the active page.
 
 ## Language contract
 
