@@ -524,3 +524,47 @@ async def test_owner_login_rate_limits_repeated_failures(aiohttp_client, tmp_pat
     limited = await client.post("/api/auth/login", json={"password": "owner-passphrase"})
     assert limited.status == 429
     assert int(limited.headers["Retry-After"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_owner_login_rate_limits_repeated_failures(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "rate-limit.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+        )
+    )
+
+    for _ in range(5):
+        response = await client.post("/api/auth/login", json={"password": "wrong"})
+        assert response.status == 401
+
+    blocked = await client.post("/api/auth/login", json={"password": "owner-passphrase"})
+    assert blocked.status == 429
+    assert blocked.headers["Retry-After"]
+
+
+@pytest.mark.asyncio
+async def test_successful_owner_login_clears_failure_counter(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "rate-reset.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+        )
+    )
+
+    assert (await client.post("/api/auth/login", json={"password": "wrong"})).status == 401
+    assert (await client.post("/api/auth/login", json={"password": "owner-passphrase"})).status == 200
+    assert (await client.post("/api/auth/login", json={"password": "wrong"})).status == 401
