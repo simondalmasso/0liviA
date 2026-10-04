@@ -4,11 +4,11 @@ WORKER = Path("cloudflare/worker.mjs").read_text(encoding="utf-8")
 
 
 def test_cloudflare_identity_and_web_caps_are_explicit():
-    assert 'const MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";' in WORKER
+    assert 'const PRIMARY_MODEL = "deepseek-ai/deepseek-v4.1-flash";' in WORKER
     assert "const MAX_CALLS_PER_UTC_DAY = 80;" in WORKER
     assert "const MAX_URLS_PER_TURN = 2;" in WORKER
     assert "const MAX_WEB_CHARS_PER_URL = 12000;" in WORKER
-    assert "Qwen3-30B-A3B-FP8, corriendo en Cloudflare Workers AI." in WORKER
+    assert "DeepSeek V4.1 Flash vía NVIDIA NIM" in WORKER
 
 
 def test_cloudflare_web_reader_fails_closed_on_missing_origin_and_redirects():
