@@ -24,7 +24,7 @@
 → isolated on-demand workers for coding, research/browser and voice
 → GitHub for durable engineering state.
 
-Cloudflare may host a thin public shell or temporary bridge, but it is not the canonical chat/memory/voice backend. The current Worker bridge remains deployment-gated and must fail closed when zero-cost entitlement is not proven.
+Cloudflare may host a thin public shell or temporary bridge, but it is not the canonical chat/memory/voice backend. The current Worker bridge is disabled by default and remains deployment-gated; inference/read routes stay unavailable until identity and zero-cost/account guards are explicitly proven.
 
 ## Repository map
 
@@ -44,16 +44,16 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - authenticated canonical workspace API with Projects/Chats/Library/Memory durable server-side and IndexedDB used only as a browser cache/migration layer;
 - provider health/quota state with circuit breaker, half-open recovery and redacted telemetry;
 - pre-visible-output failover with cancellation/partial-answer safety;
-- aiohttp browser/API gateway with owner cookie auth, login throttling, bounded request bodies and one active turn per session;
+- aiohttp browser/API gateway with first-run single-owner registration, email+password login, Secure/HttpOnly/SameSite cookies, login throttling, revocable remembered devices, bounded request bodies and one active turn per session;
 - canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
 - replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
 - bounded `/research` tool: one search plus safe reads of up to three results, injected only as ephemeral untrusted context;
-- violet/blue/cyan rail UI with projects, library, memory, config and fullscreen Live Voice shell;
+- violet/blue/cyan rail UI with Chats, Projects, Library, Memory, Config and Session surfaces, plus fullscreen Live Voice; responsive gates cover 360–430 px mobile layouts;
 - isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
 - review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
 - coding execution job has read-only repository permission; optional publication happens in a separate write-capable job after verification;
 - voice transport/pipeline contracts, sequence/cancel/barge-in tests and benchmark recorder;
-- production bootstrap with immutable source SHA, pinned artifact SHA-256 verification and owner auth configuration;
+- production bootstrap with immutable source SHA, pinned artifact SHA-256 verification and first-run owner registration;
 - CI on Python 3.11 and 3.12 plus shell, JS and Worker syntax gates.
 
 ## Still gated
