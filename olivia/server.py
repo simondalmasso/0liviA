@@ -144,7 +144,12 @@ class Gateway:
         return _json({"error": "unauthorized"}, status=401)
 
     def _login_key(self, request: web.Request) -> str:
-        return request.remote or "unknown"
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            candidate = forwarded.split(",", 1)[0].strip()
+            if candidate:
+                return candidate[:128]
+        return str(request.remote or "unknown")[:128]
 
     def _login_retry_after(self, request: web.Request) -> int:
         key = self._login_key(request)
