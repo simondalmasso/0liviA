@@ -70,16 +70,30 @@ The harness is replaceable. OpenCode/other coding agents remain challengers, not
 
 ## Temporary production bridge
 
-`cloudflare/worker.mjs` exists as a transitional public bridge because Oracle A1 capacity has not yet been proven available for production. It intentionally duplicates only a narrow subset of the canonical core:
+`cloudflare/worker.mjs` exists as a transitional public bridge because Oracle A1 capacity has not yet been proven available for production. The bridge runtime is **disabled by default** and intentionally duplicates only a narrow subset of the canonical core:
 
 - stateless message history supplied by the browser;
 - provider catalog/failover before visible output;
 - read-only URL ingestion with SSRF/redirect/body limits;
 - a local request guard.
 
-It is **not** the source of truth for Projects, Library, Memory or jobs. Its current account-level zero-cost status is unverified, so provider readiness fails closed unless entitlement is explicitly proven. This bridge may be removed without changing the canonical Python state formats.
+It is **not** the source of truth for Projects, Library, Memory or jobs. Its current account-level zero-cost status is unverified and it has no canonical owner-account store, so chat/read routes remain disabled until both identity and zero-cost/account guards are explicitly proven. This bridge may be removed without changing the canonical Python state formats.
 
 When the canonical Python Core is active, Projects, Chats, Library and Memory are server-side SQLite state and the browser reconciles them through authenticated workspace/session APIs. IndexedDB remains only a disposable cache and one-shot migration layer. In temporary bridge mode, workspace state remains local-only and must not be presented as durable multi-device state.
+
+## Owner identity
+
+The canonical Core is a single-owner installation:
+- first access exposes **Registrate** only when no owner exists;
+- registration stores one normalized owner email plus a scrypt password verifier in SQLite;
+- subsequent registration attempts fail closed;
+- login issues Secure/HttpOnly/SameSite cookies;
+- **Recordarme** binds a persistent cookie to a random server-side trusted-device ID;
+- remembered devices are listed/revocable from the Session surface;
+- session-only logins create no durable trusted-device row;
+- no OAuth, third-party identity provider, browser fingerprinting or API-key input is required in the UI.
+
+Existing deployments may seed a legacy owner from environment variables once; new bootstrap flow uses first-run registration.
 
 ## Research/browser
 
