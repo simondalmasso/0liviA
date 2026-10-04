@@ -500,6 +500,21 @@ class Gateway:
             if status == "completed":
                 status = "succeeded" if conclusion == "success" else "failed"
             checkpoint = {**job.get("checkpoint", {}), **remote}
+            if (
+                status == "succeeded"
+                and checkpoint.get("mode") == "review"
+                and checkpoint.get("publish_branch")
+                and checkpoint.get("remote_run_id")
+                and not checkpoint.get("review_report")
+            ):
+                try:
+                    report = await self.coding_worker.review_report(
+                        checkpoint["remote_run_id"]
+                    )
+                except (CodingWorkerError, ValueError):
+                    report = None
+                if report:
+                    checkpoint["review_report"] = redact_secrets(report)[:40_000]
             self.agent.store.checkpoint_job(job_id, status, checkpoint)
             job = self.agent.store.get_job(job_id) or job
         return job
@@ -792,6 +807,9 @@ class Gateway:
             assistant = f"Job {job_id}: {status}."
             if remote_url:
                 assistant += f" {remote_url}"
+            review_report = checkpoint.get("review_report")
+            if status == "succeeded" and isinstance(review_report, str) and review_report.strip():
+                assistant += "\n\n" + review_report[:12_000]
             self.agent.store.append_message(
                 session_id, "assistant", assistant, provider="coding-worker", status="complete"
             )
