@@ -74,7 +74,7 @@ def test_provider_catalog_prefers_deepseek_nim_and_has_zero_cost_fallbacks():
 
 
 def test_provider_failover_is_precommit_and_fail_closed():
-    assert 'async function generateWithFailover' in WORKER
+    assert 'async function streamWithFailover' in WORKER
     assert 'for (const provider of providerCatalog(env))' in WORKER
     assert 'if (!provider.available) continue;' in WORKER
     assert 'attempts.push' in WORKER
