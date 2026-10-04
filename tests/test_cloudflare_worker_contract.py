@@ -66,8 +66,9 @@ def test_provider_catalog_prefers_deepseek_nim_and_has_zero_cost_fallbacks():
     assert 'deepseek-ai/deepseek-v4.1-flash' in WORKER
     assert 'https://integrate.api.nvidia.com/v1/chat/completions' in WORKER
     assert 'NVIDIA_API_KEY' in WORKER
+    assert '@cf/openai/gpt-oss-120b' in WORKER
     assert '@cf/zai-org/glm-4.7-flash' in WORKER
-    assert '@cf/qwen/qwen3-30b-a3b-fp8' in WORKER
+    assert '@cf/qwen/qwen3-30b-a3b-fp8' not in WORKER
     for forbidden in ('nemotron', 'claude-sonnet', 'apmix', 'compound-mini'):
         assert forbidden not in WORKER.lower()
 
