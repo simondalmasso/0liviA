@@ -12,7 +12,7 @@ Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's P
 
 1. Provision the A1 VM with a public IPv4 and Ubuntu ARM64.
 2. Open OCI ingress TCP 80/443 only (SSH 22 restricted to the minimum source needed for administration).
-3. Run `sudo REF=arch/gpt-synthesis-v1 ./deploy/install.sh`.
+3. Run `sudo REF=arch/gpt-synthesis-v1 ./deploy/bootstrap-a1.sh`.
 4. Edit `/etc/0livia/olivia.env` (0600): generate the gateway token and add at least one legitimate provider key/route.
 5. Pick an HTTPS hostname. Preferred: a domain you control pointing DNS-only at the Oracle IP. For bootstrap, an IP-derived DNS hostname can be used if you deliberately accept that external DNS dependency.
 6. Configure Caddy from `deploy/Caddyfile.example`; keep `OLIVIA_PUBLIC_HOST` and `ACME_EMAIL` outside Git.
@@ -29,7 +29,7 @@ The durable runtime file is `/var/lib/0livia/olivia.sqlite3` plus WAL/SHM while 
 
 ## Rollback
 
-Deploys are branch/commit based. Keep the previous checkout under a versioned release path before production rollout; switch `/opt/0livia/current` only after compile/tests/smoke pass. The first bootstrap script is intentionally simple; atomic release switching is the next deployment hardening gate.
+Deploys are branch/commit based. Keep the previous checkout under a versioned release path before production rollout; switch `/opt/0livia/current` only after compile/tests/smoke pass. `bootstrap-a1.sh` is the single canonical installer. Atomic release switching remains a deployment hardening gate.
 
 
 ## Zero-spend gate
