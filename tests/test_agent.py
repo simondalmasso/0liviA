@@ -47,7 +47,7 @@ async def test_explicit_memory_command_is_local_and_durable(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_forget_command_deactivates_without_provider_call(tmp_path):
+async def test_forget_command_physically_deletes_memory_without_provider_call(tmp_path):
     store = Store(tmp_path / "state.sqlite3")
     sid = store.create_session()
     store.promote_memory("global", "tema", "valor", source="test")
@@ -58,6 +58,10 @@ async def test_forget_command_deactivates_without_provider_call(tmp_path):
     assert router.calls == []
     assert events[0]["action"] == "forgotten"
     assert store.list_memories("global") == []
+    assert store.list_memories("global", include_inactive=True) == []
+    assert "historial del chat" in "".join(
+        event.get("text", "") for event in events if event["type"] == "delta"
+    )
 
 
 def test_kernel_prompt_locks_default_locale():
