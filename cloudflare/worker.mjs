@@ -307,7 +307,7 @@ async function generateNvidia(provider, messages, env) {
       }),
     });
     if (!response.ok) {
-      const detail = (await response.text()).slice(0, 400);
+      const detail = (await readResponseTextLimited(response)).slice(0, 400);
       throw new Error(`nvidia_http_${response.status}:${detail}`);
     }
     const result = await response.json();
