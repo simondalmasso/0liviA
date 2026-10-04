@@ -47,6 +47,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - aiohttp browser/API gateway with owner cookie auth, login throttling, bounded request bodies and one active turn per session;
 - canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
 - replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
+- bounded `/research` tool: one search plus safe reads of up to three results, injected only as ephemeral untrusted context;
 - violet/blue/cyan rail UI with projects, library, memory, config and fullscreen Live Voice shell;
 - isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
 - review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
