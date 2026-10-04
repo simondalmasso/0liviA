@@ -8,7 +8,7 @@ Type=simple
 User=olivia
 Group=olivia
 WorkingDirectory=/opt/llama
-EnvironmentFile=/etc/olivia/llama.env
+EnvironmentFile=/etc/0livia/llama.env
 Environment=LD_LIBRARY_PATH=/opt/llama
 ExecStart=/opt/llama/llama-server -m ${LLAMA_MODEL_PATH} --host 127.0.0.1 --port 11434 --alias local-qwen -c ${LLAMA_CTX} -t ${LLAMA_THREADS} --parallel 1 --jinja --reasoning off --reasoning-format none --no-ui
 Restart=on-failure
@@ -28,7 +28,7 @@ RestrictSUIDSGID=true
 LockPersonality=true
 UMask=0077
 ReadOnlyPaths=/opt/llama
-ReadOnlyPaths=/var/lib/olivia/models
+ReadOnlyPaths=/var/lib/0livia/models
 
 [Install]
 WantedBy=multi-user.target
