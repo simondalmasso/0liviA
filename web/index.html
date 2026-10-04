@@ -165,14 +165,26 @@ button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8
 <script>
 let sessionId=null, controller=null, turnId=null, token='', sseBuffer='';
 let voiceStream=null, voiceMuted=false;
+let voiceAudioContext=null, voiceAnalyser=null, voiceSource=null, voiceRaf=0;
+let voiceRecognition=null, voiceRecognitionStarting=false;
+let voiceLiveWanted=false, voiceSpeaking=false, speechRaf=0, speechPulse=0;
+
 const log=document.querySelector('#log');
 const status=document.querySelector('#status');
 const text=document.querySelector('#text');
+const sendButton=document.querySelector('#send');
+const cancelButton=document.querySelector('#cancel');
+const tokenInput=document.querySelector('#token');
 const voiceLive=document.querySelector('#voiceLive');
 const voiceStatus=document.querySelector('#voiceStatus');
 const voiceTranscript=document.querySelector('#voiceTranscript');
 const voiceText=document.querySelector('#voiceText');
+const voiceRingPath=document.querySelector('#voiceRingPath');
+const voiceRingFill=document.querySelector('#voiceRingFill');
+const voiceOrb=document.querySelector('.orb');
+
 const headers=()=>({'Content-Type':'application/json','Authorization':'Bearer '+token});
+const normalizeLocale=value=>(value||'').trim().toLowerCase().replaceAll('_','-');
 
 async function api(url,options={}){
   options.headers={...headers(),...(options.headers||{})};
@@ -180,17 +192,19 @@ async function api(url,options={}){
   if(!r.ok)throw new Error(await r.text());
   return r;
 }
+
 function syncVoiceTranscript(){
   if(!voiceTranscript)return;
   voiceTranscript.textContent=log.textContent;
   voiceTranscript.scrollTop=voiceTranscript.scrollHeight;
 }
+
 function show(role,value){
   log.textContent+=`${role}: ${value}\n\n`;
   log.scrollTop=log.scrollHeight;
-          syncVoiceTranscript();
   syncVoiceTranscript();
 }
+
 async function resume(){
   try{
     if(!sessionId){
@@ -204,47 +218,67 @@ async function resume(){
     log.textContent='';
     d.messages.forEach(m=>show(m.role==='user'?'vos':'0liviA',m.content));
     status.textContent='sesión '+sessionId;
-  }catch(e){status.textContent='token requerido';}
+  }catch(e){
+    status.textContent='token requerido';
+  }
 }
+
 async function create(){
-  const r=await api('/api/sessions',{method:'POST',body:JSON.stringify({title:'Chat es-AR'})});
+  const r=await api('/api/sessions',{
+    method:'POST',
+    body:JSON.stringify({title:'Chat es-AR'})
+  });
   const d=await r.json();
   sessionId=d.id;
   log.textContent='';
+  syncVoiceTranscript();
   status.textContent='sesión '+sessionId;
 }
 
-document.querySelector('#token').addEventListener('input',e=>{
-  token=e.target.value;
-  sessionId=null;
-  resume();
-});
-document.querySelector('#new').onclick=async()=>{
-  try{await create()}catch(e){status.textContent='no autorizado'}
-};
-document.querySelector('#cancel').onclick=async()=>{
+async function ensureSession(){
+  if(sessionId)return true;
+  try{
+    await create();
+    return true;
+  }catch(e){
+    status.textContent='creá una sesión con un token válido';
+    return false;
+  }
+}
+
+async function cancelActiveTurn(){
   const activeTurn=turnId;
   try{
-    if(activeTurn)await api(`/api/chat/${sessionId}/cancel`,{
-      method:'POST',
-      body:JSON.stringify({turn_id:activeTurn})
-    });
-  }catch(e){}finally{controller?.abort();}
-};
+    if(activeTurn&&sessionId){
+      await api(`/api/chat/${sessionId}/cancel`,{
+        method:'POST',
+        body:JSON.stringify({turn_id:activeTurn})
+      });
+    }
+  }catch(e){}
+  finally{
+    controller?.abort();
+  }
+}
 
-document.querySelector('form').onsubmit=async e=>{
-  e.preventDefault();
-  if(!sessionId)try{await create()}catch(e){status.textContent='creá una sesión con un token válido';return}
-  const value=text.value.trim();
-  if(!value)return;
-  text.value='';
+async function sendChat(raw,{speak=false}={}){
+  const value=(raw||'').trim();
+  if(!value)return '';
+  if(!(await ensureSession()))return '';
+
   show('vos',value);
-  show('0liviA','');
-  const current=log.textContent;
+  const beforeAssistant=log.textContent;
   controller=new AbortController();
   turnId=null;
-  document.querySelector('#cancel').disabled=false;
-  document.querySelector('#send').disabled=true;
+  cancelButton.disabled=false;
+  sendButton.disabled=true;
+
+  if(voiceLive.classList.contains('active')){
+    setVoiceState('thinking','Pensando','0liviA está respondiendo…');
+    stopRecognition();
+  }
+
+  let answer='';
   try{
     const r=await api(`/api/chat/${sessionId}`,{
       method:'POST',
@@ -253,47 +287,81 @@ document.querySelector('form').onsubmit=async e=>{
     });
     turnId=r.headers.get('X-Turn-ID');
     const reader=r.body.pipeThrough(new TextDecoderStream()).getReader();
-    let answer='';
     sseBuffer='';
+
     while(true){
-      const {value,done}=await reader.read();
+      const {value:chunk,done}=await reader.read();
       if(done)break;
-      sseBuffer+=value;
+      sseBuffer+=chunk;
       const lines=sseBuffer.split('\n');
       sseBuffer=lines.pop()||'';
-      for(const line of lines)if(line.startsWith('data: ')){
+      for(const line of lines){
+        if(!line.startsWith('data: '))continue;
         const event=JSON.parse(line.slice(6));
         if(event.type==='delta'){
-          answer+=event.text;
-          log.textContent=current+`0liviA: ${answer}`;
+          answer+=event.text||'';
+          log.textContent=beforeAssistant+`0liviA: ${answer}`;
           log.scrollTop=log.scrollHeight;
           syncVoiceTranscript();
         }
-        if(event.type==='error')throw new Error(event.code||event.error);
+        if(event.type==='error')throw new Error(event.code||event.error||'error');
       }
     }
+
     if(sseBuffer.startsWith('data: ')){
       const event=JSON.parse(sseBuffer.slice(6));
       if(event.type==='delta'){
-        answer+=event.text;
-        log.textContent=current+`0liviA: ${answer}`;
+        answer+=event.text||'';
+        log.textContent=beforeAssistant+`0liviA: ${answer}`;
       }
     }
     log.textContent+='\n\n';
     syncVoiceTranscript();
+
+    if(speak&&voiceLive.classList.contains('active')&&answer.trim()){
+      await speakEsAr(answer.trim());
+    }else if(voiceLive.classList.contains('active')){
+      setVoiceState('idle','Listo','Tocá el micrófono para seguir.');
+      maybeRestartRecognition();
+    }
+    return answer;
   }catch(e){
-    if(e.name==='AbortError')log.textContent+='[turno cancelado]\n\n';
-    else log.textContent+=`[error: ${e.message}]\n\n`;
+    if(e.name==='AbortError'){
+      log.textContent+='[turno cancelado]\n\n';
+      if(voiceLive.classList.contains('active'))setVoiceState('listening','Te escucho','Turno anterior cancelado.');
+    }else{
+      log.textContent+=`[error: ${e.message}]\n\n`;
+      if(voiceLive.classList.contains('active'))setVoiceState('idle','Error','No pude completar el turno.');
+    }
     syncVoiceTranscript();
+    return '';
   }finally{
-    controller=null;turnId=null;
-    document.querySelector('#cancel').disabled=true;
-    document.querySelector('#send').disabled=false;
+    controller=null;
+    turnId=null;
+    cancelButton.disabled=true;
+    sendButton.disabled=false;
   }
+}
+
+tokenInput.addEventListener('input',e=>{
+  token=e.target.value;
+  sessionId=null;
+  resume();
+});
+
+document.querySelector('#new').onclick=async()=>{
+  try{await create()}catch(e){status.textContent='no autorizado'}
 };
 
-let voiceAudioContext=null, voiceAnalyser=null, voiceSource=null, voiceRaf=0;
-const voiceOrb=document.querySelector('.orb');
+cancelButton.onclick=cancelActiveTurn;
+
+document.querySelector('main form').onsubmit=async e=>{
+  e.preventDefault();
+  const value=text.value.trim();
+  if(!value)return;
+  text.value='';
+  await sendChat(value,{speak:false});
+};
 
 function setVoiceState(state,headline,copy){
   voiceLive.dataset.state=state;
@@ -301,8 +369,6 @@ function setVoiceState(state,headline,copy){
   voiceStatus.textContent=copy;
 }
 
-const voiceRingPath=document.querySelector('#voiceRingPath');
-const voiceRingFill=document.querySelector('#voiceRingFill');
 const RING_POINTS=72;
 const RING_CENTER=120;
 const RING_RADIUS=88;
@@ -313,13 +379,13 @@ function ringCurve(points){
   const firstMid=mid(points[points.length-1],points[0]);
   let d='M '+firstMid[0].toFixed(2)+' '+firstMid[1].toFixed(2);
   for(let i=0;i<points.length;i++){
-    const p=points[i], next=points[(i+1)%points.length], m=mid(p,next);
+    const p=points[i],next=points[(i+1)%points.length],m=mid(p,next);
     d+=' Q '+p[0].toFixed(2)+' '+p[1].toFixed(2)+' '+m[0].toFixed(2)+' '+m[1].toFixed(2);
   }
   return d+' Z';
 }
 
-function drawVoiceRing(freqData=null,energy=0){
+function drawVoiceRing(freqData=null,energy=0,phase=0){
   const points=[];
   for(let i=0;i<RING_POINTS;i++){
     const angle=(Math.PI*2*i/RING_POINTS)-Math.PI/2;
@@ -329,8 +395,11 @@ function drawVoiceRing(freqData=null,energy=0){
       const a=freqData[idx]/255;
       const b=freqData[Math.min(freqData.length-1,idx+2)]/255;
       spectrum=(a+b)*.5;
+    }else if(energy>0){
+      spectrum=.42+.32*Math.sin((i/RING_POINTS)*Math.PI*6+phase)+.18*Math.sin((i/RING_POINTS)*Math.PI*14-phase*.7);
+      spectrum=Math.max(0,Math.min(1,spectrum));
     }
-    const delta=energy>0 ? Math.pow(spectrum,1.25)*18*energy : 0;
+    const delta=energy>0?Math.pow(spectrum,1.25)*18*energy:0;
     const radius=RING_RADIUS+delta;
     points.push([
       RING_CENTER+Math.cos(angle)*radius,
@@ -362,8 +431,9 @@ function startVoiceMeter(stream){
   voiceSource.connect(voiceAnalyser);
   const timeData=new Uint8Array(voiceAnalyser.fftSize);
   const freqData=new Uint8Array(voiceAnalyser.frequencyBinCount);
+
   const tick=()=>{
-    if(!voiceAnalyser||!voiceStream)return;
+    if(!voiceAnalyser||!voiceStream||voiceSpeaking)return;
     voiceAnalyser.getByteTimeDomainData(timeData);
     voiceAnalyser.getByteFrequencyData(freqData);
     let sum=0;
@@ -384,14 +454,192 @@ function stopVoiceMeter(reset=true){
   voiceRaf=0;
   try{voiceSource?.disconnect()}catch(e){}
   try{voiceAnalyser?.disconnect()}catch(e){}
-  if(voiceAudioContext){
-    voiceAudioContext.close().catch(()=>{});
-  }
-  voiceSource=null;voiceAnalyser=null;voiceAudioContext=null;
+  if(voiceAudioContext)voiceAudioContext.close().catch(()=>{});
+  voiceSource=null;
+  voiceAnalyser=null;
+  voiceAudioContext=null;
   if(reset)drawVoiceRing();
 }
 
+function startSpeechRing(){
+  if(speechRaf)cancelAnimationFrame(speechRaf);
+  let phase=0;
+  const tick=()=>{
+    if(!voiceSpeaking){
+      speechRaf=0;
+      drawVoiceRing();
+      return;
+    }
+    phase+=.14;
+    speechPulse=Math.max(.16,speechPulse*.91);
+    drawVoiceRing(null,Math.min(1,.28+speechPulse*.72),phase);
+    speechRaf=requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function stopSpeechRing(){
+  voiceSpeaking=false;
+  speechPulse=0;
+  if(speechRaf)cancelAnimationFrame(speechRaf);
+  speechRaf=0;
+  drawVoiceRing();
+  if(voiceStream&&!voiceMuted)startVoiceMeter(voiceStream);
+}
+
+function stopRecognition(){
+  if(!voiceRecognition)return;
+  try{
+    voiceRecognition.onend=null;
+    voiceRecognition.stop();
+  }catch(e){}
+  voiceRecognition=null;
+  voiceRecognitionStarting=false;
+}
+
+function recognitionCtor(){
+  return window.SpeechRecognition||window.webkitSpeechRecognition||null;
+}
+
+function maybeRestartRecognition(){
+  if(!voiceLiveWanted||!voiceStream||voiceMuted||voiceSpeaking||controller)return;
+  setTimeout(()=>startRecognition(),220);
+}
+
+function startRecognition(){
+  if(voiceRecognition||voiceRecognitionStarting||!voiceLiveWanted||voiceMuted||voiceSpeaking||controller)return;
+  const Ctor=recognitionCtor();
+  if(!Ctor){
+    setVoiceState('idle','Texto disponible','Este navegador no ofrece reconocimiento de voz es-AR.');
+    return;
+  }
+
+  voiceRecognitionStarting=true;
+  const rec=new Ctor();
+  rec.lang='es-AR';
+  rec.continuous=false;
+  rec.interimResults=true;
+  rec.maxAlternatives=1;
+  voiceRecognition=rec;
+
+  rec.onstart=()=>{
+    voiceRecognitionStarting=false;
+    setVoiceState('listening','Te escucho','Micrófono activo · es-AR');
+  };
+
+  rec.onresult=async event=>{
+    let interim='',final='';
+    for(let i=event.resultIndex;i<event.results.length;i++){
+      const part=event.results[i][0]?.transcript||'';
+      if(event.results[i].isFinal)final+=part;
+      else interim+=part;
+    }
+    const preview=(final||interim).trim();
+    if(preview)setVoiceState('listening','Te escucho',preview);
+    if(final.trim()){
+      rec.onend=null;
+      try{rec.stop()}catch(e){}
+      voiceRecognition=null;
+      voiceRecognitionStarting=false;
+      await sendChat(final.trim(),{speak:true});
+    }
+  };
+
+  rec.onerror=event=>{
+    const fatal=['not-allowed','service-not-allowed','audio-capture'];
+    if(fatal.includes(event.error)){
+      voiceLiveWanted=false;
+      setVoiceState('idle','Micrófono bloqueado','Revisá el permiso de micrófono del navegador.');
+    }else if(event.error!=='no-speech'){
+      setVoiceState('idle','Voz interrumpida',event.error||'error de reconocimiento');
+    }
+  };
+
+  rec.onend=()=>{
+    voiceRecognition=null;
+    voiceRecognitionStarting=false;
+    maybeRestartRecognition();
+  };
+
+  try{
+    rec.start();
+  }catch(e){
+    voiceRecognition=null;
+    voiceRecognitionStarting=false;
+    setVoiceState('idle','Voz no disponible','No pude iniciar reconocimiento es-AR.');
+  }
+}
+
+function exactArgentineVoice(){
+  if(!('speechSynthesis' in window))return null;
+  return speechSynthesis.getVoices().find(v=>normalizeLocale(v.lang)==='es-ar')||null;
+}
+
+async function speakEsAr(value){
+  if(!('speechSynthesis' in window)){
+    setVoiceState('idle','Texto disponible','Este navegador no ofrece síntesis de voz.');
+    maybeRestartRecognition();
+    return false;
+  }
+
+  stopRecognition();
+  speechSynthesis.cancel();
+
+  let voice=exactArgentineVoice();
+  if(!voice){
+    await new Promise(resolve=>{
+      let done=false;
+      const finish=()=>{if(done)return;done=true;resolve()};
+      const timer=setTimeout(finish,900);
+      speechSynthesis.addEventListener('voiceschanged',()=>{clearTimeout(timer);finish()},{once:true});
+    });
+    voice=exactArgentineVoice();
+  }
+
+  if(!voice){
+    setVoiceState('idle','Sin voz es-AR','La respuesta quedó en texto; no uso una voz genérica.');
+    maybeRestartRecognition();
+    return false;
+  }
+
+  return await new Promise(resolve=>{
+    const utterance=new SpeechSynthesisUtterance(value);
+    utterance.lang='es-AR';
+    utterance.voice=voice;
+    utterance.rate=1;
+    utterance.pitch=1;
+
+    utterance.onstart=()=>{
+      voiceSpeaking=true;
+      speechPulse=.45;
+      stopVoiceMeter(false);
+      setVoiceState('speaking','0liviA','Hablando · '+voice.name);
+      startSpeechRing();
+    };
+    utterance.onboundary=()=>{
+      speechPulse=1;
+    };
+    utterance.onend=()=>{
+      stopSpeechRing();
+      setVoiceState('listening','Te escucho','Micrófono activo · es-AR');
+      maybeRestartRecognition();
+      resolve(true);
+    };
+    utterance.onerror=()=>{
+      stopSpeechRing();
+      setVoiceState('idle','Voz interrumpida','La respuesta quedó disponible en texto.');
+      maybeRestartRecognition();
+      resolve(false);
+    };
+
+    speechSynthesis.speak(utterance);
+  });
+}
+
 function stopLocalMic(){
+  stopRecognition();
+  if('speechSynthesis' in window)speechSynthesis.cancel();
+  stopSpeechRing();
   stopVoiceMeter();
   if(voiceStream){
     voiceStream.getTracks().forEach(t=>t.stop());
@@ -401,6 +649,7 @@ function stopLocalMic(){
 }
 
 function closeVoice(){
+  voiceLiveWanted=false;
   stopLocalMic();
   voiceLive.classList.remove('active');
   voiceLive.setAttribute('aria-hidden','true');
@@ -408,23 +657,35 @@ function closeVoice(){
 }
 
 document.querySelector('#openVoice').onclick=()=>{
+  voiceLiveWanted=true;
   voiceLive.classList.add('active');
   voiceLive.setAttribute('aria-hidden','false');
   setVoiceState('idle','Live Voice','Tocá el micrófono para empezar.');
   syncVoiceTranscript();
   drawVoiceRing();
 };
+
 document.querySelector('#voiceEnd').onclick=closeVoice;
-document.querySelector('#voiceChatForm').onsubmit=e=>{
+
+document.querySelector('#voiceChatForm').onsubmit=async e=>{
   e.preventDefault();
   const value=voiceText.value.trim();
   if(!value)return;
   voiceText.value='';
-  text.value=value;
-  document.querySelector('main form').requestSubmit();
+  await sendChat(value,{speak:true});
 };
 
 document.querySelector('#voiceMain').onclick=async()=>{
+  if(voiceSpeaking){
+    if('speechSynthesis' in window)speechSynthesis.cancel();
+    stopSpeechRing();
+    await cancelActiveTurn();
+    voiceMuted=false;
+    setVoiceState('listening','Te escucho','Interrumpiste a 0liviA.');
+    maybeRestartRecognition();
+    return;
+  }
+
   if(!voiceStream){
     try{
       voiceStream=await navigator.mediaDevices.getUserMedia({
@@ -433,21 +694,30 @@ document.querySelector('#voiceMain').onclick=async()=>{
       voiceMuted=false;
       voiceStream.getAudioTracks().forEach(t=>t.enabled=true);
       startVoiceMeter(voiceStream);
-      setVoiceState('listening','Te escucho','Micrófono activo · es-AR');
+      voiceLiveWanted=true;
+      startRecognition();
     }catch(e){
       setVoiceState('idle','Micrófono bloqueado','Dale permiso al navegador para usar Live Voice.');
     }
     return;
   }
+
   voiceMuted=!voiceMuted;
   voiceStream.getAudioTracks().forEach(t=>t.enabled=!voiceMuted);
-  drawVoiceRing();
+  if(voiceMuted){
+    stopRecognition();
+    drawVoiceRing();
+  }else{
+    startVoiceMeter(voiceStream);
+    startRecognition();
+  }
   setVoiceState(
     voiceMuted?'idle':'listening',
     voiceMuted?'Silenciado':'Te escucho',
     voiceMuted?'Tocá el micrófono para volver':'Micrófono activo · es-AR'
   );
-}
+};
+
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&voiceLive.classList.contains('active'))closeVoice();
 });
