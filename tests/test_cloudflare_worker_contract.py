@@ -91,3 +91,25 @@ def test_nvidia_nim_is_production_entitlement_gated():
     assert 'NVIDIA_NIM_PRODUCTION_ENTITLED === "1"' in WORKER
     assert 'cost_mode: "entitlement_gated"' in WORKER
     assert '"development_only"' in WORKER
+
+
+def test_worker_streams_after_precommit_failover():
+    assert "async function prepareProviderStream" in WORKER
+    assert "async function readSseEvent" in WORKER
+    assert "function streamingSseResponse" in WORKER
+    assert "stream: true" in WORKER
+    assert "stream: false" not in WORKER
+    assert "new ReadableStream" in WORKER
+    assert "await prepared.reader.cancel()" in WORKER
+    assert '"provider_stream_interrupted"' in WORKER
+
+
+def test_failover_commits_only_after_visible_text():
+    prepare = WORKER.index("async function prepareProviderStream")
+    visible = WORKER.index("if (isVisibleText(text))", prepare)
+    returned = WORKER.index("return {", visible)
+    assert visible < returned
+
+    failover = WORKER.index("async function streamWithFailover")
+    assert WORKER.index("await prepareProviderStream", failover) > failover
+    assert WORKER.index("return streamingSseResponse(prepared)", failover) > failover
