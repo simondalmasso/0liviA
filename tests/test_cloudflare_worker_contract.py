@@ -50,6 +50,6 @@ def test_web_fetch_is_guarded_before_any_external_read():
 
 def test_web_reader_streams_with_a_hard_body_cap():
     assert "const MAX_WEB_BYTES_PER_URL = 65536;" in WORKER
-    assert "response.body.getReader()" in WORKER
+    assert "response.body?.getReader()" in WORKER
     assert "await reader.cancel()" in WORKER
     assert "await response.text()" not in WORKER
