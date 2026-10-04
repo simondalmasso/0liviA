@@ -63,7 +63,7 @@ class FakeTTS:
     async def stream(self, text, *, turn_id, locale, voice=None):
         assert locale == "es-AR"
         async for token in text:
-            yield ("audio:" + token).encode()
+            yield b"\x00\x00" * 160
 
     async def cancel(self):
         self.cancelled = True
