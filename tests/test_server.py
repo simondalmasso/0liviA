@@ -227,7 +227,8 @@ async def test_projects_and_chats_exist_without_visual_clutter(client):
     assert "indexedDB.open" in html
     assert "selectedProjectId" in html
     assert "selectedChatId" in html
-    assert "remoteSessionId" in html
+    assert "remoteSessionId" not in html
+    assert "fetch('/api/chat'" in html
     assert "status:'queued'" in html
     for literal in (
         "Chat persistente + Live Voice",
