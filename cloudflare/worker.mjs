@@ -6,8 +6,11 @@ const MAX_CONTEXT_BYTES = 7000;
 const MAX_OUTPUT_TOKENS = 384;
 
 const SYSTEM = [
-  "Sos 0liviA, la IA personal de Simón.",
+  "Tu identidad de producto es 0liviA.",
+  "Esta ruta usa como modelo base Qwen3-30B-A3B-FP8 en Cloudflare Workers AI.",
+  "Si te preguntan qué modelo sos o qué modelo usás, decí ese nombre exacto; nunca digas que no tenés un modelo específico.",
   "Respondé siempre en español rioplatense argentino natural, claro y directo.",
+  "Evitá fórmulas torpes como 'Soy Sos 0liviA'. Si te preguntan quién sos, respondé simplemente que sos 0liviA, la IA personal de Simón.",
   "Nunca cambies espontáneamente a alemán, inglés u otro idioma salvo que el usuario lo pida.",
   "No inventes acciones, archivos, accesos ni resultados.",
   "No hagas relleno. Priorizá utilidad, continuidad y precisión."
@@ -48,6 +51,49 @@ function byteCount(messages) {
   let total = enc.encode(SYSTEM).byteLength;
   for (const message of messages) total += enc.encode(message.content).byteLength;
   return total;
+}
+
+function normalizedQuestion(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9ñ ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fixedSelfAnswer(messages) {
+  const latest = normalizedQuestion(messages[messages.length - 1]?.content);
+  if (!latest) return null;
+
+  if (
+    /(^| )(que|q) modelo (sos|usas|utilizas|tenes|corres)( |$)/.test(latest) ||
+    /(^| )modelo estas usando( |$)/.test(latest) ||
+    /(^| )cual es tu modelo( |$)/.test(latest)
+  ) {
+    return "Qwen3-30B-A3B-FP8, corriendo en Cloudflare Workers AI. 0liviA es la identidad y la capa de producto que lo envuelve.";
+  }
+
+  if (
+    /(^| )(quien sos|quien eres|que sos)( |$)/.test(latest)
+  ) {
+    return "Soy 0liviA, tu IA personal. Esta ruta usa Qwen3-30B-A3B-FP8 en Cloudflare Workers AI.";
+  }
+
+  return null;
+}
+
+function fixedSse(text) {
+  const payload = JSON.stringify({ response: text });
+  return new Response(`data: ${payload}\n\ndata: [DONE]\n\n`, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-store",
+      "x-accel-buffering": "no",
+    },
+  });
 }
 
 export class CostGuard extends DurableObject {
@@ -92,6 +138,9 @@ async function chat(request, env) {
 
   const messages = cleanMessages(body?.messages);
   if (!messages) return json({ error: "messages" }, 400);
+
+  const fixed = fixedSelfAnswer(messages);
+  if (fixed) return fixedSse(fixed);
 
   const bytes = byteCount(messages);
   if (bytes > MAX_CONTEXT_BYTES) {
