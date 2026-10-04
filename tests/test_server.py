@@ -482,3 +482,21 @@ async def test_ui_can_switch_from_bridge_to_canonical_cookie_sessions(client):
     assert "/api/sessions" in html
     assert "/api/chat/${chat.remoteSessionId}" in html
     assert "Authorization" not in html
+
+
+@pytest.mark.asyncio
+async def test_ui_can_use_canonical_cookie_auth_and_server_sessions(client):
+    response = await client.get("/")
+    html = await response.text()
+    assert 'id="authGate"' in html
+    assert 'id="authForm"' in html
+    assert "credentials:'same-origin'" in html
+    assert "/api/auth/login" in html
+    assert "/api/sessions" in html
+    assert "ensureRemoteSession" in html
+    assert "syncCanonicalSessions" in html
+    assert "event.type==='delta'" in html
+    assert "event.type==='done'" in html
+    assert "Authorization" not in html
+    assert "localStorage" not in html
+    assert "sessionStorage" not in html
