@@ -426,13 +426,14 @@ async def test_owner_login_sets_http_only_cookie_and_unlocks_api(aiohttp_client,
             settings,
             auth_token="gateway-signing-secret",
             owner_password_verifier=verifier,
+            owner_email="owner@example.com",
         )
     )
 
-    wrong = await client.post("/api/auth/login", json={"password": "wrong"})
+    wrong = await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "wrong"})
     assert wrong.status == 401
 
-    login = await client.post("/api/auth/login", json={"password": "owner-passphrase"})
+    login = await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "owner-passphrase"})
     assert login.status == 200
     cookie = login.cookies["olivia_owner"]
     assert cookie["httponly"] is True
@@ -463,9 +464,10 @@ async def test_owner_logout_expires_cookie(aiohttp_client, tmp_path):
             settings,
             auth_token="gateway-signing-secret",
             owner_password_verifier=verifier,
+            owner_email="owner@example.com",
         )
     )
-    login = await client.post("/api/auth/login", json={"password": "owner-passphrase"})
+    login = await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "owner-passphrase"})
     cookie = login.cookies["olivia_owner"]
     logout = await client.post(
         "/api/auth/logout",
@@ -557,14 +559,15 @@ async def test_owner_login_rate_limits_repeated_failures(aiohttp_client, tmp_pat
             settings,
             auth_token="gateway-signing-secret",
             owner_password_verifier=verifier,
+            owner_email="owner@example.com",
         )
     )
 
     for _ in range(5):
-        response = await client.post("/api/auth/login", json={"password": "wrong"})
+        response = await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "wrong"})
         assert response.status == 401
 
-    blocked = await client.post("/api/auth/login", json={"password": "owner-passphrase"})
+    blocked = await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "owner-passphrase"})
     assert blocked.status == 429
     assert blocked.headers["Retry-After"]
 
@@ -581,12 +584,13 @@ async def test_successful_owner_login_clears_failure_counter(aiohttp_client, tmp
             settings,
             auth_token="gateway-signing-secret",
             owner_password_verifier=verifier,
+            owner_email="owner@example.com",
         )
     )
 
-    assert (await client.post("/api/auth/login", json={"password": "wrong"})).status == 401
-    assert (await client.post("/api/auth/login", json={"password": "owner-passphrase"})).status == 200
-    assert (await client.post("/api/auth/login", json={"password": "wrong"})).status == 401
+    assert (await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "wrong"})).status == 401
+    assert (await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "owner-passphrase"})).status == 200
+    assert (await client.post("/api/auth/login", json={"email": "owner@example.com", "password": "wrong"})).status == 401
 
 
 @pytest.mark.asyncio
@@ -955,20 +959,21 @@ async def test_owner_login_throttle_separates_forwarded_clients(aiohttp_client, 
             settings,
             auth_token="gateway-signing-secret",
             owner_password_verifier=verifier,
+            owner_email="owner@example.com",
         )
     )
 
     for _ in range(5):
         response = await client.post(
             "/api/auth/login",
-            json={"password": "wrong"},
+            json={"email": "owner@example.com", "password": "wrong"},
             headers={"X-Forwarded-For": "203.0.113.10"},
         )
         assert response.status == 401
 
     owner = await client.post(
         "/api/auth/login",
-        json={"password": "owner-passphrase"},
+        json={"email": "owner@example.com", "password": "owner-passphrase"},
         headers={"X-Forwarded-For": "203.0.113.11"},
     )
     assert owner.status == 200
