@@ -226,7 +226,8 @@ async def test_sidebar_surfaces_and_web_read_status_are_truthful(client):
     assert "Todavía no conectada" not in html
     assert "URLs públicas · solo lectura" in html
     assert "$0 hard cap" not in html
-    assert "Cap local 80/día · guard cuenta pendiente" in html
+    assert "Router automático" in html
+    assert "coreHealth" in html
 
 
 @pytest.mark.asyncio
@@ -251,3 +252,16 @@ async def test_projects_and_chats_exist_without_visual_clutter(client):
         "core cloud todavía no conectado",
     ):
         assert literal not in html
+
+
+@pytest.mark.asyncio
+async def test_reference_inspired_violet_blue_cyan_visual_system(client):
+    response = await client.get("/")
+    html = await response.text()
+    for token in ("--violet:", "--blue:", "--cyan:"):
+        assert token in html
+    assert "linear-gradient(180deg" in html
+    assert "radial-gradient" in html
+    assert ".composer{" in html
+    assert "#voiceLive{" in html
+    assert ".drawer{" in html
