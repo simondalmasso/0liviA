@@ -117,10 +117,29 @@ def test_failover_commits_only_after_visible_text():
 
 def test_cloudflare_fallbacks_are_blocked_until_account_zero_cost_is_verified():
     assert "available: Boolean(env.AI && ACCOUNT_ZERO_COST_VERIFIED)" in WORKER
-    assert "provider_ready: providerCatalog(env).some(p => p.available)" in WORKER
+    assert "provider_ready: TRANSITIONAL_BRIDGE_ENABLED && providerCatalog(env).some(p => p.available)" in WORKER
 
 
 def test_health_never_claims_verified_zero_cost_when_guard_is_false():
     assert "hard_zero_cost: ACCOUNT_ZERO_COST_VERIFIED" in WORKER
     assert "account_overage_guard_verified: ACCOUNT_ZERO_COST_VERIFIED" in WORKER
     assert "provider_ready: true" not in WORKER
+
+
+def test_transitional_bridge_is_disabled_by_default():
+    assert "const TRANSITIONAL_BRIDGE_ENABLED = false;" in WORKER
+    assert 'error: "bridge_disabled"' in WORKER
+    assert "provider_ready: TRANSITIONAL_BRIDGE_ENABLED &&" in WORKER
+    assert "bridge_enabled: TRANSITIONAL_BRIDGE_ENABLED" in WORKER
+
+
+def test_disabled_bridge_blocks_chat_and_web_read_before_usage():
+    chat_route = WORKER.index('url.pathname === "/api/chat"')
+    chat_gate = WORKER.index("if (!TRANSITIONAL_BRIDGE_ENABLED)", chat_route)
+    chat_call = WORKER.index("return chat(request, env)", chat_route)
+    assert chat_gate < chat_call
+
+    read_route = WORKER.index('url.pathname === "/api/read-url"')
+    read_gate = WORKER.index("if (!TRANSITIONAL_BRIDGE_ENABLED)", read_route)
+    read_guard = WORKER.index("await takeZeroCostSlot(env)", read_route)
+    assert read_gate < read_guard
