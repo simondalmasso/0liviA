@@ -274,8 +274,9 @@ function providerCatalog(env) {
     ...CLOUDFLARE_FALLBACKS.map(item => ({
       ...item,
       kind: "cloudflare",
-      available: Boolean(env.AI),
+      available: Boolean(env.AI && ACCOUNT_ZERO_COST_VERIFIED),
       cost_mode: "free_allocation",
+      eligibility: ACCOUNT_ZERO_COST_VERIFIED ? "account_zero_cost_verified" : "billing_guard_unverified",
     })),
   ];
 }
@@ -682,7 +683,7 @@ export default {
     if (url.pathname === "/healthz") {
       return json({
         process_alive: true,
-        provider_ready: true,
+        provider_ready: providerCatalog(env).some(p => p.available),
         hard_zero_cost: ACCOUNT_ZERO_COST_VERIFIED,
         local_daily_cap: true,
         account_overage_guard_verified: ACCOUNT_ZERO_COST_VERIFIED,
