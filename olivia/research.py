@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
@@ -11,6 +12,7 @@ import aiohttp
 MAX_QUERY_CHARS = 1024
 MAX_RESULTS = 10
 MAX_RESPONSE_BYTES = 256 * 1024
+_BYOK_ALIAS = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 class SearchUnavailable(RuntimeError):
@@ -54,13 +56,16 @@ class CloudflareWebSearch:
             raise ValueError("unsupported web search provider")
         if not account_id.strip() or not api_token.strip():
             raise ValueError("Cloudflare account/token are required")
-        if not byok_alias.strip():
+        alias = byok_alias.strip()
+        if not alias:
             raise ValueError("BYOK alias is required to prevent implicit AI Gateway credits")
+        if not _BYOK_ALIAS.fullmatch(alias):
+            raise ValueError("BYOK alias must match ^[A-Za-z0-9_-]{1,64}$")
         self.account_id = account_id.strip()
         self.api_token = api_token.strip()
         self.gateway_id = gateway_id.strip() or "default"
         self.provider = provider
-        self.byok_alias = byok_alias.strip()
+        self.byok_alias = alias
         self.zero_cost_verified = bool(zero_cost_verified)
         self._session_factory = session_factory
 
