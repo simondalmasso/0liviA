@@ -101,3 +101,25 @@ async def test_secret_like_user_text_is_redacted_before_storage_and_provider(tmp
     assert secret not in outbound
     assert "[REDACTED_SECRET]" in stored
     assert "[REDACTED_SECRET]" in outbound
+
+
+@pytest.mark.asyncio
+async def test_ephemeral_web_context_reaches_provider_but_not_durable_messages(tmp_path):
+    store = Store(tmp_path / "web-context.sqlite3")
+    sid = store.create_session()
+    router = CaptureRouter()
+    agent = Agent(store, router, Settings(data_dir=tmp_path))
+
+    context = "UNIQUE_PAGE_FACT_42"
+    _ = [
+        event
+        async for event in agent.stream_turn(
+            sid,
+            "/read https://example.com ¿qué dice?",
+            ephemeral_context=context,
+        )
+    ]
+
+    assert context in repr(router.calls[-1])
+    assert context not in repr(store.recent_messages(sid))
+    assert "untrusted external context" in router.calls[-1][0]["content"].lower()
