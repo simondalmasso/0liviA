@@ -154,6 +154,17 @@ class Store:
             ).fetchone()
         return row is not None
 
+    def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT id,title,created_at,updated_at
+                   FROM sessions
+                   ORDER BY updated_at DESC
+                   LIMIT ?""",
+                (max(1, min(limit, 100)),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def append_message(
         self,
         session_id: str,
