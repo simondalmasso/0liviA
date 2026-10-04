@@ -41,12 +41,9 @@ concurrency:
 jobs:
   code:
     runs-on: ubuntu-latest
-    outputs:
-      base_sha: ${{ steps.base.outputs.sha }}
     timeout-minutes: 35
     env:
       AIDER_OPENAI_API_BASE: "https://integrate.api.nvidia.com/v1"
-      AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       AIDER_MODEL: "openai/deepseek-ai/deepseek-v4.1-flash"
       AIDER_ANALYTICS_DISABLE: "true"
       PYTHONUNBUFFERED: "1"
@@ -57,6 +54,8 @@ jobs:
     steps:
       - name: Fail closed without the development-only NIM key
         shell: bash
+        env:
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           test -n "$AIDER_OPENAI_API_KEY"
@@ -69,14 +68,13 @@ jobs:
           persist-credentials: false
 
       - name: Validate dispatch ref
-        id: base
         shell: bash
         run: |
           set -euo pipefail
           git check-ref-format --allow-onelevel "$BASE_REF"
-          base_sha="$(git rev-parse --verify HEAD^{commit})"
-          test -n "$base_sha"
-          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
+          test -n "$(git rev-parse --verify HEAD^{commit})"
+          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
+          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
 
       - uses: actions/setup-python@v5
         with:
@@ -88,6 +86,7 @@ jobs:
           set -euo pipefail
           BRANCH="agent/coding-${GITHUB_RUN_ID}"
           git switch -c "$BRANCH"
+          echo "AGENT_BRANCH=$BRANCH" >> "$GITHUB_ENV"
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]' 'aider-chat==0.86.2'
 
@@ -102,6 +101,7 @@ jobs:
         shell: bash
         env:
           TASK: ${{ inputs.task }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           if [ "$MODE" = "repair" ]; then
@@ -122,8 +122,6 @@ jobs:
             --read AGENTS.md \
             --read docs/ARCHITECTURE.md \
             --read docs/DECISIONS.md \
-            --test-cmd "pytest -q" \
-            --auto-test \
             --message "$INTENT
 
           Task:
@@ -134,7 +132,8 @@ jobs:
         shell: bash
         run: |
           set +e
-          python -m compileall -q olivia tests > /tmp/verify-first.log 2>&1
+          : > /tmp/verify-first.log
+          python -m compileall -q olivia tests >> /tmp/verify-first.log 2>&1
           rc=$?
           if [ "$rc" -eq 0 ]; then
             python - <<'PY' >> /tmp/verify-first.log 2>&1
@@ -162,6 +161,8 @@ jobs:
       - name: repair_pass
         if: steps.verify1.outputs.needs_repair == 'true'
         shell: bash
+        env:
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           test "$MAX_AGENT_PASSES" = "2"
@@ -179,8 +180,6 @@ jobs:
             --read AGENTS.md \
             --read docs/ARCHITECTURE.md \
             --read docs/DECISIONS.md \
-            --test-cmd "pytest -q" \
-            --auto-test \
             --message "The first bounded pass failed deterministic verification. Diagnose the failures below, repair only what is necessary, and do not broaden scope.
 
           Verification output:
@@ -223,19 +222,20 @@ jobs:
           git log --oneline --decorate -8
           git diff --stat "$BASE_REF...HEAD" || true
 
-      - name: Package verified change series
+      - name: Export verified agent series
         if: ${{ inputs.publish_branch }}
         shell: bash
         run: |
           set -euo pipefail
-          git format-patch --binary --stdout "$BASE_REF..HEAD" > /tmp/agent-series.patch
+          git format-patch --stdout "$BASE_REF...HEAD" > agent-series.patch
+          test -s agent-series.patch
 
-      - name: Upload verified change series
+      - name: Upload verified agent series
         if: ${{ inputs.publish_branch }}
         uses: actions/upload-artifact@v4
         with:
-          name: olivia-agent-${{ github.run_id }}
-          path: /tmp/agent-series.patch
+          name: verified-agent-series
+          path: agent-series.patch
           if-no-files-found: error
           retention-days: 1
 
@@ -243,44 +243,45 @@ jobs:
     needs: code
     if: ${{ inputs.publish_branch }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     permissions:
       contents: write
     env:
-      BASE_SHA: ${{ needs.code.outputs.base_sha }}
+      BASE_REF: ${{ inputs.base_ref }}
 
     steps:
-      - name: Checkout immutable verified base
+      - name: Checkout exact base without persisted credentials
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.code.outputs.base_sha }}
+          ref: ${{ inputs.base_ref }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Download verified change series
+      - name: Validate publish base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git check-ref-format --allow-onelevel "$BASE_REF"
+          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
+          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
+
+      - name: Download verified agent series
         uses: actions/download-artifact@v4
         with:
-          name: olivia-agent-${{ github.run_id }}
-          path: /tmp/olivia-agent
+          name: verified-agent-series
 
-      - name: Publish isolated verified branch
+      - name: Apply and publish isolated branch
         shell: bash
         env:
           GH_PUSH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          patch=/tmp/olivia-agent/agent-series.patch
-          if [ ! -s "$patch" ]; then
-            echo "No agent changes to publish."
-            exit 0
-          fi
+          AGENT_BRANCH="agent/coding-${GITHUB_RUN_ID}"
+          git switch -c "$AGENT_BRANCH"
           git config user.name "0liviA coding worker"
           git config user.email "0livia-agent@users.noreply.github.com"
-          git config --local core.hooksPath /dev/null
-          git am --3way "$patch"
-          BRANCH="agent/coding-${GITHUB_RUN_ID}"
+          git am agent-series.patch
           auth="$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 -w0)"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
-            push origin "HEAD:refs/heads/$BRANCH"
+            push origin "HEAD:refs/heads/$AGENT_BRANCH"
           unset auth GH_PUSH_TOKEN
-          echo "PUBLISHED_BRANCH=$BRANCH"
+          echo "PUBLISHED_BRANCH=$AGENT_BRANCH"
