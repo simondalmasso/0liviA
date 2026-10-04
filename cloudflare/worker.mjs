@@ -1,10 +1,16 @@
 import { DurableObject } from "cloudflare:workers";
 
-const MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
+const PRIMARY_MODEL = "deepseek-ai/deepseek-v4.1-flash";
+const NVIDIA_CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+const CLOUDFLARE_FALLBACKS = [
+  { id: "cloudflare-glm-4.7-flash", model: "@cf/zai-org/glm-4.7-flash" },
+  { id: "cloudflare-qwen3-30b", model: "@cf/qwen/qwen3-30b-a3b-fp8" },
+];
 const MAX_CALLS_PER_UTC_DAY = 80;
 const ACCOUNT_ZERO_COST_VERIFIED = false;
 const MAX_CONTEXT_BYTES = 7000;
 const MAX_OUTPUT_TOKENS = 384;
+const MAX_PRIMARY_OUTPUT_TOKENS = 1536;
 const MAX_URLS_PER_TURN = 2;
 const MAX_WEB_CHARS_PER_URL = 12000;
 const MAX_WEB_BYTES_PER_URL = 65536;
@@ -12,8 +18,8 @@ const MAX_REDIRECTS = 3;
 
 const SYSTEM = [
   "Tu identidad de producto es 0liviA.",
-  "Esta ruta usa como modelo base Qwen3-30B-A3B-FP8 en Cloudflare Workers AI.",
-  "Si te preguntan qué modelo sos o qué modelo usás, decí ese nombre exacto; nunca digas que no tenés un modelo específico.",
+  "Usás un router reemplazable de modelos con DeepSeek V4.1 Flash vía NVIDIA NIM como ruta primaria y fallbacks gratuitos verificados.",
+  "Si te preguntan qué modelo sos o qué modelo usás, explicá el router y nombrá DeepSeek V4.1 Flash como modelo primario; nunca digas que no tenés un modelo específico.",
   "Respondé siempre en español rioplatense argentino natural, claro y directo.",
   "Evitá fórmulas torpes como 'Soy Sos 0liviA'. Si te preguntan quién sos, respondé simplemente que sos 0liviA, la IA personal de Simón.",
   "Nunca cambies espontáneamente a alemán, inglés u otro idioma salvo que el usuario lo pida.",
@@ -250,7 +256,104 @@ function normalizedQuestion(value) {
     .trim();
 }
 
-function fixedSelfAnswer(messages) {
+function providerCatalog(env) {
+  return [
+    {
+      id: "nvidia-deepseek-v4.1-flash",
+      model: PRIMARY_MODEL,
+      kind: "nvidia",
+      available: Boolean(env.NVIDIA_API_KEY),
+      cost_mode: "free_endpoint",
+    },
+    ...CLOUDFLARE_FALLBACKS.map(item => ({
+      ...item,
+      kind: "cloudflare",
+      available: Boolean(env.AI),
+      cost_mode: "free_allocation",
+    })),
+  ];
+}
+
+function modelText(result) {
+  if (typeof result === "string") return result.trim();
+  if (typeof result?.response === "string") return result.response.trim();
+  if (typeof result?.result?.response === "string") return result.result.response.trim();
+  const content = result?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content.map(part => typeof part?.text === "string" ? part.text : "").join("").trim();
+  }
+  return "";
+}
+
+async function generateNvidia(provider, messages, env) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort("timeout"), 60000);
+  try {
+    const response = await fetch(NVIDIA_CHAT_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        "authorization": `Bearer ${env.NVIDIA_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: provider.model,
+        messages,
+        stream: false,
+        max_tokens: MAX_PRIMARY_OUTPUT_TOKENS,
+        temperature: 0.35,
+        top_p: 0.9,
+      }),
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 400);
+      throw new Error(`nvidia_http_${response.status}:${detail}`);
+    }
+    const result = await response.json();
+    const text = modelText(result);
+    if (!text) throw new Error("nvidia_empty_response");
+    return text;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateCloudflare(provider, messages, env) {
+  const guard = await takeZeroCostSlot(env);
+  if (!guard.ok) throw new Error("cloudflare_zero_cost_cap");
+  const result = await env.AI.run(provider.model, {
+    messages,
+    stream: false,
+    max_tokens: MAX_OUTPUT_TOKENS,
+    temperature: 0.35,
+    top_p: 0.9,
+  });
+  const text = modelText(result);
+  if (!text) throw new Error("cloudflare_empty_response");
+  return text;
+}
+
+async function generateWithFailover(messages, env) {
+  const attempts = [];
+  for (const provider of providerCatalog(env)) {
+    if (!provider.available) continue;
+    try {
+      const text = provider.kind === "nvidia"
+        ? await generateNvidia(provider, messages, env)
+        : await generateCloudflare(provider, messages, env);
+      return { text, provider, attempts };
+    } catch (error) {
+      attempts.push({
+        provider: provider.id,
+        error: String(error?.message || error || "provider_failed").slice(0, 180),
+      });
+    }
+  }
+  throw new Error("no_zero_cost_provider_available");
+}
+
+function fixedSelfAnswer(messages, env) {
   const latest = normalizedQuestion(messages[messages.length - 1]?.content);
   if (!latest) return null;
 
@@ -259,20 +362,22 @@ function fixedSelfAnswer(messages) {
     /(^| )modelo estas usando( |$)/.test(latest) ||
     /(^| )cual es tu modelo( |$)/.test(latest)
   ) {
-    return "Qwen3-30B-A3B-FP8, corriendo en Cloudflare Workers AI. 0liviA es la identidad y la capa de producto que lo envuelve.";
+    const configured = providerCatalog(env).filter(p => p.available).map(p => p.model);
+    const suffix = configured.length ? ` Rutas activas: ${configured.join(" → ")}.` : "";
+    return `0liviA usa un router de modelos. El primario es DeepSeek V4.1 Flash vía NVIDIA NIM; GLM-4.7-Flash y Qwen3-30B-A3B-FP8 quedan como fallbacks $0.${suffix}`;
   }
 
   if (
     /(^| )(quien sos|quien eres|que sos)( |$)/.test(latest)
   ) {
-    return "Soy 0liviA, tu IA personal. Esta ruta usa Qwen3-30B-A3B-FP8 en Cloudflare Workers AI.";
+    return "Soy 0liviA, tu IA personal. Mi ruta primaria es DeepSeek V4.1 Flash vía NVIDIA NIM, con failover automático a modelos $0 si el primario no responde.";
   }
 
   return null;
 }
 
-function fixedSse(text) {
-  const payload = JSON.stringify({ response: text });
+function fixedSse(text, meta = {}) {
+  const payload = JSON.stringify({ response: text, ...meta });
   return new Response(`data: ${payload}\n\ndata: [DONE]\n\n`, {
     status: 200,
     headers: {
@@ -326,7 +431,7 @@ async function chat(request, env) {
   const messages = cleanMessages(body?.messages);
   if (!messages) return json({ error: "messages" }, 400);
 
-  const fixed = fixedSelfAnswer(messages);
+  const fixed = fixedSelfAnswer(messages, env);
   if (fixed) return fixedSse(fixed);
 
   const baseBytes = byteCount(messages);
@@ -337,12 +442,15 @@ async function chat(request, env) {
     }, 413);
   }
 
-  const guard = await takeZeroCostSlot(env);
-  if (!guard.ok) {
-    return json({
-      error: "zero_cost_daily_cap",
-      message: "Límite diario local alcanzado.",
-    }, 429);
+  const latestUrls = extractUrls(messages[messages.length - 1]?.content || "");
+  if (latestUrls.length) {
+    const guard = await takeZeroCostSlot(env);
+    if (!guard.ok) {
+      return json({
+        error: "zero_cost_daily_cap",
+        message: "Límite diario de navegación/fallback alcanzado.",
+      }, 429);
+    }
   }
 
   const webContext = await webContextFor(messages);
@@ -359,32 +467,19 @@ async function chat(request, env) {
   }
 
   try {
-    const stream = await env.AI.run(MODEL, {
-      messages: modelMessages,
-      stream: true,
-      max_tokens: MAX_OUTPUT_TOKENS,
-      temperature: 0.35,
-      top_p: 0.9,
-      repetition_penalty: 1.06,
-      chat_template_kwargs: { enable_thinking: false },
-    });
-
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "content-type": "text/event-stream; charset=utf-8",
-        "cache-control": "no-cache, no-store",
-        "x-accel-buffering": "no",
-      },
+    const generated = await generateWithFailover(modelMessages, env);
+    return fixedSse(generated.text, {
+      provider: generated.provider.id,
+      model: generated.provider.model,
     });
   } catch (error) {
     const message = String(error?.message || error || "AI unavailable");
-    const limited = /3036|allocation|limit|quota|429/i.test(message);
+    const limited = /zero_cost|allocation|limit|quota|429/i.test(message);
     return json({
-      error: limited ? "workers_ai_free_limit" : "ai_unavailable",
+      error: limited ? "zero_cost_routes_exhausted" : "ai_unavailable",
       message: limited
-        ? "Workers AI agotó su cupo gratuito."
-        : "El modelo no está disponible ahora.",
+        ? "Las rutas $0 están temporalmente agotadas."
+        : "Ningún proveedor gratuito está disponible ahora.",
     }, limited ? 429 : 503);
   }
 }
@@ -400,8 +495,15 @@ export default {
         hard_zero_cost: ACCOUNT_ZERO_COST_VERIFIED,
         local_daily_cap: true,
         account_overage_guard_verified: ACCOUNT_ZERO_COST_VERIFIED,
-        model: MODEL,
+        primary_model: PRIMARY_MODEL,
+        provider_catalog: providerCatalog(env).map(p => ({
+          id: p.id,
+          model: p.model,
+          available: p.available,
+          cost_mode: p.cost_mode,
+        })),
         max_calls_per_utc_day: MAX_CALLS_PER_UTC_DAY,
+        cap_scope: "web_reads_and_cloudflare_fallback_attempts",
         max_context_bytes: MAX_CONTEXT_BYTES,
         max_output_tokens: MAX_OUTPUT_TOKENS,
         web_read: true,
