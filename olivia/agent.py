@@ -26,6 +26,10 @@ _REMEMBER = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _FORGET = re.compile(r"^/(?:olvidar|forget)\s+(.{1,80})$", re.IGNORECASE | re.DOTALL)
+_MODEL_IDENTITY = re.compile(
+    r"^\s*(?:(?:q|que|qué)\s+)?modelo\s+(?:sos|us[aá]s|usas|utiliz[aá]s|utilizas|ten[eé]s|tenes)\s*\??\s*$",
+    re.IGNORECASE,
+)
 
 
 class Agent:
@@ -62,6 +66,45 @@ class Agent:
             if msg["role"] in {"user", "assistant"}:
                 messages.append({"role": msg["role"], "content": redact_secrets(msg["content"])})
         return messages
+
+    def _model_identity_answer(self) -> str:
+        configured: list[str] = []
+        for provider in getattr(self.router, "providers", []):
+            spec = getattr(provider, "spec", None)
+            model = str(getattr(spec, "model", "") or "").strip()
+            name = str(getattr(provider, "name", "") or "").strip()
+            if model:
+                configured.append(f"{model} ({name})" if name else model)
+        if not configured:
+            return (
+                "Soy 0liviA. El Core no tiene un modelo de inferencia configurado ahora mismo; "
+                "no voy a inventarte uno."
+            )
+        unique = list(dict.fromkeys(configured))
+        return (
+            "Soy 0liviA. El Core usa modelos reemplazables detrás de un router. "
+            "Configurados ahora: "
+            + ", ".join(unique)
+            + ". La ruta real se decide por prioridad, cuota y salud en cada turno."
+        )
+
+    async def _local_identity_command(
+        self,
+        session_id: str,
+        text: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        answer = self._model_identity_answer()
+        self.store.append_message(session_id, "user", text)
+        self.store.append_message(
+            session_id,
+            "assistant",
+            answer,
+            provider="local",
+            status="complete",
+        )
+        yield {"type": "identity", "action": "model"}
+        yield {"type": "delta", "text": answer}
+        yield {"type": "done", "provider": "local"}
 
     async def _local_memory_command(
         self,
@@ -152,6 +195,10 @@ class Agent:
         *,
         ephemeral_context: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
+        if _MODEL_IDENTITY.match(text.strip()):
+            async for event in self._local_identity_command(session_id, text.strip()):
+                yield event
+            return
         if _REMEMBER.match(text.strip()) or _FORGET.match(text.strip()):
             async for event in self._local_memory_command(session_id, text):
                 yield event
