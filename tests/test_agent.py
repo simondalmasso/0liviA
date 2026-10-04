@@ -63,3 +63,41 @@ async def test_forget_command_deactivates_without_provider_call(tmp_path):
 def test_kernel_prompt_locks_default_locale():
     assert "Spanish from Argentina (es-AR)" in SYSTEM_PROMPT
     assert "Do not switch language unless the user explicitly asks" in SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_secret_like_memory_is_rejected_and_never_persisted(tmp_path):
+    store = Store(tmp_path / "state.sqlite3")
+    sid = store.create_session()
+    router = CaptureRouter()
+    agent = Agent(store, router, Settings(data_dir=tmp_path))
+
+    secret = "sk-proj-1234567890abcdefghijklmnopqrstuv"
+    events = [event async for event in agent.stream_turn(
+        sid,
+        f"/recordar api = {secret}",
+    )]
+
+    assert router.calls == []
+    assert events[0]["type"] == "memory"
+    assert events[0]["action"] == "rejected_secret"
+    assert store.list_memories("global") == []
+    assert secret not in repr(store.recent_messages(sid))
+
+
+@pytest.mark.asyncio
+async def test_secret_like_user_text_is_redacted_before_storage_and_provider(tmp_path):
+    store = Store(tmp_path / "state.sqlite3")
+    sid = store.create_session()
+    router = CaptureRouter()
+    agent = Agent(store, router, Settings(data_dir=tmp_path))
+
+    secret = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+    _ = [event async for event in agent.stream_turn(sid, f"Usá {secret} para esto")]
+
+    stored = repr(store.recent_messages(sid))
+    outbound = repr(router.calls[-1])
+    assert secret not in stored
+    assert secret not in outbound
+    assert "[REDACTED_SECRET]" in stored
+    assert "[REDACTED_SECRET]" in outbound
