@@ -275,13 +275,13 @@ jobs:
           GH_PUSH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          AGENT_BRANCH="agent/coding-${GITHUB_RUN_ID}"
-          git switch -c "$AGENT_BRANCH"
+          BRANCH="agent/coding-${GITHUB_RUN_ID}"
+          git switch -c "$BRANCH"
           git config user.name "0liviA coding worker"
           git config user.email "0livia-agent@users.noreply.github.com"
           git am agent-series.patch
           auth="$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 -w0)"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
-            push origin "HEAD:refs/heads/$AGENT_BRANCH"
+            push origin "HEAD:refs/heads/$BRANCH"
           unset auth GH_PUSH_TOKEN
-          echo "PUBLISHED_BRANCH=$AGENT_BRANCH"
+          echo "PUBLISHED_BRANCH=$BRANCH"
