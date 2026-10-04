@@ -90,7 +90,10 @@ linear-gradient(180deg,#050506 0%,#08070c 48%,#090811 100%)}
 .auth-card .auth-mark{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;margin-bottom:18px;background:linear-gradient(145deg,var(--magenta),var(--violet));font-weight:800}
 .auth-card strong{display:block;font-size:22px;line-height:1.15;margin-bottom:6px}
 .auth-card p{margin:0 0 18px;color:var(--muted);font-size:13px}
-.auth-card input{width:100%;border:0;outline:0;border-radius:15px;padding:13px 14px;background:#0b0a0d;color:var(--ink);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.auth-card input[type="email"],.auth-card input[type="password"]{width:100%;border:0;outline:0;border-radius:15px;padding:13px 14px;background:#0b0a0d;color:var(--ink);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.auth-card input+input{margin-top:8px}
+.auth-remember{display:flex;align-items:center;gap:8px;margin:12px 2px 2px;color:#aeb2d7;font-size:12px;cursor:pointer}
+.auth-remember input{width:16px;height:16px;accent-color:var(--violet)}
 .auth-submit{width:100%;margin-top:10px;padding:12px 14px;border-radius:15px;background:linear-gradient(145deg,var(--magenta),var(--violet));color:#fff;font-weight:650}
 .auth-error{min-height:18px;margin-top:9px;color:#ff8ba1;font-size:12px}
 .drawer-backdrop{position:fixed;inset:0;z-index:40;background:rgba(2,3,18,.58);backdrop-filter:blur(5px);display:none}
@@ -277,9 +280,14 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
 <section id="ownerLogin" class="auth-gate" aria-hidden="true">
   <form id="ownerLoginForm" class="auth-card">
     <div class="auth-mark">0</div>
-    <strong>Desbloquear 0liviA</strong>
-    <p>Tu sesión queda en una cookie segura del navegador.</p>
-    <input id="ownerPassword" type="password" autocomplete="current-password" placeholder="Contraseña" aria-label="Contraseña">
+    <strong>Entrar a 0liviA</strong>
+    <p>Tu cuenta personal. Sin cuentas externas.</p>
+    <input id="ownerEmail" type="email" autocomplete="username" placeholder="Mail" aria-label="Mail" required>
+    <input id="ownerPassword" type="password" autocomplete="current-password" placeholder="Contraseña" aria-label="Contraseña" required>
+    <label class="auth-remember">
+      <input id="ownerRemember" type="checkbox" checked>
+      <span>Recordarme en este dispositivo</span>
+    </label>
     <button class="auth-submit" type="submit">Entrar</button>
     <div id="ownerLoginError" class="auth-error" role="status"></div>
   </form>
@@ -348,7 +356,9 @@ const voiceRingFill=$('#voiceRingFill');
 const voiceOrb=$('.orb');
 const ownerLogin=$('#ownerLogin');
 const ownerLoginForm=$('#ownerLoginForm');
+const ownerEmail=$('#ownerEmail');
 const ownerPassword=$('#ownerPassword');
+const ownerRemember=$('#ownerRemember');
 const ownerLoginError=$('#ownerLoginError');
 
 function uid(prefix){return prefix+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)}
@@ -456,17 +466,24 @@ async function probeCore(){
 }
 ownerLoginForm.onsubmit=async e=>{
   e.preventDefault();
+  const email=ownerEmail.value.trim();
   const password=ownerPassword.value;
-  if(!password)return;
+  if(!email||!password)return;
   ownerLoginError.textContent='';
   try{
     const r=await fetch('/api/auth/login',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       credentials:'same-origin',
-      body:JSON.stringify({password})
+      body:JSON.stringify({email,password,remember:ownerRemember.checked})
     });
-    if(!r.ok){ownerLoginError.textContent=r.status===401?'Contraseña incorrecta':'No se pudo iniciar sesión';return}
+    if(!r.ok){
+      ownerLoginError.textContent=
+        r.status===401?'Mail o contraseña incorrectos':
+        r.status===429?'Demasiados intentos. Probá de nuevo en un minuto.':
+        'No se pudo iniciar sesión';
+      return;
+    }
     ownerAuthReady=true;hideOwnerLogin();await probeCore();await syncCanonicalWorkspace();syncQueued();
   }catch(e){ownerLoginError.textContent='Core no disponible'}
 };
