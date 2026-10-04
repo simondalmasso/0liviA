@@ -24,6 +24,7 @@ def test_coding_worker_validates_fixed_repo_and_refs(monkeypatch):
         worker.validate_request(CodingJobRequest(task="", base_ref="main"))
     with pytest.raises(ValueError):
         worker.validate_request(CodingJobRequest(task="x", base_ref="../main"))
+    worker.validate_request(CodingJobRequest(task="review", base_ref="main", mode="review"))
     with pytest.raises(ValueError):
         worker.validate_request(CodingJobRequest(task="x", base_ref="main", mode="unknown"))
 
@@ -57,6 +58,10 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "--read docs/ARCHITECTURE.md" in workflow
     assert "repair_pass" in workflow
     assert 'MAX_AGENT_PASSES: "2"' in workflow
+    assert '- review' in workflow
+    assert 'AGENT_REVIEW.md' in workflow
+    assert "review mode modified forbidden path" in workflow
+    assert "inputs.mode != 'review'" in workflow
     assert 'if ! git diff --quiet || ! git diff --cached --quiet; then' in workflow
     assert 'git add -A' in workflow
     assert 'git commit -m "agent: persist verified coding result"' in workflow
