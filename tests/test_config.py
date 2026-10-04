@@ -17,6 +17,7 @@ def test_reliability_defaults_are_backwards_compatible(tmp_path):
     assert settings.stream_idle_timeout_s == 0.0
     assert settings.visible_prefix_max_chars == 256
     assert settings.quota_utc_offset_h == 0
+    assert settings.hard_zero_cost is True
     # base surface untouched
     assert settings.ttft_timeout_s == 12.0
     assert settings.circuit_base_s == 15
@@ -37,6 +38,7 @@ def test_from_env_reads_reliability_settings(monkeypatch, tmp_path):
     monkeypatch.setenv("OLIVIA_STREAM_IDLE_TIMEOUT_S", "9")
     monkeypatch.setenv("OLIVIA_VISIBLE_PREFIX_MAX", "64")
     monkeypatch.setenv("OLIVIA_QUOTA_UTC_OFFSET_H", "-3")
+    monkeypatch.setenv("OLIVIA_HARD_ZERO_COST", "true")
     monkeypatch.setenv(
         "OLIVIA_PROVIDERS_JSON",
         '[{"name":"groq","base_url":"https://api.groq.com/openai/v1/","model":"m","api_key_env":"GROQ_API_KEY"}]',
@@ -52,6 +54,7 @@ def test_from_env_reads_reliability_settings(monkeypatch, tmp_path):
     assert settings.stream_idle_timeout_s == pytest.approx(9.0)
     assert settings.visible_prefix_max_chars == 64
     assert settings.quota_utc_offset_h == -3
+    assert settings.hard_zero_cost is True
     assert isinstance(settings.data_dir, Path)
     assert settings.providers[0]["name"] == "groq"
 
@@ -77,3 +80,7 @@ def test_from_env_rejects_non_list_providers(monkeypatch):
     monkeypatch.setenv("OLIVIA_PROVIDERS_JSON", '{"name":"groq"}')
     with pytest.raises(ValueError):
         Settings.from_env()
+
+def test_hard_zero_cost_can_only_be_disabled_explicitly(monkeypatch):
+    monkeypatch.setenv("OLIVIA_HARD_ZERO_COST", "0")
+    assert Settings.from_env().hard_zero_cost is False
