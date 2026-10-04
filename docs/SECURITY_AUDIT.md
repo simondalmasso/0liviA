@@ -10,13 +10,16 @@ This document records which findings apply to the active integration branch `arc
 The public Worker was observed serving an older UI/Worker generation. Its exact live SHA and billing plan are not independently verified here. Do not claim the public deployment is current, private or guaranteed USD 0 until an exact-SHA deploy and smoke are performed.
 
 ### UI-GATEWAY-CONTRACT — FIXED IN BRANCH
-The browser shell detects the canonical core, authenticates with a Secure/HttpOnly/SameSite owner cookie, creates/reuses server-side sessions, imports local history through the redacting session API, reconciles unknown server sessions into its disposable cache, and streams via `POST /api/chat/{session_id}`.
+The browser shell detects the canonical core, authenticates with a Secure/HttpOnly/SameSite owner cookie, creates/reuses server-side sessions, migrates cached history through the redacting session API, and streams via `POST /api/chat/{session_id}`. Projects, Chats, Library and Memory now reconcile through authenticated server-side workspace APIs; IndexedDB is cache/migration only in canonical mode.
 
 ### CODING-WORKFLOW-INPUTS — FIXED IN BRANCH
-Direct `workflow_dispatch` inputs are no longer interpolated into shell commands for diff/ref operations. `base_ref` is passed through an environment variable and validated; checkout credentials are not persisted. The GitHub token is exposed only to the final optional publish step.
+Direct `workflow_dispatch` inputs are no longer interpolated into shell commands for diff/ref operations. `base_ref` is passed through an environment variable and validated; checkout credentials are not persisted. Agent execution has repository read permission only. Optional publication is isolated into a second write-capable job that applies a verified patch artifact; the model/NIM credential is not present in that publish job.
 
 ### SECRET-EGRESS — FIXED IN BRANCH
 The Python core now rejects secret-like durable-memory values and redacts common credential formats before durable message storage or provider egress. Existing historical databases must still be treated as potentially containing pre-fix values.
+
+### WEB-RESEARCH-BOUNDARY — FIXED / gated
+The canonical `/read` path uses an SSRF-safe URL reader and injects page text only as ephemeral untrusted model context; fetched page contents are not persisted. `/search` is disabled unless an explicit adapter is configured and its exact route is marked zero-cost verified. No Cloudflare Web Search call occurs by default.
 
 ### ZERO-COST-ACCOUNT-PROOF — OPEN / fail closed
 A request-count cap is not an account billing guard. Cloudflare account-wide billing status could not be verified with the available token. Worker provider readiness therefore remains gated; no production-cost guarantee is claimed.
@@ -35,8 +38,9 @@ The active Worker uses JavaScript string/template escape sequences such as `\n\n
 ## Remaining release blockers
 
 1. Replace/retire the stale public Worker only after an exact-SHA canonical target host passes smoke.
-2. Verify provider/account cost guarantees before enabling externally metered production routes.
-3. Verify Oracle A1 capacity plus restart/backup/latency/resource gates on the real host.
-4. Perform an exact-release production smoke before declaring the public URL current.
+2. Verify provider/account cost guarantees before enabling externally metered production inference or search routes.
+3. Verify Oracle A1 capacity plus install/restart/backup/latency/resource gates on the real host.
+4. Benchmark and accept a production voice stack on the real target; current Live Voice backend remains provisional.
+5. Perform an exact-release production smoke before declaring the public URL current.
 
 The bootstrap now rejects mutable production refs, generates browser owner authentication without exposing the bearer, and verifies pinned SHA-256 digests for llama.cpp and GGUF artifacts.
