@@ -262,8 +262,14 @@ function providerCatalog(env) {
       id: "nvidia-deepseek-v4.1-flash",
       model: PRIMARY_MODEL,
       kind: "nvidia",
-      available: Boolean(env.NVIDIA_API_KEY),
-      cost_mode: "free_endpoint",
+      available: Boolean(
+        env.NVIDIA_API_KEY &&
+        env.NVIDIA_NIM_PRODUCTION_ENTITLED === "1"
+      ),
+      cost_mode: "entitlement_gated",
+      eligibility: env.NVIDIA_API_KEY
+        ? (env.NVIDIA_NIM_PRODUCTION_ENTITLED === "1" ? "production_entitled" : "development_only")
+        : "missing_key",
     },
     ...CLOUDFLARE_FALLBACKS.map(item => ({
       ...item,
