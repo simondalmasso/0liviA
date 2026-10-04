@@ -202,11 +202,12 @@ class Agent:
         forget = _FORGET.match(text.strip())
         if forget:
             key = forget.group(1).strip()
-            changed = self.store.deactivate_memory("global", key)
+            changed = self.store.delete_memory("global", key)
             reply = (
-                f"Eliminé «{key}» de mi memoria activa."
+                f"Eliminé físicamente «{key}» de mi memoria durable. "
+                "Este comando no borra el historial del chat."
                 if changed
-                else f"No encontré una memoria activa llamada «{key}»."
+                else f"No encontré una memoria durable llamada «{key}»."
             )
             self.store.append_message(session_id, "user", text)
             self.store.append_message(
@@ -217,7 +218,7 @@ class Agent:
                 status="complete",
             )
             self.store.record_event(
-                "memory.deactivated",
+                "memory.deleted",
                 {"scope": "global", "key": key, "changed": changed},
                 session_id=session_id,
             )
