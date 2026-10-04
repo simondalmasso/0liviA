@@ -220,5 +220,5 @@ class VoicePipeline:
                 await self.accept_audio(item)
             elif item.type == VoiceEventType.TURN_STARTED:
                 await self.start_turn(item.turn_id)
-            elif item.type in {VoiceEventType.CANCELLED, VoiceEventType.TURN_CANCELLED}:
+            elif item.type == VoiceEventType.CANCELLED:
                 await self.cancel_turn(item.turn_id)

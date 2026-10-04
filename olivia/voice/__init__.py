@@ -1,9 +1,4 @@
-"""Realtime voice contracts for 0liviA.
-
-This package is deliberately dependency-light. It keeps both the core pipeline
-contract and the transport/speech adapter contract stable while engines remain
-benchmark-gated on Oracle A1.
-"""
+"""Dependency-light realtime voice kernel for 0liviA."""
 
 from .contracts import (
     AdapterTarget,
@@ -11,14 +6,10 @@ from .contracts import (
     SequenceDecision,
     TranscriptChunk,
     TurnState,
-    VoiceEndpointing,
     VoiceEvent,
     VoiceEventType,
-    VoiceSTT,
-    VoiceTTS,
-    VoiceTransport,
-    VoiceVAD,
 )
+from .llm import AgentVoiceLLM, VoiceLLM
 from .locale import (
     DEFAULT_LOCALE,
     ES_AR,
@@ -28,7 +19,6 @@ from .locale import (
     is_argentine_spanish,
 )
 from .pipeline import VoicePipeline
-from .state import VoiceTurnGate
 
 __all__ = [
     "AdapterTarget",
@@ -36,13 +26,10 @@ __all__ = [
     "SequenceDecision",
     "TranscriptChunk",
     "TurnState",
-    "VoiceEndpointing",
     "VoiceEvent",
     "VoiceEventType",
-    "VoiceSTT",
-    "VoiceTTS",
-    "VoiceTransport",
-    "VoiceVAD",
+    "VoiceLLM",
+    "AgentVoiceLLM",
     "DEFAULT_LOCALE",
     "ES_AR",
     "LocalePolicy",
@@ -50,5 +37,4 @@ __all__ = [
     "VoiceProfile",
     "is_argentine_spanish",
     "VoicePipeline",
-    "VoiceTurnGate",
 ]

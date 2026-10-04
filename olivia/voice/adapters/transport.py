@@ -12,6 +12,31 @@ _HEADER = struct.Struct(">I")
 _MAX_HEADER = 16 * 1024
 
 
+class DirectWssConfig:
+    """Configuration for the default direct Browser <-> Oracle WSS transport."""
+
+    def __init__(
+        self,
+        path: str = "/api/voice/ws",
+        max_audio_frame_bytes: int = 64 * 1024,
+        ping_interval_s: float = 20.0,
+        receive_timeout_s: float = 45.0,
+    ) -> None:
+        self.path = path
+        self.max_audio_frame_bytes = int(max_audio_frame_bytes)
+        self.ping_interval_s = float(ping_interval_s)
+        self.receive_timeout_s = float(receive_timeout_s)
+        self.validate()
+
+    def validate(self) -> None:
+        if not self.path.startswith("/"):
+            raise ValueError("voice WSS path must be absolute")
+        if self.max_audio_frame_bytes < 1024:
+            raise ValueError("audio frame limit too small")
+        if self.ping_interval_s <= 0 or self.receive_timeout_s <= 0:
+            raise ValueError("timeouts must be positive")
+
+
 class WireCodec:
     """Direct Browser <-> Oracle WSS wire format."""
 

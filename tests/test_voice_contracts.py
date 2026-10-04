@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 
 from olivia.voice.adapters.endpointing import AdaptiveSilenceEndpoint
-from olivia.voice.adapters.transport import WireCodec
+from olivia.voice.adapters.transport import DirectWssConfig, WireCodec
 from olivia.voice.adapters.vad import EnergyVAD
 from olivia.voice.contracts import AudioFrame, VoiceEvent, VoiceEventType
 from olivia.voice.locale import LocalePolicy, VoiceCandidate
@@ -53,3 +53,9 @@ def test_es_ar_voice_gate_rejects_generic_spanish_only():
     exact = VoiceCandidate("rioplatense", "candidate", ("es-AR",), True, True)
     assert policy.voice_accepted(generic) is False
     assert policy.voice_accepted(exact) is True
+
+
+def test_direct_wss_config_is_small_and_absolute():
+    cfg = DirectWssConfig()
+    assert cfg.path == "/api/voice/ws"
+    assert cfg.max_audio_frame_bytes == 64 * 1024
