@@ -225,6 +225,8 @@ async def test_sidebar_surfaces_and_web_read_status_are_truthful(client):
         assert f'data-side="{side}"' in html
     assert "Todavía no conectada" not in html
     assert "URLs públicas · solo lectura" in html
+    assert "$0 hard cap" not in html
+    assert "Cap local 80/día · guard cuenta pendiente" in html
 
 
 @pytest.mark.asyncio
