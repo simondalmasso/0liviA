@@ -77,6 +77,7 @@
 - Web research:
   - direct `/read` uses the canonical server-side SSRF-safe reader and injects page text only as ephemeral untrusted context;
   - `/search` is a replaceable adapter contract and is disabled unless a route is explicitly configured and verified zero-cost;
+  - `/research` composes one bounded search with safe reads of up to three result URLs; all result/page content remains ephemeral untrusted context;
   - Cloudflare Web Search API is an eligible adapter, not a default dependency. Its provider search calls are billable unless the owner supplies a separately verified zero-cost BYOK route, so the core must never consume AI Gateway credits implicitly.
 - Live voice:
   - LiveKit Agents is a benchmark challenger for WebRTC transport, turn detection, handoffs and voice-agent orchestration;
