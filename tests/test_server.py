@@ -437,7 +437,7 @@ async def test_owner_logout_expires_cookie(aiohttp_client, tmp_path):
 async def test_browser_can_use_canonical_core_without_exposing_gateway_secret(client):
     html = await (await client.get("/")).text()
     assert "ensureRemoteSession" in html
-    assert "sendCanonical" in html
+    assert "backendMode==='canonical'" in html
     assert "showOwnerLogin" in html
     assert "credentials:'same-origin'" in html
     assert "remoteSessionId" in html
@@ -488,15 +488,15 @@ async def test_ui_can_switch_from_bridge_to_canonical_cookie_sessions(client):
 async def test_ui_can_use_canonical_cookie_auth_and_server_sessions(client):
     response = await client.get("/")
     html = await response.text()
-    assert 'id="authGate"' in html
-    assert 'id="authForm"' in html
+    assert 'id="ownerLogin"' in html
+    assert 'id="ownerLoginForm"' in html
     assert "credentials:'same-origin'" in html
     assert "/api/auth/login" in html
     assert "/api/sessions" in html
     assert "ensureRemoteSession" in html
     assert "syncCanonicalSessions" in html
     assert "event.type==='delta'" in html
-    assert "event.type==='done'" in html
+    assert "ev?.type==='done'" in html
     assert "Authorization" not in html
     assert "localStorage" not in html
     assert "sessionStorage" not in html
