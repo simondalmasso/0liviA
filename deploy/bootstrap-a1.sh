@@ -6,7 +6,8 @@ set -euo pipefail
 # through the generated provider configuration.
 
 REPO_URL="${REPO_URL:-https://github.com/simondalmasso/0liviA.git}"
-REF="${REF:-arch/gpt-synthesis-v1}"
+REF="${REF:-}"
+ALLOW_MUTABLE_REF="${ALLOW_MUTABLE_REF:-0}"
 APP_ROOT="${APP_ROOT:-/opt/0livia}"
 STATE_ROOT="${STATE_ROOT:-/var/lib/0livia}"
 ETC_ROOT="${ETC_ROOT:-/etc/0livia}"
@@ -17,6 +18,15 @@ MODEL_PROFILE="${MODEL_PROFILE:-auto}"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "run as root" >&2
+  exit 2
+fi
+
+if [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  :
+elif [[ "$ALLOW_MUTABLE_REF" == "1" && -n "$REF" ]]; then
+  echo "WARNING: mutable REF allowed explicitly for development: $REF" >&2
+else
+  echo "REF must be an exact 40-hex commit SHA (or set ALLOW_MUTABLE_REF=1 for development)" >&2
   exit 2
 fi
 
@@ -82,7 +92,15 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
-git clone --filter=blob:none --depth 1 --branch "${REF}" "${REPO_URL}" "${tmp}/repo"
+if [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  git init -q "${tmp}/repo"
+  git -C "${tmp}/repo" remote add origin "${REPO_URL}"
+  git -C "${tmp}/repo" fetch --depth 1 origin "$REF"
+  git -C "${tmp}/repo" checkout -q --detach FETCH_HEAD
+  test "$(git -C "${tmp}/repo" rev-parse HEAD)" = "$REF"
+else
+  git clone --filter=blob:none --depth 1 --branch "$REF" "${REPO_URL}" "${tmp}/repo"
+fi
 rm -rf "${APP_ROOT}/current"
 install -d -o root -g root -m 0755 "${APP_ROOT}/current"
 cp -a "${tmp}/repo/." "${APP_ROOT}/current/"
@@ -124,12 +142,27 @@ print(secrets.token_urlsafe(32))
 PY
 )"
 
+readarray -t OWNER_AUTH < <("${APP_ROOT}/venv/bin/python" - <<'PY'
+import secrets
+from olivia.security import make_password_verifier
+
+password = secrets.token_urlsafe(24)
+print(password)
+print(make_password_verifier(password))
+PY
+)
+OWNER_PASSWORD="${OWNER_AUTH[0]}"
+OWNER_VERIFIER="${OWNER_AUTH[1]}"
+test -n "$OWNER_PASSWORD"
+test -n "$OWNER_VERIFIER"
+
 cat > "${ETC_ROOT}/olivia.env" <<EOF
 OLIVIA_DATA_DIR=${STATE_ROOT}
 OLIVIA_BIND=127.0.0.1
 OLIVIA_PORT=8080
 OLIVIA_HARD_ZERO_COST=1
 OLIVIA_GATEWAY_TOKEN=${TOKEN}
+OLIVIA_OWNER_PASSWORD_VERIFIER=${OWNER_VERIFIER}
 OLIVIA_MAX_HISTORY=24
 OLIVIA_TTFT_TIMEOUT_S=45
 OLIVIA_STREAM_IDLE_TIMEOUT_S=120
@@ -175,14 +208,15 @@ systemctl restart caddy
 
 cat > "${STATE_ROOT}/bootstrap-info" <<EOF
 URL=https://${HOST}
-TOKEN=${TOKEN}
+OWNER_PASSWORD=${OWNER_PASSWORD}
 MODEL_PROFILE=${MODEL_PROFILE}
 MODEL=${MODEL_NAME}
 RUNTIME=llama.cpp-${LLAMA_BUILD}
 COST_MODE=local
+SOURCE_REF=${REF}
 EOF
-chown root:adm "${STATE_ROOT}/bootstrap-info"
-chmod 0640 "${STATE_ROOT}/bootstrap-info"
+chown root:root "${STATE_ROOT}/bootstrap-info"
+chmod 0600 "${STATE_ROOT}/bootstrap-info"
 
 for _ in $(seq 1 90); do
   if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
