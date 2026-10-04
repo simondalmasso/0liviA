@@ -357,9 +357,10 @@ let coreHealth=null;
 let backendMode='bridge';
 let ownerAuthReady=false;
 let trustedDevices=[];
+let ownerSessionEmail='';
 let controller=null;
 let syncing=false;
-let activeSide='projects';
+let activeSide='chats';
 let voiceStream=null,voiceMuted=false,voiceRecognition=null,voiceRecognitionStarting=false,voiceSpeaking=false;
 let voiceAudioContext=null,voiceAnalyser=null,voiceSource=null,voiceRaf=0,speechRaf=0,speechPulse=0;
 
@@ -485,6 +486,16 @@ function simpleDeviceName(){
   const platform=navigator.userAgentData?.platform||navigator.platform||'Dispositivo';
   return (browser+' · '+platform).slice(0,120);
 }
+async function loadSessionProfile(){
+  if(backendMode!=='canonical'||!ownerAuthReady){ownerSessionEmail='';return}
+  try{
+    const r=await fetch('/api/auth/session',{cache:'no-store',credentials:'same-origin'});
+    if(r.status===401){ownerAuthReady=false;ownerSessionEmail='';showOwnerLogin();return}
+    if(!r.ok)return;
+    ownerSessionEmail=(await r.json()).email||'';
+    if(activeSide==='session')renderSession();
+  }catch(e){}
+}
 async function loadTrustedDevices(){
   if(backendMode!=='canonical'||!ownerAuthReady){trustedDevices=[];return}
   try{
@@ -492,7 +503,7 @@ async function loadTrustedDevices(){
     if(r.status===401){ownerAuthReady=false;trustedDevices=[];showOwnerLogin();return}
     if(!r.ok)return;
     trustedDevices=(await r.json()).devices||[];
-    if(activeSide==='config')renderConfig();
+    if(activeSide==='session')renderSession();
   }catch(e){}
 }
 async function revokeTrustedDevice(deviceId){
@@ -516,13 +527,13 @@ async function probeCore(){
     backendMode=body.api_mode==='canonical'?'canonical':'bridge';
     const authOk=await canonicalAuthCheck();
     setCoreState(body.provider_ready&&authOk?'online':body.provider_ready?'locked':'locked');
-    if(authOk)await loadTrustedDevices();
-    if(workspace)renderConfig();
+    if(authOk){await loadSessionProfile();await loadTrustedDevices()}
+    if(workspace){renderConfig();renderSession()}
     return body.provider_ready===true&&authOk;
   }catch(e){
     coreHealth=null;ownerAuthReady=false;backendMode='bridge';
     setCoreState('offline');
-    if(workspace)renderConfig();
+    if(workspace){renderConfig();renderSession()}
     return false;
   }
 }
@@ -702,6 +713,31 @@ function renderMemory(){
     card.append(strong,small);el.appendChild(card);
   }
 }
+function renderChats(){
+  const el=$('#chatList');el.textContent='';
+  const rows=[];
+  for(const project of workspace.projects){
+    for(const chat of project.chats)rows.push({project,chat});
+  }
+  if(!rows.length){el.innerHTML='<div class="side-empty">Sin chats.</div>';return}
+  for(const {project,chat} of rows){
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='side-card chat-row'+(chat.id===workspace.selectedChatId?' active':'');
+    const strong=document.createElement('strong');
+    strong.textContent=chat.title||'Nuevo chat';
+    const small=document.createElement('small');
+    small.textContent=project.name||'0liviA';
+    button.append(strong,small);
+    button.onclick=async()=>{
+      workspace.selectedProjectId=project.id;
+      workspace.selectedChatId=chat.id;
+      await saveState();renderAll();closeDrawer();
+      if(backendMode==='canonical'&&chat.remoteSessionId&&!chat.messages.length)await hydrateCanonicalChat(chat);
+    };
+    el.appendChild(button);
+  }
+}
 function renderConfig(){
   const el=$('#configList');el.textContent='';
   const preferred=coreHealth?.primary_model||'Router automático';
@@ -723,40 +759,53 @@ function renderConfig(){
     const small=document.createElement('small');small.textContent=value;
     card.append(strong,small);el.appendChild(card);
   }
-  if(backendMode==='canonical'&&ownerAuthReady){
-    const heading=document.createElement('div');
-    heading.className='side-section-head';
-    heading.textContent='Dispositivos recordados';
-    el.appendChild(heading);
-    if(!trustedDevices.length){
-      const empty=document.createElement('div');
-      empty.className='side-empty';
-      empty.textContent='Ningún dispositivo recordado.';
-      el.appendChild(empty);
-    }
-    for(const device of trustedDevices){
-      const row=document.createElement('div');
-      row.className='side-card device-row';
-      const copy=document.createElement('div');
-      copy.className='device-copy';
-      const strong=document.createElement('strong');
-      strong.textContent=device.label||'Dispositivo';
-      const small=document.createElement('small');
-      small.textContent='Recordado';
-      copy.append(strong,small);
-      const revoke=document.createElement('button');
-      revoke.type='button';
-      revoke.className='device-revoke';
-      revoke.textContent='Revocar';
-      revoke.onclick=()=>revokeTrustedDevice(device.id);
-      row.append(copy,revoke);
-      el.appendChild(row);
-    }
-  }
 }
-function renderAll(){renderTree();renderLibrary();renderMemory();renderConfig();renderMessages()}
+function renderSession(){
+  const el=$('#sessionList');el.textContent='';
+  if(backendMode!=='canonical'){
+    el.innerHTML='<div class="side-empty">Sesión disponible con el Core durable.</div>';
+    return;
+  }
+  if(!ownerAuthReady){
+    const login=document.createElement('button');
+    login.type='button';login.className='side-card';
+    login.textContent=coreHealth?.registration_open?'Registrate':'Entrar';
+    login.onclick=showOwnerLogin;el.appendChild(login);return;
+  }
+  const account=document.createElement('div');account.className='side-card';
+  const strong=document.createElement('strong');strong.textContent='Cuenta';
+  const small=document.createElement('small');small.textContent=ownerSessionEmail||'Sesión activa';
+  account.append(strong,small);el.appendChild(account);
 
-function sideTitle(name){return({projects:'PROYECTOS',library:'BIBLIOTECA',memory:'MEMORIA',config:'CONFIG'})[name]||'0LIVIA'}
+  const heading=document.createElement('div');heading.className='side-section-head';
+  heading.textContent='Dispositivos recordados';el.appendChild(heading);
+  if(!trustedDevices.length){
+    const empty=document.createElement('div');empty.className='side-empty';
+    empty.textContent='Ningún dispositivo recordado.';el.appendChild(empty);
+  }
+  for(const device of trustedDevices){
+    const row=document.createElement('div');row.className='side-card device-row';
+    const copy=document.createElement('div');copy.className='device-copy';
+    const title=document.createElement('strong');title.textContent=device.label||'Dispositivo';
+    const state=document.createElement('small');state.textContent='Recordado';
+    copy.append(title,state);
+    const revoke=document.createElement('button');revoke.type='button';revoke.className='device-revoke';
+    revoke.textContent='Revocar';revoke.onclick=()=>revokeTrustedDevice(device.id);
+    row.append(copy,revoke);el.appendChild(row);
+  }
+  const actions=document.createElement('div');actions.className='side-actions';
+  const logout=document.createElement('button');logout.type='button';logout.textContent='Cerrar sesión';
+  logout.onclick=logoutOwnerSession;actions.appendChild(logout);el.appendChild(actions);
+}
+async function logoutOwnerSession(){
+  try{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'})}catch(e){}
+  ownerAuthReady=false;ownerSessionEmail='';trustedDevices=[];
+  closeDrawer();await probeCore();
+}
+
+function renderAll(){renderChats();renderTree();renderLibrary();renderMemory();renderConfig();renderSession();renderMessages()}
+
+function sideTitle(name){return({chats:'CHATS',projects:'PROYECTOS',library:'BIBLIOTECA',memory:'MEMORIA',config:'CONFIG',session:'SESIÓN'})[name]||'0LIVIA'}
 function activateSide(name,open=true){
   activeSide=name;
   $$('.side-tab').forEach(b=>b.classList.toggle('active',b.dataset.side===name));
