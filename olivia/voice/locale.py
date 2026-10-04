@@ -2,22 +2,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
-DEFAULT_LOCALE = "es-AR"
-
-
-@dataclass(frozen=True, slots=True)
-class VoiceProfile:
-    locale: str = DEFAULT_LOCALE
-    voice_id: str | None = None
-    speaking_rate: float = 1.0
-
-    def validate(self) -> None:
-        if self.locale != DEFAULT_LOCALE:
-            raise ValueError("0liviA default voice profile must be es-AR")
-        if not 0.75 <= self.speaking_rate <= 1.35:
-            raise ValueError("speaking_rate outside safe range")
+ES_AR = "es-AR"
 
 
-def is_argentine_spanish(locale: str) -> bool:
-    return locale.strip().lower().replace("_", "-") == "es-ar"
+@dataclass(frozen=True)
+class VoiceCandidate:
+    name: str
+    engine: str
+    locales: tuple[str, ...]
+    streaming: bool
+    local: bool
+    license_note: str = ""
+
+
+@dataclass(frozen=True)
+class LocalePolicy:
+    locale: str = ES_AR
+    require_exact_voice_locale: bool = True
+
+    def voice_accepted(self, candidate: VoiceCandidate) -> bool:
+        if self.require_exact_voice_locale:
+            return self.locale in candidate.locales
+        language = self.locale.split("-", 1)[0].lower()
+        return any(item.lower().split("-", 1)[0] == language for item in candidate.locales)
+
+
+VOICE_TARGETS: tuple[VoiceCandidate, ...] = (
+    VoiceCandidate("Pocket TTS candidate", "pocket-tts", (ES_AR, "es"), True, True),
+    VoiceCandidate("Piper fallback", "piper", ("es",), True, True),
+    VoiceCandidate("Kokoro challenger", "kokoro", ("es",), True, True),
+)

@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from typing import Protocol, runtime_checkable
+
+from ..contracts import AudioFrame, TranscriptChunk, VoiceEvent
+
+
+@runtime_checkable
+class VoiceTransport(Protocol):
+    async def recv(self) -> AsyncIterator[AudioFrame | VoiceEvent]: ...
+    async def send_event(self, event: VoiceEvent) -> None: ...
+    async def send_audio(self, frame: AudioFrame) -> None: ...
+    async def close(self) -> None: ...
+
+
+@runtime_checkable
+class VoiceActivityDetector(Protocol):
+    @property
+    def speaking(self) -> bool: ...
+    def reset(self) -> None: ...
+    def accept(self, frame: AudioFrame) -> tuple[bool, bool]: ...
+
+
+@runtime_checkable
+class EndpointDetector(Protocol):
+    def reset(self) -> None: ...
+    def observe(self, *, speaking: bool, frame_ms: float) -> bool: ...
+
+
+@runtime_checkable
+class SpeechToText(Protocol):
+    async def start(self, turn_id: str, *, locale: str) -> None: ...
+    async def accept(self, frame: AudioFrame) -> list[TranscriptChunk]: ...
+    async def finish(self) -> TranscriptChunk: ...
+    async def cancel(self) -> None: ...
+
+
+@runtime_checkable
+class TextToSpeech(Protocol):
+    async def stream(
+        self,
+        text: AsyncIterator[str],
+        *,
+        turn_id: str,
+        locale: str,
+        voice: str | None = None,
+    ) -> AsyncIterator[bytes]: ...
+    async def cancel(self) -> None: ...
