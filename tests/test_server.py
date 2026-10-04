@@ -763,3 +763,28 @@ async def test_search_command_uses_ephemeral_untrusted_context(aiohttp_client, t
     assert search.queries == [("novedades agentes", 5)]
     assert "UNIQUE_SEARCH_FACT_88" in repr(router.calls[-1])
     assert "UNIQUE_SEARCH_FACT_88" not in repr(store.recent_messages(session_id))
+
+
+@pytest.mark.asyncio
+async def test_review_command_dispatches_read_only_review_job(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "review-command.sqlite3")
+    agent = Agent(store, FakeRouter(parts=("MODEL_SHOULD_NOT_RUN",)), settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    session_id = store.create_session("review")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/review Revisá seguridad y arquitectura."},
+        headers=auth(),
+    )
+    assert response.status == 200
+    body = await response.text()
+    assert "AGENT_REVIEW.md" in body
+    assert worker.dispatched
+    _, request = worker.dispatched[0]
+    assert request.mode == "review"
+    assert request.publish_branch is True
