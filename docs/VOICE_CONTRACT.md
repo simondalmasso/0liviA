@@ -15,3 +15,16 @@ Speech engines remain adapters and are benchmark-gated on the actual A1:
 Transport challengers remain Pipecat SmallWebRTC and StreamCore. They replace only the transport adapter if measured mobile/jitter/latency results beat direct WSS.
 
 Required benchmark marks are represented by `VoiceBenchmark`: connect, partial STT, EOT, LLM TTFT, TTS TTFA, cancellation latency, RSS and CPU samples. A 60-minute soak on Oracle is still required before production voice is declared ready.
+
+
+## Pipeline contract
+
+`VoicePipeline` now connects the contracts without choosing heavy speech engines. It:
+- shares the normal text `Agent` through `AgentVoiceLLM`, so voice and text use the same session/memory/router;
+- accepts only the active `turn_id` and exact monotonic audio sequence;
+- makes cancellation terminal and cancels pending response/TTS work;
+- treats barge-in as immediate cancellation, then requires a fresh client turn;
+- emits transcript, LLM text, TTS audio and completion as typed events;
+- never makes the owner's PC part of the compute/storage plane.
+
+`EnergyVAD` and `AdaptiveSilenceEndpoint` are dependency-free baselines for tests/bring-up only. Production VAD/STT/TTS remain benchmark-gated.

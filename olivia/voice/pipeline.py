@@ -1,182 +1,207 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+import contextlib
+import time
+from collections.abc import AsyncIterator
+from typing import Callable
 
-from .adapters.base import EndpointDetector, SpeechToText, TextToSpeech, VoiceActivityDetector, VoiceTransport
-from .contracts import AudioFrame, SequenceDecision, TurnState, VoiceEvent, VoiceEventType
-from .locale import ES_AR
-
-LLMStream = Callable[[str, str], AsyncIterator[str]]
-
-
-@dataclass
-class _Turn:
-    turn_id: str
-    state: TurnState = TurnState.LISTENING
-    last_seq: int = -1
-    cancelled: bool = False
+from .contracts import (
+    AudioFrame,
+    TurnState,
+    VoiceEndpointing,
+    VoiceEvent,
+    VoiceEventType,
+    VoiceSTT,
+    VoiceTTS,
+    VoiceTransport,
+    VoiceVAD,
+)
+from .llm import VoiceLLM
+from .locale import DEFAULT_LOCALE
+from .state import VoiceTurnGate
 
 
 class VoicePipeline:
-    """Transport-agnostic realtime turn controller.
+    """Dependency-light realtime coordinator.
 
-    Direct WSS is the v1 transport. SmallWebRTC and StreamCore can implement
-    the same VoiceTransport contract without changing turn/memory/router code.
+    It owns sequencing/cancellation only. Media transport and speech engines stay
+    replaceable, and the LLM adapter can wrap the normal text Agent so memory is shared.
     """
 
     def __init__(
         self,
-        *,
         transport: VoiceTransport,
-        vad: VoiceActivityDetector,
-        endpoint: EndpointDetector,
-        stt: SpeechToText,
-        tts: TextToSpeech,
-        llm_stream: LLMStream,
-        locale: str = ES_AR,
-        voice: str | None = None,
+        vad: VoiceVAD,
+        endpointing: VoiceEndpointing,
+        stt: VoiceSTT,
+        tts: VoiceTTS,
+        llm: VoiceLLM,
+        *,
+        locale: str = DEFAULT_LOCALE,
+        clock: Callable[[], float] = time.perf_counter,
     ) -> None:
+        if locale.lower().replace("_", "-") != "es-ar":
+            raise ValueError("voice pipeline locale must be es-AR")
         self.transport = transport
         self.vad = vad
-        self.endpoint = endpoint
+        self.endpointing = endpointing
         self.stt = stt
         self.tts = tts
-        self.llm_stream = llm_stream
+        self.llm = llm
         self.locale = locale
-        self.voice = voice
-        self._turn: _Turn | None = None
-        self._generation: asyncio.Task[None] | None = None
-        self.dropped_audio = 0
+        self.clock = clock
+        self.gate = VoiceTurnGate()
+        self._speaking = False
+        self._response_task: asyncio.Task[None] | None = None
+        self._responding_turn: str | None = None
+        self._lock = asyncio.Lock()
 
     @property
     def active_turn_id(self) -> str | None:
-        return self._turn.turn_id if self._turn else None
+        return self.gate.active_turn_id
 
-    async def start_turn(self, turn_id: str) -> None:
-        if not turn_id:
-            raise ValueError("turn_id is required")
-        if self._turn and self._turn.state not in {TurnState.CANCELLED, TurnState.COMPLETE}:
-            await self.cancel_turn(self._turn.turn_id)
-        self.vad.reset()
-        self.endpoint.reset()
-        await self.stt.start(turn_id, locale=self.locale)
-        self._turn = _Turn(turn_id)
-        await self.transport.send_event(VoiceEvent(VoiceEventType.TURN_STARTED, turn_id))
+    async def start_turn(self, turn_id: str | None = None) -> str:
+        async with self._lock:
+            if self.active_turn_id and self.gate.state not in {
+                TurnState.CANCELLED,
+                TurnState.COMPLETED,
+            }:
+                await self._cancel_unlocked(self.active_turn_id)
+            event = self.gate.start(turn_id)
+            self.vad.reset()
+            self.endpointing.reset()
+            await self.stt.reset()
+            self._speaking = False
+            self._responding_turn = None
+            await self.transport.send_event(event)
+            return event.turn_id
 
-    def sequence_decision(self, frame: AudioFrame) -> SequenceDecision:
-        turn = self._turn
-        if turn is None or frame.turn_id != turn.turn_id:
-            return SequenceDecision.WRONG_TURN
-        if turn.cancelled or turn.state == TurnState.CANCELLED:
-            return SequenceDecision.CANCELLED
-        if frame.seq <= turn.last_seq:
-            return SequenceDecision.OUT_OF_ORDER
-        return SequenceDecision.ACCEPT
+    async def handle_frame(self, frame: AudioFrame) -> VoiceEvent:
+        gate_event = self.gate.accept(frame)
+        await self.transport.send_event(gate_event)
+        if gate_event.type == VoiceEventType.FRAME_DROPPED:
+            return gate_event
 
-    async def accept_audio(self, frame: AudioFrame) -> SequenceDecision:
-        decision = self.sequence_decision(frame)
-        if decision is not SequenceDecision.ACCEPT:
-            self.dropped_audio += 1
-            await self.transport.send_event(
-                VoiceEvent(
-                    VoiceEventType.DROPPED_AUDIO,
-                    frame.turn_id,
-                    seq=frame.seq,
-                    detail=decision.value,
-                )
+        started, ended = self.vad.process(frame)
+
+        if started and self.gate.state == TurnState.RESPONDING:
+            # Barge-in is cancellation first. The client then starts a fresh turn_id.
+            await self.cancel(frame.turn_id)
+            return VoiceEvent(
+                VoiceEventType.FRAME_DROPPED,
+                frame.turn_id,
+                seq=frame.seq,
+                detail="barge_in_cancelled_start_new_turn",
             )
-            return decision
 
-        turn = self._turn
-        assert turn is not None
-        turn.last_seq = frame.seq
-
-        started, ended = self.vad.accept(frame)
         if started:
-            await self.transport.send_event(VoiceEvent(VoiceEventType.SPEECH_STARTED, turn.turn_id, seq=frame.seq))
-        if ended:
-            await self.transport.send_event(VoiceEvent(VoiceEventType.SPEECH_ENDED, turn.turn_id, seq=frame.seq))
-
-        chunks = await self.stt.accept(frame)
-        for chunk in chunks:
+            self._speaking = True
+            self.endpointing.update(speaking=True, now_ms=self.clock() * 1000.0)
             await self.transport.send_event(
-                VoiceEvent(
-                    VoiceEventType.STT_FINAL if chunk.final else VoiceEventType.STT_PARTIAL,
-                    turn.turn_id,
-                    seq=frame.seq,
-                    text=chunk.text,
-                )
+                VoiceEvent(VoiceEventType.SPEECH_STARTED, frame.turn_id, seq=frame.seq)
             )
 
-        if self.endpoint.observe(speaking=self.vad.speaking, frame_ms=frame.duration_ms):
-            final = await self.stt.finish()
-            if final.text:
-                await self.transport.send_event(
-                    VoiceEvent(VoiceEventType.STT_FINAL, turn.turn_id, seq=frame.seq, text=final.text)
-                )
-            turn.state = TurnState.THINKING
-            self._generation = asyncio.create_task(self._generate(turn.turn_id, final.text))
-        return decision
+        partial = await self.stt.push(frame)
+        if partial:
+            await self.transport.send_event(
+                VoiceEvent(VoiceEventType.STT_PARTIAL, frame.turn_id, seq=frame.seq, text=partial)
+            )
 
-    async def _generate(self, turn_id: str, user_text: str) -> None:
-        turn = self._turn
-        if turn is None or turn.turn_id != turn_id or turn.cancelled:
-            return
+        if ended:
+            self._speaking = False
+            await self.transport.send_event(
+                VoiceEvent(VoiceEventType.SPEECH_ENDED, frame.turn_id, seq=frame.seq)
+            )
 
-        async def text_stream() -> AsyncIterator[str]:
-            async for token in self.llm_stream(user_text, self.locale):
-                current = self._turn
-                if current is None or current.turn_id != turn_id or current.cancelled:
-                    raise asyncio.CancelledError
-                await self.transport.send_event(VoiceEvent(VoiceEventType.LLM_DELTA, turn_id, text=token))
-                yield token
+        eot = self.endpointing.update(
+            speaking=self._speaking,
+            now_ms=self.clock() * 1000.0,
+        )
+        if eot and self._responding_turn != frame.turn_id:
+            self._responding_turn = frame.turn_id
+            self._response_task = asyncio.create_task(self._respond(frame.turn_id))
+        return gate_event
 
-        try:
-            turn.state = TurnState.SPEAKING
-            seq = 0
-            async for pcm in self.tts.stream(text_stream(), turn_id=turn_id, locale=self.locale, voice=self.voice):
-                current = self._turn
-                if current is None or current.turn_id != turn_id or current.cancelled:
-                    return
-                await self.transport.send_audio(AudioFrame(turn_id=turn_id, seq=seq, pcm_s16le=pcm))
-                seq += 1
-            current = self._turn
-            if current and current.turn_id == turn_id and not current.cancelled:
-                current.state = TurnState.COMPLETE
-                await self.transport.send_event(VoiceEvent(VoiceEventType.TURN_COMPLETED, turn_id))
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            current = self._turn
-            if current and current.turn_id == turn_id and not current.cancelled:
-                await self.transport.send_event(
-                    VoiceEvent(VoiceEventType.ERROR, turn_id, detail=type(exc).__name__)
-                )
+    async def cancel(self, turn_id: str) -> VoiceEvent:
+        async with self._lock:
+            return await self._cancel_unlocked(turn_id)
 
-    async def cancel_turn(self, turn_id: str) -> bool:
-        turn = self._turn
-        if turn is None or turn.turn_id != turn_id:
-            return False
-        turn.cancelled = True
-        turn.state = TurnState.CANCELLED
-        if self._generation and not self._generation.done():
-            self._generation.cancel()
-            try:
-                await self._generation
-            except asyncio.CancelledError:
-                pass
-        await self.stt.cancel()
+    async def _cancel_unlocked(self, turn_id: str) -> VoiceEvent:
+        event = self.gate.cancel(turn_id)
+        task = self._response_task
+        if task is not None and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         await self.tts.cancel()
-        await self.transport.send_event(VoiceEvent(VoiceEventType.CANCELLED, turn_id))
-        return True
+        await self.stt.reset()
+        self.vad.reset()
+        self.endpointing.reset()
+        self._speaking = False
+        self._responding_turn = None
+        await self.transport.send_event(event)
+        return event
+
+    async def wait_response(self) -> None:
+        task = self._response_task
+        if task is not None:
+            await task
 
     async def run(self) -> None:
         async for item in self.transport.recv():
             if isinstance(item, AudioFrame):
-                await self.accept_audio(item)
-            elif item.type == VoiceEventType.TURN_STARTED:
+                await self.handle_frame(item)
+                continue
+            if item.type == VoiceEventType.TURN_STARTED:
                 await self.start_turn(item.turn_id)
-            elif item.type == VoiceEventType.CANCELLED:
-                await self.cancel_turn(item.turn_id)
+            elif item.type == VoiceEventType.TURN_CANCELLED:
+                with contextlib.suppress(KeyError):
+                    await self.cancel(item.turn_id)
+
+    async def _respond(self, turn_id: str) -> None:
+        try:
+            if self.active_turn_id != turn_id or self.gate.state == TurnState.CANCELLED:
+                return
+            transcript = (await self.stt.finalize()).strip()
+            await self.transport.send_event(
+                VoiceEvent(VoiceEventType.STT_FINAL, turn_id, text=transcript)
+            )
+            if not transcript:
+                self.gate.complete(turn_id)
+                await self.transport.send_event(
+                    VoiceEvent(VoiceEventType.TURN_COMPLETED, turn_id)
+                )
+                return
+
+            self.gate.responding(turn_id)
+            async for text_chunk in self.llm.stream(transcript, turn_id=turn_id):
+                if self.active_turn_id != turn_id or self.gate.state == TurnState.CANCELLED:
+                    return
+                if not text_chunk:
+                    continue
+                await self.transport.send_event(
+                    VoiceEvent(VoiceEventType.LLM_TEXT, turn_id, text=text_chunk)
+                )
+                async for audio in self.tts.stream(text_chunk, locale=self.locale):
+                    if self.active_turn_id != turn_id or self.gate.state == TurnState.CANCELLED:
+                        return
+                    if audio:
+                        await self.transport.send_event(
+                            VoiceEvent(VoiceEventType.TTS_AUDIO, turn_id, audio=audio)
+                        )
+
+            if self.active_turn_id == turn_id and self.gate.state != TurnState.CANCELLED:
+                event = self.gate.complete(turn_id)
+                await self.transport.send_event(event)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if self.active_turn_id == turn_id and self.gate.state != TurnState.CANCELLED:
+                await self.transport.send_event(
+                    VoiceEvent(
+                        VoiceEventType.ERROR,
+                        turn_id,
+                        detail=type(exc).__name__,
+                    )
+                )
