@@ -77,3 +77,10 @@ Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memo
 ## Build rule
 
 Council artifacts are evidence, not merge targets. 0liviA absorbs mechanisms that survive its own interfaces, tests and target-host benchmarks.
+
+
+## Zero-cost invariant
+
+0liviA defaults to `OLIVIA_HARD_ZERO_COST=1`. A provider is routable only when its configuration is explicitly tagged `cost_mode=local` or `cost_mode=free_hard_cap`. Routes tagged `free_unverified` or `paid` are blocked before use. An advertised free tier is not considered safe if the upstream account can automatically bill overages.
+
+If every verified-free route is exhausted, 0liviA becomes degraded/unavailable instead of spending money.
