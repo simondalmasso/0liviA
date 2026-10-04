@@ -9,6 +9,20 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from .security import redact_secrets
+
+
+def _scrub_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return redact_secrets(value)
+    if isinstance(value, dict):
+        return {key: _scrub_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_scrub_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_scrub_value(item) for item in value]
+    return value
+
 
 DEFAULT_PROJECT_ID = "default"
 
@@ -173,7 +187,7 @@ class Store:
         return row is not None
 
     def create_project(self, name: str) -> str:
-        clean = str(name or "").strip()[:120]
+        clean = redact_secrets(str(name or "").strip())[:120]
         if not clean:
             raise ValueError("project name is required")
         project_id = uuid.uuid4().hex[:16]
@@ -197,8 +211,8 @@ class Store:
         return [dict(row) for row in rows]
 
     def create_library_item(self, title: str, value: str) -> str:
-        clean_title = str(title or "").strip()[:120]
-        clean_value = str(value or "").strip()[:20_000]
+        clean_title = redact_secrets(str(title or "").strip())[:120]
+        clean_value = redact_secrets(str(value or "").strip())[:20_000]
         if not clean_title or not clean_value:
             raise ValueError("library title and value are required")
         item_id = uuid.uuid4().hex[:16]
@@ -236,7 +250,7 @@ class Store:
             self._conn.execute(
                 """INSERT INTO sessions(id,title,project_id,created_at,updated_at)
                    VALUES(?,?,?,?,?)""",
-                (sid, title[:200], target_project, now, now),
+                (sid, redact_secrets(str(title))[:200], target_project, now, now),
             )
             self._conn.execute(
                 "UPDATE projects SET updated_at=? WHERE id=?",
@@ -278,7 +292,7 @@ class Store:
                 cur = self._conn.execute(
                     """INSERT INTO messages(session_id,role,content,provider,status,created_at)
                        VALUES(?,?,?,?,?,?)""",
-                    (session_id, role, content, provider, status, now),
+                    (session_id, role, redact_secrets(str(content)), provider, status, now),
                 )
                 self._conn.execute(
                     "UPDATE sessions SET updated_at=? WHERE id=?",
@@ -328,12 +342,19 @@ class Store:
             try:
                 self._conn.execute(
                     "UPDATE memories SET is_active=0 WHERE scope=? AND key=? AND is_active=1",
-                    (scope, key),
+                    (scope, redact_secrets(str(key))),
                 )
                 cur = self._conn.execute(
                     """INSERT INTO memories(scope,key,value,source,confidence,is_active,created_at)
                        VALUES(?,?,?,?,?,1,?)""",
-                    (scope, key, value, source, float(confidence), now),
+                    (
+                        scope,
+                        redact_secrets(str(key)),
+                        redact_secrets(str(value)),
+                        source,
+                        float(confidence),
+                        now,
+                    ),
                 )
                 self._conn.execute("COMMIT")
                 return int(cur.lastrowid)
@@ -415,7 +436,13 @@ class Store:
             cur = self._conn.execute(
                 """INSERT INTO events(session_id,job_id,type,payload_json,created_at)
                    VALUES(?,?,?,?,?)""",
-                (session_id, job_id, event_type, json.dumps(payload, ensure_ascii=False), time.time()),
+                (
+                    session_id,
+                    job_id,
+                    event_type,
+                    json.dumps(_scrub_value(payload), ensure_ascii=False),
+                    time.time(),
+                ),
             )
         return int(cur.lastrowid)
 
@@ -436,7 +463,12 @@ class Store:
                 """UPDATE jobs
                    SET status=?,checkpoint_json=?,updated_at=?
                    WHERE id=?""",
-                (status, json.dumps(checkpoint, ensure_ascii=False), time.time(), job_id),
+                (
+                    status,
+                    json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
+                    time.time(),
+                    job_id,
+                ),
             )
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
