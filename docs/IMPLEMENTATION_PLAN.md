@@ -16,7 +16,9 @@ This file is the orchestration checkpoint. Architecture decisions remain in `doc
 ## Active workers
 
 ### Manus — browser/API gateway
-Branch: `impl/manus-gateway-v1`
+Status: **integrated** via PR #2 into `arch/gpt-synthesis-v1`; integrator then hardened SSE parsing, es-AR drift detection, and removed browser persistence.
+
+Source branch: `impl/manus-gateway-v1`
 
 Scope:
 - aiohttp gateway + minimal browser client;
@@ -59,3 +61,11 @@ Scope:
 5. Keep provider secrets env-only.
 6. Do not deploy until core + gateway + router gates pass.
 7. Voice remains benchmark-gated on actual Oracle A1.
+
+
+## Current verification
+
+- GitHub Actions `core-ci`: Python 3.11 PASS + Python 3.12 PASS.
+- Latest verified suite at this checkpoint: **15 passed**.
+- Browser/API gateway is integrated.
+- DeepSeek router reliability and MiniMax voice contracts remain isolated workers until reviewed.
