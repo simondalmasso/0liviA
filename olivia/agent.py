@@ -52,7 +52,11 @@ class Agent:
             max(0, budget - len(base_system)),
             max(current_len, min(12_000, budget // 3)),
         )
-        auxiliary_budget = max(0, budget - len(base_system) - history_reserve)
+        framing_reserve = 512
+        auxiliary_budget = max(
+            0,
+            budget - len(base_system) - history_reserve - framing_reserve,
+        )
         memory_budget = min(8_000, auxiliary_budget // 4)
         external_budget = min(24_000, max(0, auxiliary_budget - memory_budget))
 
