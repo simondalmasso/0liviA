@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -17,12 +19,15 @@ from .agent import Agent
 from .config import Settings
 from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWorker, coding_worker_from_env
 from .router import ProviderPool
+from .security import verify_password
 from .store import Store
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_MESSAGE_CHARS = 12_000
 MAX_TITLE_CHARS = 200
 LOCALE_BUFFER_CHARS = 32
+OWNER_COOKIE = "olivia_owner"
+OWNER_COOKIE_TTL_S = 30 * 24 * 60 * 60
 
 LocaleValidator = Callable[[str], bool]
 
@@ -67,6 +72,7 @@ class Gateway:
         settings: Settings,
         *,
         auth_token: str | None = None,
+        owner_password_verifier: str | None = None,
         locale_validator: LocaleValidator = default_es_ar_validator,
         locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
         static_root: Path | None = None,
@@ -75,6 +81,11 @@ class Gateway:
         self.agent = agent
         self.settings = settings
         self.auth_token = auth_token if auth_token is not None else os.getenv("OLIVIA_GATEWAY_TOKEN", "")
+        self.owner_password_verifier = (
+            owner_password_verifier
+            if owner_password_verifier is not None
+            else os.getenv("OLIVIA_OWNER_PASSWORD_VERIFIER", "")
+        )
         self.locale_validator = locale_validator
         self.locale_buffer_chars = max(1, locale_buffer_chars)
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
@@ -82,17 +93,72 @@ class Gateway:
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
 
+    def _owner_cookie_value(self, expires_at: int) -> str:
+        payload = f"v1:{expires_at}"
+        signature = hmac.new(
+            self.auth_token.encode("utf-8"),
+            payload.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"{payload}:{signature}"
+
+    def _owner_cookie_valid(self, value: str) -> bool:
+        if not self.auth_token or not value:
+            return False
+        try:
+            version, expires_raw, signature = value.split(":", 2)
+            expires_at = int(expires_raw)
+        except (ValueError, TypeError):
+            return False
+        if version != "v1" or expires_at <= int(time.time()):
+            return False
+        expected = hmac.new(
+            self.auth_token.encode("utf-8"),
+            f"{version}:{expires_at}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(signature, expected)
+
     def _authorized(self, request: web.Request) -> bool:
         if not self.auth_token:
             return False
         supplied = request.headers.get("Authorization", "")
         scheme, _, value = supplied.partition(" ")
-        return scheme.lower() == "bearer" and secrets.compare_digest(value, self.auth_token)
+        if scheme.lower() == "bearer" and secrets.compare_digest(value, self.auth_token):
+            return True
+        return self._owner_cookie_valid(request.cookies.get(OWNER_COOKIE, ""))
 
     async def _require_auth(self, request: web.Request) -> web.Response | None:
         if self._authorized(request):
             return None
         return _json({"error": "unauthorized"}, status=401)
+
+    async def login(self, request: web.Request) -> web.Response:
+        if not self.auth_token or not self.owner_password_verifier:
+            return _json({"error": "owner_auth_unavailable"}, 503)
+        payload = await self._read_json(request)
+        password = payload.get("password")
+        if not isinstance(password, str) or not password or len(password) > 512:
+            return _json({"error": "invalid password"}, 400)
+        if not verify_password(password, self.owner_password_verifier):
+            return _json({"error": "unauthorized"}, 401)
+        expires_at = int(time.time()) + OWNER_COOKIE_TTL_S
+        response = _json({"authenticated": True, "expires_at": expires_at})
+        response.set_cookie(
+            OWNER_COOKIE,
+            self._owner_cookie_value(expires_at),
+            max_age=OWNER_COOKIE_TTL_S,
+            httponly=True,
+            secure=True,
+            samesite="Strict",
+            path="/",
+        )
+        return response
+
+    async def logout(self, request: web.Request) -> web.Response:
+        response = _json({"authenticated": False})
+        response.del_cookie(OWNER_COOKIE, path="/")
+        return response
 
     async def _read_json(self, request: web.Request) -> dict[str, Any]:
         content_length = request.headers.get("Content-Length")
@@ -146,6 +212,8 @@ class Gateway:
             "providers_configured": configured,
             "providers_available": available,
             "hard_zero_cost": bool(self.settings.hard_zero_cost),
+            "api_mode": "canonical",
+            "owner_auth_configured": bool(self.auth_token and self.owner_password_verifier),
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
         })
 
@@ -396,6 +464,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     auth_token: str | None = None,
+    owner_password_verifier: str | None = None,
     locale_validator: LocaleValidator = default_es_ar_validator,
     locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
     static_root: Path | None = None,
@@ -411,6 +480,7 @@ def create_app(
         agent,
         settings,
         auth_token=auth_token,
+        owner_password_verifier=owner_password_verifier,
         locale_validator=locale_validator,
         locale_buffer_chars=locale_buffer_chars,
         static_root=static_root,
@@ -421,6 +491,8 @@ def create_app(
     app.router.add_get("/", gateway.index)
     app.router.add_get("/index.html", gateway.index)
     app.router.add_get("/healthz", gateway.healthz)
+    app.router.add_post("/api/auth/login", gateway.login)
+    app.router.add_post("/api/auth/logout", gateway.logout)
     app.router.add_get("/api/sessions", gateway.list_sessions)
     app.router.add_post("/api/sessions", gateway.create_session)
     app.router.add_get("/api/sessions/{session_id}/messages", gateway.get_messages)
