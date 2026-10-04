@@ -25,6 +25,7 @@ from .store import Store
 MAX_BODY_BYTES = 64 * 1024
 MAX_MESSAGE_CHARS = 12_000
 MAX_TITLE_CHARS = 200
+MAX_WORKSPACE_VALUE_CHARS = 20_000
 LOCALE_BUFFER_CHARS = 32
 OWNER_COOKIE = "olivia_owner"
 OWNER_COOKIE_TTL_S = 30 * 24 * 60 * 60
@@ -261,6 +262,93 @@ class Gateway:
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
         })
 
+    async def workspace(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        projects = self.agent.store.list_projects()
+        sessions = self.agent.store.list_sessions(limit=100)
+        chats_by_project: dict[str, list[dict[str, Any]]] = {}
+        for session in sessions:
+            chats_by_project.setdefault(str(session.get("project_id") or ""), []).append(session)
+        project_rows = [
+            {**project, "chats": chats_by_project.get(project["id"], [])}
+            for project in projects
+        ]
+        memories = [
+            {
+                "id": row["id"],
+                "title": row["key"],
+                "value": row["value"],
+                "created_at": row["created_at"],
+            }
+            for row in self.agent.store.list_memories("global", limit=200)
+        ]
+        return _json({
+            "projects": project_rows,
+            "library": self.agent.store.list_library_items(limit=200),
+            "memories": memories,
+        })
+
+    async def create_project(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        payload = await self._read_json(request)
+        name = payload.get("name")
+        if not isinstance(name, str) or not name.strip() or len(name) > 120:
+            return _json({"error": "project name must be 1..120 characters"}, 400)
+        safe_name = redact_secrets(name.strip())
+        project_id = self.agent.store.create_project(safe_name)
+        return _json({"id": project_id, "name": safe_name}, 201)
+
+    async def create_library_item(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        payload = await self._read_json(request)
+        title = payload.get("title")
+        value = payload.get("value")
+        if (
+            not isinstance(title, str)
+            or not isinstance(value, str)
+            or not title.strip()
+            or not value.strip()
+            or len(title) > 120
+            or len(value) > MAX_WORKSPACE_VALUE_CHARS
+        ):
+            return _json({"error": "invalid library item"}, 400)
+        safe_title = redact_secrets(title.strip())
+        safe_value = redact_secrets(value.strip())
+        item_id = self.agent.store.create_library_item(safe_title, safe_value)
+        return _json({"id": item_id, "title": safe_title, "value": safe_value}, 201)
+
+    async def create_memory(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        payload = await self._read_json(request)
+        title = payload.get("title")
+        value = payload.get("value")
+        if (
+            not isinstance(title, str)
+            or not isinstance(value, str)
+            or not title.strip()
+            or not value.strip()
+            or len(title) > 120
+            or len(value) > MAX_WORKSPACE_VALUE_CHARS
+        ):
+            return _json({"error": "invalid memory"}, 400)
+        safe_title = redact_secrets(title.strip())
+        safe_value = redact_secrets(value.strip())
+        memory_id = self.agent.store.promote_memory(
+            "global",
+            safe_title,
+            safe_value,
+            source="owner-ui",
+        )
+        return _json({"id": memory_id, "title": safe_title, "value": safe_value}, 201)
+
     async def list_sessions(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
         if denied:
@@ -278,9 +366,14 @@ class Gateway:
             return denied
         payload = await self._read_json(request)
         title = payload.get("title", "")
+        project_id = payload.get("project_id")
         raw_messages = payload.get("messages", [])
         if not isinstance(title, str) or len(title) > MAX_TITLE_CHARS:
             return _json({"error": "title must be a string of at most 200 characters"}, 400)
+        if project_id is not None and not isinstance(project_id, str):
+            return _json({"error": "project_id must be a string"}, 400)
+        if project_id is not None and not self.agent.store.project_exists(project_id):
+            return _json({"error": "project not found"}, 404)
         if not isinstance(raw_messages, list) or len(raw_messages) > 24:
             return _json({"error": "messages must be an array of at most 24 items"}, 400)
 
@@ -298,7 +391,7 @@ class Gateway:
             imported.append((role, redact_secrets(content)))
 
         safe_title = redact_secrets(title.strip())
-        session_id = self.agent.store.create_session(safe_title)
+        session_id = self.agent.store.create_session(safe_title, project_id=project_id)
         for role, content in imported:
             self.agent.store.append_message(
                 session_id,
@@ -307,7 +400,16 @@ class Gateway:
                 provider="import" if role == "assistant" else None,
                 status="complete",
             )
-        return _json({"id": session_id, "title": safe_title, "imported": len(imported)}, 201)
+        session_row = next(
+            row for row in self.agent.store.list_sessions(limit=100)
+            if row["id"] == session_id
+        )
+        return _json({
+            "id": session_id,
+            "title": safe_title,
+            "project_id": session_row["project_id"],
+            "imported": len(imported),
+        }, 201)
 
     async def get_messages(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
@@ -740,6 +842,10 @@ def create_app(
     app.router.add_get("/healthz", gateway.healthz)
     app.router.add_post("/api/auth/login", gateway.login)
     app.router.add_post("/api/auth/logout", gateway.logout)
+    app.router.add_get("/api/workspace", gateway.workspace)
+    app.router.add_post("/api/projects", gateway.create_project)
+    app.router.add_post("/api/library", gateway.create_library_item)
+    app.router.add_post("/api/memories", gateway.create_memory)
     app.router.add_get("/api/sessions", gateway.list_sessions)
     app.router.add_post("/api/sessions", gateway.create_session)
     app.router.add_get("/api/sessions/{session_id}/messages", gateway.get_messages)
