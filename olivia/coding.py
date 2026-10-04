@@ -66,8 +66,8 @@ class GitHubActionsCodingWorker:
     def validate_request(request: CodingJobRequest) -> None:
         if not request.task.strip() or len(request.task) > 12_000:
             raise ValueError("task must be 1..12000 characters")
-        if request.mode not in {"implement", "repair"}:
-            raise ValueError("mode must be implement or repair")
+        if request.mode not in {"implement", "repair", "review"}:
+            raise ValueError("mode must be implement, repair, or review")
         if (
             not _REF.fullmatch(request.base_ref)
             or ".." in request.base_ref
