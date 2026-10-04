@@ -174,7 +174,7 @@ def test_default_locale_guard_rejects_obvious_german():
 async def test_ui_uses_buffered_sse_parser_and_never_persists_token(client):
     response = await client.get("/")
     html = await response.text()
-    assert "sseBuffer+=value" in html
+    assert "sseBuffer+=chunk" in html
     assert "sseBuffer=lines.pop()" in html
     assert "sessionStorage.setItem(key,token)" not in html
     assert "localStorage" not in html
@@ -208,5 +208,9 @@ async def test_live_voice_is_fullscreen_and_chat_stays_available(client):
     assert 'id="voiceTranscript"' in html
     assert 'id="voiceChatForm"' in html
     assert 'navigator.mediaDevices.getUserMedia' in html
+    assert 'SpeechRecognition' in html
+    assert "rec.lang='es-AR'" in html
+    assert "normalizeLocale(v.lang)==='es-ar'" in html
+    assert 'speechSynthesis' in html
     assert 'localStorage' not in html
     assert 'sessionStorage' not in html
