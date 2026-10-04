@@ -675,7 +675,7 @@ class Gateway:
                 await response.write_eof()
                 return
             try:
-                result = await self.web_search.search(argument, limit=5)
+                result = await self.web_search.search(redact_secrets(argument), limit=5)
             except (SearchUnavailable, ValueError) as exc:
                 assistant = f"No pude ejecutar la búsqueda web segura: {str(exc)}."
                 self.agent.store.append_message(session_id, "user", safe_user)
@@ -738,7 +738,7 @@ class Gateway:
                 await response.write_eof()
                 return
             try:
-                result = await self.web_search.search(argument, limit=3)
+                result = await self.web_search.search(redact_secrets(argument), limit=3)
             except (SearchUnavailable, ValueError) as exc:
                 assistant = f"No pude ejecutar la búsqueda web segura: {str(exc)}."
                 self.agent.store.append_message(session_id, "user", safe_user)
