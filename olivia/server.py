@@ -20,7 +20,7 @@ from .config import Settings
 from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWorker, coding_worker_from_env
 from .router import ProviderPool
 from .research import SearchUnavailable, WebSearch, web_search_from_env
-from .security import redact_secrets, verify_password
+from .security import make_password_verifier, redact_secrets, verify_password
 from .store import Store
 from .web import SafeWebReader, WebReadError
 
@@ -101,6 +101,11 @@ class Gateway:
             else os.getenv("OLIVIA_OWNER_EMAIL", "")
         )
         self.owner_email = str(configured_email or "").strip().casefold()
+        if self.owner_email and self.owner_password_verifier:
+            self.agent.store.seed_owner_if_absent(
+                self.owner_email,
+                self.owner_password_verifier,
+            )
         self.locale_validator = locale_validator
         self.locale_buffer_chars = max(1, locale_buffer_chars)
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
@@ -195,14 +200,92 @@ class Gateway:
     def _clear_login_failures(self, request: web.Request) -> None:
         self._login_failures.pop(self._login_key(request), None)
 
-    async def login(self, request: web.Request) -> web.Response:
-        if not self.auth_token or not self.owner_password_verifier or not self.owner_email:
+    def _issue_owner_session(
+        self,
+        *,
+        email: str,
+        remember: bool,
+        device_name: str,
+    ) -> web.Response:
+        ttl_s = OWNER_REMEMBER_TTL_S if remember else OWNER_SESSION_TTL_S
+        expires_at = int(time.time()) + ttl_s
+        device_id = None
+        if remember:
+            device_id = self.agent.store.create_trusted_device(
+                device_name.strip() or "Este dispositivo",
+                expires_at=expires_at,
+            )
+        response = _json({
+            "authenticated": True,
+            "email": email,
+            "remembered": remember,
+            "device_id": device_id,
+            "expires_at": expires_at,
+        })
+        cookie_kwargs = {
+            "httponly": True,
+            "secure": True,
+            "samesite": "Strict",
+            "path": "/",
+        }
+        if remember:
+            cookie_kwargs["max_age"] = OWNER_REMEMBER_TTL_S
+        response.set_cookie(
+            OWNER_COOKIE,
+            self._owner_cookie_value(expires_at, device_id),
+            **cookie_kwargs,
+        )
+        return response
+
+    async def register(self, request: web.Request) -> web.Response:
+        if not self.auth_token:
             return _json({"error": "owner_auth_unavailable"}, 503)
+        if self.agent.store.get_owner_account() is not None:
+            return _json({"error": "registration_closed"}, 409)
+
+        payload = await self._read_json(request)
+        email = payload.get("email")
+        password = payload.get("password")
+        remember = payload.get("remember", True)
+        device_name = payload.get("device_name", "Este dispositivo")
+        if (
+            not isinstance(email, str)
+            or not email.strip()
+            or len(email) > 254
+            or "@" not in email
+            or not isinstance(password, str)
+            or len(password) < 10
+            or len(password) > 512
+            or not isinstance(remember, bool)
+            or not isinstance(device_name, str)
+            or len(device_name) > 120
+        ):
+            return _json({"error": "invalid registration"}, 400)
+
+        normalized_email = email.strip().casefold()
+        verifier = make_password_verifier(password)
+        if not self.agent.store.register_owner(normalized_email, verifier):
+            return _json({"error": "registration_closed"}, 409)
+        self._clear_login_failures(request)
+        return self._issue_owner_session(
+            email=normalized_email,
+            remember=remember,
+            device_name=device_name,
+        )
+
+    async def login(self, request: web.Request) -> web.Response:
+        if not self.auth_token:
+            return _json({"error": "owner_auth_unavailable"}, 503)
+        account = self.agent.store.get_owner_account()
+        if account is None:
+            return _json({"error": "registration_required"}, 409)
+
         retry_after = self._login_retry_after(request)
         if retry_after:
             response = _json({"error": "login_rate_limited"}, 429)
             response.headers["Retry-After"] = str(retry_after)
             return response
+
         payload = await self._read_json(request)
         email = payload.get("email")
         password = payload.get("password")
@@ -223,42 +306,18 @@ class Gateway:
             return _json({"error": "invalid credentials"}, 400)
 
         normalized_email = email.strip().casefold()
-        email_ok = secrets.compare_digest(normalized_email, self.owner_email)
-        password_ok = verify_password(password, self.owner_password_verifier)
+        email_ok = secrets.compare_digest(normalized_email, str(account["email"]))
+        password_ok = verify_password(password, str(account["password_verifier"]))
         if not email_ok or not password_ok:
             self._record_login_failure(request)
             return _json({"error": "unauthorized"}, 401)
 
         self._clear_login_failures(request)
-        ttl_s = OWNER_REMEMBER_TTL_S if remember else OWNER_SESSION_TTL_S
-        expires_at = int(time.time()) + ttl_s
-        device_id = None
-        if remember:
-            device_id = self.agent.store.create_trusted_device(
-                device_name.strip() or "Este dispositivo",
-                expires_at=expires_at,
-            )
-        response = _json({
-            "authenticated": True,
-            "email": self.owner_email,
-            "remembered": remember,
-            "device_id": device_id,
-            "expires_at": expires_at,
-        })
-        cookie_kwargs = {
-            "httponly": True,
-            "secure": True,
-            "samesite": "Strict",
-            "path": "/",
-        }
-        if remember:
-            cookie_kwargs["max_age"] = OWNER_REMEMBER_TTL_S
-        response.set_cookie(
-            OWNER_COOKIE,
-            self._owner_cookie_value(expires_at, device_id),
-            **cookie_kwargs,
+        return self._issue_owner_session(
+            email=str(account["email"]),
+            remember=remember,
+            device_name=device_name,
         )
-        return response
 
     async def logout(self, request: web.Request) -> web.Response:
         response = _json({"authenticated": False})
@@ -334,7 +393,10 @@ class Gateway:
             "hard_zero_cost": bool(self.settings.hard_zero_cost),
             "api_mode": "canonical",
             "owner_auth_configured": bool(
-                self.auth_token and self.owner_password_verifier and self.owner_email
+                self.auth_token and self.agent.store.get_owner_account() is not None
+            ),
+            "registration_open": bool(
+                self.auth_token and self.agent.store.get_owner_account() is None
             ),
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
             "web_read_configured": self.web_reader is not None,
@@ -1166,6 +1228,7 @@ def create_app(
     app.router.add_get("/", gateway.index)
     app.router.add_get("/index.html", gateway.index)
     app.router.add_get("/healthz", gateway.healthz)
+    app.router.add_post("/api/auth/register", gateway.register)
     app.router.add_post("/api/auth/login", gateway.login)
     app.router.add_post("/api/auth/logout", gateway.logout)
     app.router.add_get("/api/auth/devices", gateway.list_devices)
