@@ -40,6 +40,10 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "https://integrate.api.nvidia.com/v1" in workflow
     assert "test -n \"$AIDER_OPENAI_API_KEY\"" in workflow
     assert 'BRANCH="agent/coding-${GITHUB_RUN_ID}"' in workflow
+    assert "persist-credentials: false" in workflow
+    assert "BASE_REF: ${{ inputs.base_ref }}" in workflow
+    assert "${{ inputs.base_ref }}..." not in workflow
+    assert "git check-ref-format --allow-onelevel \"$BASE_REF\"" in workflow
     assert "pytest -q" in workflow
     assert 'if ! git diff --quiet || ! git diff --cached --quiet; then' in workflow
     assert 'git add -A' in workflow
