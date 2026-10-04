@@ -7,6 +7,7 @@ from typing import Any
 
 from .config import Settings
 from .router import AllProvidersFailed, ProviderPool, ProviderStreamInterrupted
+from .security import contains_secret, redact_secrets
 from .store import Store
 
 
@@ -37,7 +38,7 @@ class Agent:
         memories = self.store.recall_memories(user_text, scope=session_id, limit=8)
         recent = self.store.recent_messages(session_id, self.settings.max_history)
         memory_text = "\n".join(
-            f"- [{m['scope']}:{m['key']}] {m['value']} (source={m['source']})"
+            f"- [{m['scope']}:{redact_secrets(m['key'])}] {redact_secrets(m['value'])} (source={m['source']})"
             for m in memories
         )
         system = SYSTEM_PROMPT
@@ -46,7 +47,7 @@ class Agent:
         messages = [{"role": "system", "content": system}]
         for msg in recent:
             if msg["role"] in {"user", "assistant"}:
-                messages.append({"role": msg["role"], "content": msg["content"]})
+                messages.append({"role": msg["role"], "content": redact_secrets(msg["content"])})
         return messages
 
     async def _local_memory_command(
@@ -58,6 +59,27 @@ class Agent:
         if remember:
             key = remember.group(1).strip()
             value = remember.group(2).strip()
+            if contains_secret(key) or contains_secret(value):
+                safe_text = redact_secrets(text)
+                reply = "No guardé esa memoria porque parece contener una credencial o secreto."
+                self.store.append_message(session_id, "user", safe_text)
+                self.store.append_message(
+                    session_id,
+                    "assistant",
+                    reply,
+                    provider="local",
+                    status="complete",
+                )
+                self.store.record_event(
+                    "memory.rejected_secret",
+                    {"scope": "global", "key": redact_secrets(key)},
+                    session_id=session_id,
+                )
+                yield {"type": "memory", "action": "rejected_secret", "key": redact_secrets(key)}
+                yield {"type": "delta", "text": reply}
+                yield {"type": "done", "provider": "local"}
+                return
+
             memory_id = self.store.promote_memory(
                 "global",
                 key,
@@ -116,10 +138,15 @@ class Agent:
                 yield event
             return
 
-        self.store.append_message(session_id, "user", text)
-        self.store.record_event("turn.started", {"text_len": len(text)}, session_id=session_id)
+        safe_text = redact_secrets(text)
+        self.store.append_message(session_id, "user", safe_text)
+        self.store.record_event(
+            "turn.started",
+            {"text_len": len(text), "secrets_redacted": safe_text != text},
+            session_id=session_id,
+        )
 
-        model_messages = self._messages_for_model(session_id, text)
+        model_messages = self._messages_for_model(session_id, safe_text)
         chunks: list[str] = []
         provider: str | None = None
 
@@ -198,6 +225,8 @@ class Agent:
         source: str = "explicit-user",
         confidence: float = 1.0,
     ) -> int:
+        if contains_secret(key) or contains_secret(value):
+            raise ValueError("refusing to persist secret-like memory")
         return self.store.promote_memory(
             scope,
             key,
