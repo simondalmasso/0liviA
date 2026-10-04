@@ -62,7 +62,7 @@ def test_env_examples_document_owner_cookie_auth_without_plaintext_password():
 
 def test_bootstrap_verifies_llama_and_model_sha256_before_use():
     bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
-    assert "LLAMA_SHA256=" in bootstrap
+    assert "llama_sha256=" in bootstrap
     assert "MODEL_SHA256=" in bootstrap
     assert bootstrap.count("sha256sum -c -") >= 2
     assert "9f454c895ab49d4173cfb3995a39e4f8fe21b364787db8e1ca2778ee7f39aa36" in bootstrap
