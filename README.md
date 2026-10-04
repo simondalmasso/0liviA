@@ -8,7 +8,7 @@
 - recurring infrastructure target: **USD 0**;
 - if no verified-free route is available, fail/degrade before spending;
 - GitHub is the durable source of truth for code, architecture and checkpoints;
-- runtime conversation/memory state belongs server-side;
+- runtime conversation/memory/project state belongs server-side;
 - providers, browser workers, coding workers and voice engines remain replaceable;
 - no reverse-engineered consumer-session APIs;
 - no secrets in Git, prompts or durable memory;
@@ -24,11 +24,11 @@
 → isolated on-demand workers for coding, research/browser and voice
 → GitHub for durable engineering state.
 
-Cloudflare may host a thin public shell or temporary bridge, but it is not the canonical chat/memory/voice backend. The current Worker bridge is explicitly deployment-gated and must fail closed when zero-cost entitlement is not proven.
+Cloudflare may host a thin public shell or temporary bridge, but it is not the canonical chat/memory/voice backend. The current Worker bridge remains deployment-gated and must fail closed when zero-cost entitlement is not proven.
 
 ## Repository map
 
-- `olivia/` — canonical Python control plane, router, memory/jobs and voice contracts
+- `olivia/` — canonical Python control plane, router, memory/jobs, research contracts and voice contracts
 - `olivia/voice/` — transport/speech contracts and benchmark scaffolding
 - `web/` — current violet/blue/cyan browser product shell
 - `cloudflare/` — temporary public bridge; not durable product state
@@ -40,24 +40,30 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 
 ## Implemented
 
-- SQLite WAL/FTS5 sessions, messages, memories, jobs, checkpoints and events;
+- SQLite WAL/FTS5 sessions, projects, library, memories, jobs, checkpoints and events;
+- authenticated canonical workspace API with Projects/Chats/Library/Memory durable server-side and IndexedDB used only as a browser cache/migration layer;
 - provider health/quota state with circuit breaker, half-open recovery and redacted telemetry;
 - pre-visible-output failover with cancellation/partial-answer safety;
-- aiohttp browser/API gateway with bounded request bodies and auth;
+- aiohttp browser/API gateway with owner cookie auth, login throttling, bounded request bodies and one active turn per session;
+- canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
+- replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
 - violet/blue/cyan rail UI with projects, library, memory, config and fullscreen Live Voice shell;
-- read-only URL ingestion with SSRF/redirect/body limits in the temporary Worker bridge;
-- isolated GitHub Actions coding jobs with deterministic verification;
+- isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
+- review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
+- coding execution job has read-only repository permission; optional publication happens in a separate write-capable job after verification;
 - voice transport/pipeline contracts, sequence/cancel/barge-in tests and benchmark recorder;
-- CI on Python 3.11 and 3.12 plus JS/Worker syntax gates.
+- production bootstrap with immutable source SHA, pinned artifact SHA-256 verification and owner auth configuration;
+- CI on Python 3.11 and 3.12 plus shell, JS and Worker syntax gates.
 
 ## Still gated
 
 - Oracle A1 production availability and target-host benchmarks;
-- durable multi-device Projects/Library/Memory migration out of browser cache;
-- production browser/research worker beyond read-only URL ingestion;
+- production JS-capable browser automation/research worker beyond safe `/read`;
+- a production `/search` provider only after its exact account/provider route is proven zero-cost;
 - production STT/VAD/TTS selection and es-AR voice acceptance;
-- production entitlement for the preferred DeepSeek NIM route;
-- any Cloudflare deployment until account-wide zero-cost behavior is independently verified.
+- production entitlement for the preferred DeepSeek NIM coding/model route;
+- exact-SHA public deployment and production smoke;
+- any Cloudflare inference/search path whose account-level zero-cost behavior is not independently verified.
 
 ## Development
 
@@ -75,6 +81,7 @@ Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memo
 - [Architecture](docs/ARCHITECTURE.md)
 - [Architecture decisions](docs/DECISIONS.md)
 - [Current implementation checkpoint](docs/IMPLEMENTATION_PLAN.md)
+- [Security audit reconciliation](docs/SECURITY_AUDIT.md)
 - [Research evidence](docs/RESEARCH.md)
 - [Benchmark gates](docs/BENCHMARKS.md)
 - [Canonical build mandate](SUPER_ORDER_END_TO_END.md)
