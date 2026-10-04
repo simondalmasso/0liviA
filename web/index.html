@@ -386,6 +386,13 @@ function normalizeWorkspace(){
   if(!workspace||!Array.isArray(workspace.projects)||!workspace.projects.length)workspace=blankWorkspace();
   if(!Array.isArray(workspace.library))workspace.library=[];
   if(!Array.isArray(workspace.memories))workspace.memories=[];
+  for(const project of workspace.projects){
+    if(!Array.isArray(project.chats))project.chats=[];
+    if(!('remoteProjectId' in project))project.remoteProjectId=null;
+    for(const chat of project.chats)if(!('remoteSessionId' in chat))chat.remoteSessionId=null;
+  }
+  for(const item of workspace.library)if(!('remoteId' in item))item.remoteId=null;
+  for(const item of workspace.memories)if(!('remoteId' in item))item.remoteId=null;
 }
 function selectedProject(){
   return workspace.projects.find(p=>p.id===workspace.selectedProjectId)||workspace.projects[0];
@@ -452,7 +459,7 @@ ownerLoginForm.onsubmit=async e=>{
       body:JSON.stringify({password})
     });
     if(!r.ok){ownerLoginError.textContent=r.status===401?'Contraseña incorrecta':'No se pudo iniciar sesión';return}
-    ownerAuthReady=true;hideOwnerLogin();await probeCore();await syncCanonicalSessions();syncQueued();
+    ownerAuthReady=true;hideOwnerLogin();await probeCore();await syncCanonicalWorkspace();syncQueued();
   }catch(e){ownerLoginError.textContent='Core no disponible'}
 };
 
@@ -648,20 +655,58 @@ $('#newProject').onclick=async()=>{
   const name=(raw||'').trim();
   if(!name)return;
   const chat={id:uid('c'),title:'Nuevo chat',messages:[],remoteSessionId:null};
-  const p={id:uid('p'),name:name.slice(0,60),chats:[chat]};
+  const p={id:uid('p'),name:name.slice(0,60),remoteProjectId:null,chats:[chat]};
   workspace.projects.unshift(p);workspace.selectedProjectId=p.id;workspace.selectedChatId=chat.id;
+  if(backendMode==='canonical'&&ownerAuthReady){
+    try{
+      const r=await fetch('/api/projects',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body:JSON.stringify({name:p.name})
+      });
+      if(r.status===401){ownerAuthReady=false;showOwnerLogin()}
+      else if(r.ok){p.remoteProjectId=(await r.json()).id}
+    }catch(e){}
+  }
   await saveState();renderAll();closeDrawer();
 };
 $('#addLibrary').onclick=async()=>{
   const value=(prompt('Pegá un link o una nota')||'').trim();if(!value)return;
   const title=(prompt('Título')||'Referencia').trim();
-  workspace.library.unshift({id:uid('lib'),title:title.slice(0,60),value:value.slice(0,500)});
+  const item={id:uid('lib'),title:title.slice(0,60),value:value.slice(0,500),remoteId:null};
+  workspace.library.unshift(item);
+  if(backendMode==='canonical'&&ownerAuthReady){
+    try{
+      const r=await fetch('/api/library',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body:JSON.stringify({title:item.title,value:item.value})
+      });
+      if(r.status===401){ownerAuthReady=false;showOwnerLogin()}
+      else if(r.ok){item.remoteId=(await r.json()).id}
+    }catch(e){}
+  }
   await saveState();renderLibrary();
 };
 $('#addMemory').onclick=async()=>{
   const value=(prompt('¿Qué querés que 0liviA recuerde?')||'').trim();if(!value)return;
   const title=(prompt('Título')||'Memoria').trim();
-  workspace.memories.unshift({id:uid('mem'),title:title.slice(0,60),value:value.slice(0,1000)});
+  const item={id:uid('mem'),title:title.slice(0,60),value:value.slice(0,1000),remoteId:null};
+  workspace.memories.unshift(item);
+  if(backendMode==='canonical'&&ownerAuthReady){
+    try{
+      const r=await fetch('/api/memories',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body:JSON.stringify({title:item.title,value:item.value})
+      });
+      if(r.status===401){ownerAuthReady=false;showOwnerLogin()}
+      else if(r.ok){item.remoteId=(await r.json()).id}
+    }catch(e){}
+  }
   await saveState();renderMemory();
 };
 
@@ -706,29 +751,109 @@ async function hydrateCanonicalChat(chat){
   renderMessages();
   return true;
 }
-async function syncCanonicalSessions(){
+function projectForChat(chat){
+  return workspace.projects.find(project=>project.chats.includes(chat))||selectedProject();
+}
+async function canonicalPost(path,payload){
+  const r=await fetch(path,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    credentials:'same-origin',
+    body:JSON.stringify(payload)
+  });
+  if(r.status===401){ownerAuthReady=false;showOwnerLogin();throw new Error('auth requerida')}
+  if(!r.ok)throw new Error('workspace sync failed');
+  return await r.json();
+}
+async function syncCanonicalWorkspace(){
   if(backendMode!=='canonical'||!ownerAuthReady||!workspace)return false;
-  const r=await fetch('/api/sessions?limit=50',{cache:'no-store',credentials:'same-origin'});
-  if(r.status===401){ownerAuthReady=false;showOwnerLogin();return false}
-  if(!r.ok)return false;
-  const body=await r.json();
-  const home=workspace.projects.find(p=>p.name==='0liviA')||workspace.projects[0];
-  for(const session of body.sessions||[]){
-    let chat=findChatByRemoteSessionId(session.id);
-    if(!chat){
-      chat={
-        id:uid('c'),
-        title:session.title||'Chat',
-        messages:[],
-        remoteSessionId:session.id
-      };
-      home.chats.push(chat);
-    }else if(session.title&&chat.title==='Nuevo chat'){
-      chat.title=session.title;
+
+  let snapshotResponse=await fetch('/api/workspace',{cache:'no-store',credentials:'same-origin'});
+  if(snapshotResponse.status===401){ownerAuthReady=false;showOwnerLogin();return false}
+  if(!snapshotResponse.ok)return false;
+  let remote=await snapshotResponse.json();
+
+  const remoteDefault=(remote.projects||[]).find(p=>p.name==='0liviA')||(remote.projects||[])[0];
+  const localDefault=workspace.projects.find(p=>p.name==='0liviA')||workspace.projects[0];
+  if(localDefault&&remoteDefault&&!localDefault.remoteProjectId)localDefault.remoteProjectId=remoteDefault.id;
+
+  for(const project of workspace.projects){
+    if(!project.remoteProjectId){
+      try{
+        const created=await canonicalPost('/api/projects',{name:project.name});
+        project.remoteProjectId=created.id;
+      }catch(e){return false}
     }
   }
+  for(const item of workspace.library){
+    if(!item.remoteId){
+      try{
+        const created=await canonicalPost('/api/library',{title:item.title,value:item.value});
+        item.remoteId=created.id;
+      }catch(e){return false}
+    }
+  }
+  for(const item of workspace.memories){
+    if(!item.remoteId){
+      try{
+        const created=await canonicalPost('/api/memories',{title:item.title,value:item.value});
+        item.remoteId=created.id;
+      }catch(e){return false}
+    }
+  }
+
+  for(const project of workspace.projects){
+    for(const chat of project.chats){
+      if(!chat.remoteSessionId&&chat.messages.some(m=>(m.role==='user'||m.role==='assistant')&&String(m.text||'').trim())){
+        try{await ensureRemoteSession(chat,null)}catch(e){return false}
+      }
+    }
+  }
+
+  snapshotResponse=await fetch('/api/workspace',{cache:'no-store',credentials:'same-origin'});
+  if(!snapshotResponse.ok)return false;
+  remote=await snapshotResponse.json();
+
+  for(const remoteProject of remote.projects||[]){
+    let local=workspace.projects.find(p=>p.remoteProjectId===remoteProject.id);
+    if(!local){
+      local={id:uid('p'),name:remoteProject.name||'Proyecto',remoteProjectId:remoteProject.id,chats:[]};
+      workspace.projects.push(local);
+    }else{
+      local.name=remoteProject.name||local.name;
+    }
+    for(const session of remoteProject.chats||[]){
+      let chat=findChatByRemoteSessionId(session.id);
+      if(!chat){
+        chat={id:uid('c'),title:session.title||'Chat',messages:[],remoteSessionId:session.id};
+        local.chats.push(chat);
+      }else if(session.title&&chat.title==='Nuevo chat'){
+        chat.title=session.title;
+      }
+    }
+  }
+
+  for(const item of remote.library||[]){
+    let local=workspace.library.find(x=>String(x.remoteId)===String(item.id));
+    if(!local){
+      local={id:uid('lib'),remoteId:item.id,title:item.title||'Referencia',value:item.value||''};
+      workspace.library.push(local);
+    }else{
+      local.title=item.title||local.title;local.value=item.value||local.value;
+    }
+  }
+  for(const item of remote.memories||[]){
+    let local=workspace.memories.find(x=>String(x.remoteId)===String(item.id));
+    if(!local){
+      local={id:uid('mem'),remoteId:item.id,title:item.title||'Memoria',value:item.value||''};
+      workspace.memories.push(local);
+    }else{
+      local.title=item.title||local.title;local.value=item.value||local.value;
+    }
+  }
+
   await saveState();
-  renderTree();
+  renderAll();
   const current=selectedChat();
   if(current?.remoteSessionId&&!current.messages.length)await hydrateCanonicalChat(current);
   return true;
@@ -741,11 +866,16 @@ async function ensureRemoteSession(chat,excludeMessageId=null){
     .filter(m=>m.id!==excludeMessageId&&m.status!=='queued'&&(m.role==='user'||m.role==='assistant')&&String(m.text||'').trim())
     .slice(-12)
     .map(m=>({role:m.role,content:String(m.text)}));
+  const project=projectForChat(chat);
   const r=await fetch('/api/sessions',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     credentials:'same-origin',
-    body:JSON.stringify({title:chat.title||'',messages})
+    body:JSON.stringify({
+      title:chat.title||'',
+      project_id:project?.remoteProjectId||null,
+      messages
+    })
   });
   if(r.status===401){ownerAuthReady=false;showOwnerLogin();throw new Error('auth requerida')}
   if(!r.ok)throw new Error('no se pudo crear la sesión remota');
@@ -916,7 +1046,7 @@ window.addEventListener('online',syncQueued);window.addEventListener('focus',syn
   normalizeWorkspace();
   const p=selectedProject();if(!p.chats.length)p.chats.push({id:uid('c'),title:'Nuevo chat',messages:[]});
   if(!workspace.selectedChatId)workspace.selectedChatId=p.chats[0].id;
-  await saveState();renderAll();await probeCore();if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalSessions();syncQueued();
+  await saveState();renderAll();await probeCore();if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();syncQueued();
 })();
 </script>
 </body>
