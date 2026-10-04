@@ -1,14 +1,14 @@
-"""Provider health: true half-open circuit breaker + per-provider backoff + quota.
+"""Provider health: half-open circuit breaker, backoff and quota state.
 
-Scope: router reliability only. This module never mutates the existing
-`provider_state` table and never rewrites `olivia/store.py`; it owns a new
-additive table (`provider_health`) inside the same SQLite database file
-(WAL). All state transitions are single-transaction, RLock-guarded, and safe
-under clock skew, day rollover and abandoned (cancelled) probes.
+`provider_health` is the single provider-reliability state table. It lives in
+the same SQLite database as the rest of the core, while this module owns its
+transitions. State changes are transaction-guarded and tolerate day rollover,
+clock skew and abandoned probes.
 """
 
 from __future__ import annotations
 
+import contextlib
 import random
 import re
 import sqlite3
@@ -294,7 +294,7 @@ class ProviderHealth:
                 self._exec("COMMIT")
                 return Admission(True, state, "ok", is_probe, 0.0, 0.0, daily + 1, int(daily_limit))
             except BaseException:
-                with _suppress():
+                with contextlib.suppress(Exception):
                     self._exec("ROLLBACK")
                 raise
 
@@ -348,7 +348,7 @@ class ProviderHealth:
                                  redact(detail, max_len=300), k, now, provider))
                 self._exec("COMMIT")
             except BaseException:
-                with _suppress():
+                with contextlib.suppress(Exception):
                     self._exec("ROLLBACK")
                 raise
             out = self.snapshot(provider)
@@ -392,10 +392,3 @@ class ProviderHealth:
             out[str(d["provider"])] = d
         return out
 
-
-class _suppress:
-    def __enter__(self) -> None:
-        return None
-
-    def __exit__(self, *exc: Any) -> bool:
-        return True
