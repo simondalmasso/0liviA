@@ -45,49 +45,46 @@ button.voice-launch{display:inline-flex;align-items:center;gap:9px;background:li
 button:disabled{opacity:.45;cursor:default}
 button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
-/* Full-screen Live Voice: dark field + luminous cyan/blue/violet/pink orb */
+/* Full-screen Live Voice: static UI; only the ring reacts to real audio energy. */
 #voiceLive{position:fixed;inset:0;z-index:1000;display:none;overflow:hidden;background:
-  radial-gradient(circle at 50% 44%,rgba(57,86,166,.18),transparent 26rem),
-  radial-gradient(circle at 50% 10%,rgba(58,69,123,.17),transparent 32rem),
-  #070a12}
+  radial-gradient(circle at 50% 44%,rgba(0,255,235,.055),transparent 24rem),
+  #020706}
 #voiceLive.active{display:grid;grid-template-rows:auto 1fr auto}
-.voice-top{display:flex;justify-content:space-between;align-items:center;padding:max(18px,env(safe-area-inset-top)) 22px 12px}
-.voice-name{font-size:14px;color:#c8d0df;letter-spacing:.01em}
-.icon-btn{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;padding:0;background:rgba(255,255,255,.07);backdrop-filter:blur(12px)}
-.voice-stage{position:relative;display:grid;place-items:center;padding:24px}
-.orb-wrap{position:relative;width:min(58vw,360px);aspect-ratio:1;display:grid;place-items:center;filter:saturate(1.08)}
-.orb-glow{position:absolute;inset:5%;border-radius:50%;background:conic-gradient(from 220deg,var(--pink),#a45fff,var(--blue),var(--cyan),#d3fff8,#6ea8ff,var(--pink));filter:blur(34px);opacity:.42;animation:floatGlow 5.8s ease-in-out infinite}
-.orb{position:relative;width:78%;aspect-ratio:1;border-radius:50%;background:
-  radial-gradient(circle at 38% 30%,rgba(255,255,255,.78),transparent 10%),
-  radial-gradient(circle at 54% 58%,rgba(113,240,255,.96),transparent 22%),
-  radial-gradient(circle at 70% 36%,rgba(107,112,255,.98),transparent 28%),
-  radial-gradient(circle at 30% 70%,rgba(255,87,203,.86),transparent 29%),
-  conic-gradient(from 210deg,#ff64d2,#865fff,#5e86ff,#73ecff,#f8ffff,#70d8ff,#8b68ff,#ff64d2);
-  box-shadow:0 0 82px rgba(95,135,255,.24),inset 0 0 50px rgba(255,255,255,.20);
-  animation:orbBreath 4.4s ease-in-out infinite;
-  transform:translateZ(0)}
-.orb:after{content:"";position:absolute;inset:7%;border-radius:50%;background:radial-gradient(circle at 50% 45%,transparent 20%,rgba(5,10,22,.10) 68%,rgba(0,0,0,.34) 100%);mix-blend-mode:multiply}
-#voiceLive[data-state="listening"] .orb{animation-duration:1.8s}
-#voiceLive[data-state="thinking"] .orb{animation-duration:1.1s;filter:hue-rotate(18deg)}
-#voiceLive[data-state="speaking"] .orb{animation-duration:.86s;filter:saturate(1.18)}
-.voice-copy{position:absolute;left:50%;transform:translateX(-50%);bottom:20%;width:min(86vw,520px);text-align:center;color:#aeb7c9;font-size:14px}
-.voice-copy strong{display:block;color:#f5f7fb;font-size:17px;font-weight:600;margin-bottom:4px}
-.voice-bottom{padding:12px 18px max(24px,env(safe-area-inset-bottom));display:flex;justify-content:center}
-.voice-controls{display:flex;gap:12px;align-items:center;padding:9px;border:1px solid rgba(255,255,255,.10);border-radius:999px;background:rgba(15,21,34,.80);backdrop-filter:blur(20px);box-shadow:0 18px 70px rgba(0,0,0,.38)}
-.voice-controls .icon-btn{width:52px;height:52px}
-.voice-controls .main-mic{width:62px;height:62px;background:#eef2f8;color:#101827;border-color:transparent}
-.voice-controls svg,.voice-top svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-@keyframes orbBreath{0%,100%{transform:scale(.97) rotate(-2deg)}50%{transform:scale(1.035) rotate(2deg)}}
-@keyframes floatGlow{0%,100%{transform:scale(.94);opacity:.34}50%{transform:scale(1.06);opacity:.53}}
+.voice-top{display:flex;justify-content:space-between;align-items:center;padding:max(18px,env(safe-area-inset-top)) 24px 8px}
+.voice-name{font-size:13px;color:#78b7b3;letter-spacing:.16em;text-transform:uppercase}
+.icon-btn{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;padding:0;background:rgba(0,28,27,.72);border:1px solid rgba(0,255,235,.32)}
+.voice-stage{position:relative;display:grid;place-items:center;padding:16px}
+.orb-wrap{position:relative;width:min(72vw,520px);aspect-ratio:1;display:grid;place-items:center}
+.orb-glow{position:absolute;inset:9%;border-radius:50%;background:transparent;box-shadow:
+  0 0 56px rgba(0,255,235,.17),
+  0 0 110px rgba(0,255,235,.08);
+  opacity:1}
+.orb{position:relative;width:74%;aspect-ratio:1;border-radius:50%;background:rgba(0,20,18,.18);
+  border:3px solid #19fff0;
+  box-shadow:
+    0 0 7px #19fff0,
+    0 0 18px rgba(25,255,240,.72),
+    0 0 46px rgba(25,255,240,.22),
+    inset 0 0 18px rgba(25,255,240,.12);
+  transform:scale(var(--voice-scale,1));
+  will-change:transform,box-shadow;
+}
+.voice-copy{position:absolute;left:50%;transform:translateX(-50%);bottom:12%;width:min(88vw,560px);text-align:center;color:#58a7a2;font-size:14px}
+.voice-copy strong{display:block;color:#7ffdf4;font-size:17px;font-weight:500;margin-bottom:5px}
+.voice-bottom{padding:8px 18px max(26px,env(safe-area-inset-bottom));display:flex;justify-content:center}
+.voice-controls{display:flex;gap:18px;align-items:center;background:transparent;border:0;padding:0}
+.voice-controls .icon-btn{width:58px;height:58px}
+.voice-controls .main-mic{width:68px;height:68px;background:rgba(0,36,34,.82);color:#20fff0;border:1px solid rgba(32,255,240,.68)}
+.voice-controls .end-call{color:#ff6477;border-color:rgba(255,100,119,.52);background:rgba(48,7,12,.78)}
+.voice-controls svg,.voice-top svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:620px){
   .shell{padding:18px 12px 12px}
   .row{flex-wrap:wrap}
   .row input{flex-basis:100%}
   #log{min-height:54svh;border-radius:22px}
-  .orb-wrap{width:min(78vw,340px)}
+  .orb-wrap{width:min(90vw,460px)}
   .voice-copy{bottom:18%}
 }
-@media(prefers-reduced-motion:reduce){.orb,.orb-glow{animation:none}}
 </style>
 </head>
 <body>
@@ -140,13 +137,10 @@ button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8
 
   <div class="voice-bottom">
     <div class="voice-controls">
-      <button id="voiceMute" class="icon-btn" type="button" aria-label="Silenciar micrófono">
-        <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v5M15 9V6a3 3 0 0 0-5.6-1.5M5 11a7 7 0 0 0 11.2 5.6M12 18v3M9 21h6M3 3l18 18"/></svg>
-      </button>
-      <button id="voiceMain" class="icon-btn main-mic" type="button" aria-label="Activar micrófono">
+      <button id="voiceMain" class="icon-btn main-mic" type="button" aria-label="Activar o silenciar micrófono">
         <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>
       </button>
-      <button id="voiceEnd" class="icon-btn" type="button" aria-label="Finalizar Live Voice">
+      <button id="voiceEnd" class="icon-btn end-call" type="button" aria-label="Finalizar Live Voice">
         <svg viewBox="0 0 24 24"><path d="M5 15c4-4 10-4 14 0"/><path d="M8 13l-2-3M16 13l2-3"/></svg>
       </button>
     </div>
@@ -271,54 +265,111 @@ document.querySelector('form').onsubmit=async e=>{
   }
 };
 
+let voiceAudioContext=null, voiceAnalyser=null, voiceSource=null, voiceRaf=0, voiceMuted=false;
+const voiceOrb=document.querySelector('.orb');
+
 function setVoiceState(state,headline,copy){
   voiceLive.dataset.state=state;
   document.querySelector('#voiceHeadline').textContent=headline;
   voiceStatus.textContent=copy;
 }
+
+function setOrbEnergy(raw){
+  const e=Math.max(0,Math.min(1,raw));
+  const scale=1+(e*0.105);
+  voiceOrb.style.setProperty('--voice-scale',scale.toFixed(4));
+  const glow=18+Math.round(e*46);
+  const soft=46+Math.round(e*54);
+  voiceOrb.style.boxShadow=
+    '0 0 7px #19fff0,0 0 '+glow+'px rgba(25,255,240,.78),0 0 '+soft+'px rgba(25,255,240,.26),inset 0 0 18px rgba(25,255,240,.12)';
+}
+
+function startVoiceMeter(stream){
+  stopVoiceMeter(false);
+  voiceAudioContext=new (window.AudioContext||window.webkitAudioContext)();
+  voiceAnalyser=voiceAudioContext.createAnalyser();
+  voiceAnalyser.fftSize=512;
+  voiceAnalyser.smoothingTimeConstant=.72;
+  voiceSource=voiceAudioContext.createMediaStreamSource(stream);
+  voiceSource.connect(voiceAnalyser);
+  const data=new Uint8Array(voiceAnalyser.fftSize);
+  const tick=()=>{
+    if(!voiceAnalyser||!voiceStream)return;
+    voiceAnalyser.getByteTimeDomainData(data);
+    let sum=0;
+    for(let i=0;i<data.length;i++){
+      const x=(data[i]-128)/128;
+      sum+=x*x;
+    }
+    const rms=Math.sqrt(sum/data.length);
+    const energy=Math.min(1,Math.max(0,(rms-.012)*8.5));
+    setOrbEnergy(voiceMuted?0:energy);
+    voiceRaf=requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function stopVoiceMeter(reset=true){
+  if(voiceRaf)cancelAnimationFrame(voiceRaf);
+  voiceRaf=0;
+  try{voiceSource?.disconnect()}catch(e){}
+  try{voiceAnalyser?.disconnect()}catch(e){}
+  if(voiceAudioContext){
+    voiceAudioContext.close().catch(()=>{});
+  }
+  voiceSource=null;voiceAnalyser=null;voiceAudioContext=null;
+  if(reset)setOrbEnergy(0);
+}
+
 function stopLocalMic(){
+  stopVoiceMeter();
   if(voiceStream){
     voiceStream.getTracks().forEach(t=>t.stop());
     voiceStream=null;
   }
   voiceMuted=false;
 }
+
 function closeVoice(){
   stopLocalMic();
   voiceLive.classList.remove('active');
   voiceLive.setAttribute('aria-hidden','true');
-  setVoiceState('idle','Live Voice','Listo para hablar cuando la conexión de voz esté disponible.');
+  setVoiceState('idle','Live Voice','Listo.');
 }
+
 document.querySelector('#openVoice').onclick=()=>{
   voiceLive.classList.add('active');
   voiceLive.setAttribute('aria-hidden','false');
-  setVoiceState('idle','Live Voice','Pantalla completa · es-AR');
+  setVoiceState('idle','Live Voice','Tocá el micrófono para empezar.');
+  setOrbEnergy(0);
 };
 document.querySelector('#closeVoice').onclick=closeVoice;
 document.querySelector('#voiceEnd').onclick=closeVoice;
 
 document.querySelector('#voiceMain').onclick=async()=>{
-  if(voiceStream){
-    setVoiceState('listening','Te escucho','Micrófono activo · es-AR');
+  if(!voiceStream){
+    try{
+      voiceStream=await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+      });
+      voiceMuted=false;
+      voiceStream.getAudioTracks().forEach(t=>t.enabled=true);
+      startVoiceMeter(voiceStream);
+      setVoiceState('listening','Te escucho','Micrófono activo · es-AR');
+    }catch(e){
+      setVoiceState('idle','Micrófono bloqueado','Dale permiso al navegador para usar Live Voice.');
+    }
     return;
   }
-  try{
-    voiceStream=await navigator.mediaDevices.getUserMedia({audio:true});
-    setVoiceState('listening','Te escucho','Micrófono activo · es-AR');
-  }catch(e){
-    setVoiceState('idle','Micrófono bloqueado','Dale permiso al navegador para usar Live Voice.');
-  }
-};
-document.querySelector('#voiceMute').onclick=()=>{
-  if(!voiceStream)return;
   voiceMuted=!voiceMuted;
   voiceStream.getAudioTracks().forEach(t=>t.enabled=!voiceMuted);
+  setOrbEnergy(0);
   setVoiceState(
     voiceMuted?'idle':'listening',
-    voiceMuted?'Micrófono silenciado':'Te escucho',
+    voiceMuted?'Silenciado':'Te escucho',
     voiceMuted?'Tocá el micrófono para volver':'Micrófono activo · es-AR'
   );
-};
+}
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&voiceLive.classList.contains('active'))closeVoice();
 });
