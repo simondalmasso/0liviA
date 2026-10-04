@@ -20,6 +20,7 @@ class CodingWorkerError(RuntimeError):
 class CodingJobRequest:
     task: str
     base_ref: str
+    mode: str = "implement"
     publish_branch: bool = False
 
 
@@ -65,6 +66,8 @@ class GitHubActionsCodingWorker:
     def validate_request(request: CodingJobRequest) -> None:
         if not request.task.strip() or len(request.task) > 12_000:
             raise ValueError("task must be 1..12000 characters")
+        if request.mode not in {"implement", "repair"}:
+            raise ValueError("mode must be implement or repair")
         if (
             not _REF.fullmatch(request.base_ref)
             or ".." in request.base_ref
@@ -85,6 +88,7 @@ class GitHubActionsCodingWorker:
                 "olivia_job_id": job_id,
                 "task": request.task,
                 "base_ref": request.base_ref,
+                "mode": request.mode,
                 "publish_branch": "true" if request.publish_branch else "false",
             },
         }
