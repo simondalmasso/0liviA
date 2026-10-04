@@ -44,8 +44,9 @@ def test_production_bootstrap_requires_immutable_ref_and_hides_gateway_token():
     assert 'ALLOW_MUTABLE_REF="${ALLOW_MUTABLE_REF:-0}"' in bootstrap
     assert '[[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]' in bootstrap
     assert 'ALLOW_MUTABLE_REF' in bootstrap
-    assert 'OLIVIA_OWNER_PASSWORD_VERIFIER=${OWNER_VERIFIER}' in bootstrap
-    assert 'OWNER_PASSWORD=${OWNER_PASSWORD}' in bootstrap
+    assert 'OLIVIA_OWNER_PASSWORD_VERIFIER=${OWNER_VERIFIER}' not in bootstrap
+    assert 'OWNER_PASSWORD=${OWNER_PASSWORD}' not in bootstrap
+    assert 'REGISTRATION=first-run' in bootstrap
     assert 'TOKEN=${TOKEN}' not in bootstrap.split('cat > "${STATE_ROOT}/bootstrap-info" <<EOF', 1)[1]
     assert 'chmod 0600 "${STATE_ROOT}/bootstrap-info"' in bootstrap
 
