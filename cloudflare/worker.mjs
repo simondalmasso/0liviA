@@ -509,6 +509,7 @@ export default {
           model: p.model,
           available: p.available,
           cost_mode: p.cost_mode,
+          eligibility: p.eligibility || "eligible",
         })),
         max_calls_per_utc_day: MAX_CALLS_PER_UTC_DAY,
         cap_scope: "web_reads_and_cloudflare_fallback_attempts",
