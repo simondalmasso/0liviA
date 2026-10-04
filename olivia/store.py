@@ -36,9 +36,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
-    ON sessions(project_id, updated_at DESC);
-
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -153,6 +150,10 @@ class Store:
             }
             if "project_id" not in columns:
                 self._conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT")
+            self._conn.execute(
+                """CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
+                   ON sessions(project_id, updated_at DESC)"""
+            )
             now = time.time()
             self._conn.execute(
                 """INSERT OR IGNORE INTO projects(id,name,created_at,updated_at)
