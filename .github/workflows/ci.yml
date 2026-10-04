@@ -39,5 +39,7 @@ jobs:
           Path("/tmp/olivia-ui.js").write_text(scripts[0], encoding="utf-8")
           PY
           node --check /tmp/olivia-ui.js
+      - name: Check Cloudflare Worker syntax
+        run: node --check cloudflare/worker.mjs
       - name: Test
         run: pytest -q
