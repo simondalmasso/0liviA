@@ -1,6 +1,6 @@
 # Oracle deployment
 
-Target: Oracle Always Free A1 ARM64, 2 OCPU / 12 GB. This directory does not create paid resources.
+Primary target: Oracle Always Free A1 ARM64, 2 OCPU / 12 GB. The bootstrap also has a deliberately degraded `micro` profile for the existing 1 GB E2 fallback. This directory does not create paid resources.
 
 ## Runtime shape
 
@@ -37,3 +37,14 @@ Deploys are branch/commit based. Keep the previous checkout under a versioned re
 Production keeps `OLIVIA_HARD_ZERO_COST=1`. Provider entries are accepted only with `cost_mode=local` or `cost_mode=free_hard_cap`, where the upstream account/route has a verified hard boundary that cannot create a charge.
 
 An advertised free quota without a hard billing boundary is `free_unverified` and is blocked. When all verified-free lanes are unavailable or quota-exhausted, the expected behavior is **degraded/unavailable, USD 0 spend**.
+
+
+## Local inference runtime
+
+The bootstrap uses a pinned **llama.cpp** prebuilt instead of Ollama to keep the hot path small. The runtime binds only to loopback and exposes its OpenAI-compatible endpoint to 0liviA Core.
+
+Profiles:
+- `a1`: Qwen3 1.7B Q4_K_M, 4096-token context, up to 2 CPU threads.
+- `micro`: Qwen3 0.6B Q4_K_M, 1024-token context, 1 thread plus swap. This is only a temporary text fallback; it is not considered the final super-AI quality target.
+
+The model route is tagged `cost_mode=local`, so the hard-zero-cost router accepts it without an API key.

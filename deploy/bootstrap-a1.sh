@@ -1,41 +1,91 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 0liviA A1 bootstrap.
-# Hard rule: this script configures only a local inference lane and cannot spend API money.
+# 0liviA cloud bootstrap.
+# Recurring-cost invariant: local inference only. No metered API can be reached
+# through the generated provider configuration.
 
 REPO_URL="${REPO_URL:-https://github.com/simondalmasso/0liviA.git}"
 REF="${REF:-arch/gpt-synthesis-v1}"
 APP_ROOT="${APP_ROOT:-/opt/0liviA}"
-STATE_ROOT="${STATE_ROOT:-/var/lib/0livia}"
-ETC_ROOT="${ETC_ROOT:-/etc/0livia}"
-OLLAMA_VERSION="${OLLAMA_VERSION:-v0.35.1}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3:1.7b}"
+STATE_ROOT="${STATE_ROOT:-/var/lib/olivia}"
+ETC_ROOT="${ETC_ROOT:-/etc/olivia}"
+LLAMA_ROOT="${LLAMA_ROOT:-/opt/llama}"
+LLAMA_BUILD="${LLAMA_BUILD:-b11388}"
+MODEL_ROOT="${MODEL_ROOT:-${STATE_ROOT}/models}"
+MODEL_PROFILE="${MODEL_PROFILE:-auto}"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "run as root" >&2
   exit 2
 fi
 
+arch="$(uname -m)"
+case "${arch}" in
+  aarch64|arm64) llama_asset="llama-${LLAMA_BUILD}-bin-ubuntu-arm64.tar.gz" ;;
+  x86_64|amd64) llama_asset="llama-${LLAMA_BUILD}-bin-ubuntu-x64.tar.gz" ;;
+  *) echo "unsupported architecture: ${arch}" >&2; exit 2 ;;
+esac
+
+mem_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo)"
+cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc || echo 1)"
+if [[ "${MODEL_PROFILE}" == "auto" ]]; then
+  if (( mem_kb >= 5 * 1024 * 1024 )); then
+    MODEL_PROFILE="a1"
+  else
+    MODEL_PROFILE="micro"
+  fi
+fi
+
+case "${MODEL_PROFILE}" in
+  a1)
+    MODEL_NAME="Qwen3-1.7B-Q4_K_M.gguf"
+    MODEL_URL="https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf"
+    LLAMA_CTX=4096
+    LLAMA_THREADS="$(( cpu_count > 2 ? 2 : cpu_count ))"
+    ;;
+  micro)
+    MODEL_NAME="Qwen3-0.6B-Q4_K_M.gguf"
+    MODEL_URL="https://huggingface.co/lmstudio-community/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf"
+    LLAMA_CTX=1024
+    LLAMA_THREADS=1
+    ;;
+  *)
+    echo "unknown MODEL_PROFILE=${MODEL_PROFILE}" >&2
+    exit 2
+    ;;
+esac
+
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends   ca-certificates curl git jq python3 python3-pip python3-venv zstd caddy
+apt-get install -y --no-install-recommends   ca-certificates curl git python3 python3-pip python3-venv zstd caddy libgomp1
 
 if ! id olivia >/dev/null 2>&1; then
   useradd --system --home "${STATE_ROOT}" --shell /usr/sbin/nologin olivia
 fi
 
-install -d -o root -g root -m 0755 "${APP_ROOT}"
-install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}"
+install -d -o root -g root -m 0755 "${APP_ROOT}" "${LLAMA_ROOT}"
+install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}" "${MODEL_ROOT}"
 install -d -o root -g olivia -m 0750 "${ETC_ROOT}"
 
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+# The 1 GB micro fallback needs swap to survive model load. A1 does not.
+if (( mem_kb < 2 * 1024 * 1024 )) && ! swapon --show=NAME --noheadings | grep -q .; then
+  if [[ ! -f /swapfile ]]; then
+    fallocate -l 2G /swapfile
+    chmod 0600 /swapfile
+    mkswap /swapfile >/dev/null
+  fi
+  swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
 
-git clone --filter=blob:none --depth 1 --branch "${REF}" "${REPO_URL}" "$tmp/repo"
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT
+
+git clone --filter=blob:none --depth 1 --branch "${REF}" "${REPO_URL}" "${tmp}/repo"
 rm -rf "${APP_ROOT}/current"
 install -d -o root -g root -m 0755 "${APP_ROOT}/current"
-cp -a "$tmp/repo/." "${APP_ROOT}/current/"
+cp -a "${tmp}/repo/." "${APP_ROOT}/current/"
 rm -rf "${APP_ROOT}/current/.git"
 
 python3 -m venv "${APP_ROOT}/venv"
@@ -43,25 +93,30 @@ python3 -m venv "${APP_ROOT}/venv"
 "${APP_ROOT}/venv/bin/pip" install "${APP_ROOT}/current"
 
 install -o root -g root -m 0644   "${APP_ROOT}/current/deploy/0livia.service"   /etc/systemd/system/olivia.service
+install -o root -g root -m 0644   "${APP_ROOT}/current/deploy/llama-local.service"   /etc/systemd/system/llama-local.service
 
-# Pinned official Ollama installer. This is the only local inference runtime.
-curl -fL   "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/install.sh"   -o "$tmp/ollama-install.sh"
-chmod 0755 "$tmp/ollama-install.sh"
-OLLAMA_VERSION="${OLLAMA_VERSION}" "$tmp/ollama-install.sh"
+# llama.cpp prebuilt is ~tens of MB, not a multi-GB runtime.
+curl -fL --retry 3 --retry-delay 2   "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_BUILD}/${llama_asset}"   -o "${tmp}/llama.tar.gz"
+rm -rf "${LLAMA_ROOT:?}/"*
+tar -xzf "${tmp}/llama.tar.gz" -C "${LLAMA_ROOT}" --strip-components=1
+test -x "${LLAMA_ROOT}/llama-server"
 
-systemctl enable --now ollama
-for _ in $(seq 1 60); do
-  if curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
-curl -fsS http://127.0.0.1:11434/api/version >/dev/null
-
-# Pull one small CPU-capable model. If this fails, text UI still boots but health is degraded.
-if ! ollama pull "${OLLAMA_MODEL}"; then
-  echo "WARNING: local model pull failed: ${OLLAMA_MODEL}" >&2
+MODEL_PATH="${MODEL_ROOT}/${MODEL_NAME}"
+if [[ ! -s "${MODEL_PATH}" ]]; then
+  curl -fL --retry 3 --retry-delay 3 "${MODEL_URL}" -o "${MODEL_PATH}.part"
+  test "$(stat -c %s "${MODEL_PATH}.part")" -gt 100000000
+  mv "${MODEL_PATH}.part" "${MODEL_PATH}"
 fi
+chown olivia:olivia "${MODEL_PATH}"
+chmod 0600 "${MODEL_PATH}"
+
+cat > "${ETC_ROOT}/llama.env" <<EOF
+LLAMA_MODEL_PATH=${MODEL_PATH}
+LLAMA_CTX=${LLAMA_CTX}
+LLAMA_THREADS=${LLAMA_THREADS}
+EOF
+chown root:olivia "${ETC_ROOT}/llama.env"
+chmod 0640 "${ETC_ROOT}/llama.env"
 
 TOKEN="$(python3 - <<'PY'
 import secrets
@@ -76,18 +131,27 @@ OLIVIA_PORT=8080
 OLIVIA_HARD_ZERO_COST=1
 OLIVIA_GATEWAY_TOKEN=${TOKEN}
 OLIVIA_MAX_HISTORY=24
-OLIVIA_TTFT_TIMEOUT_S=30
+OLIVIA_TTFT_TIMEOUT_S=45
 OLIVIA_STREAM_IDLE_TIMEOUT_S=120
 OLIVIA_MAX_PROVIDER_ATTEMPTS=1
-OLIVIA_PROVIDERS_JSON=[{"name":"local-qwen","base_url":"http://127.0.0.1:11434/v1","model":"${OLLAMA_MODEL}","api_key_env":"","priority":10,"daily_limit":0,"cost_mode":"local"}]
+OLIVIA_PROVIDERS_JSON=[{"name":"local-qwen","base_url":"http://127.0.0.1:11434/v1","model":"local-qwen","api_key_env":"","priority":10,"daily_limit":0,"cost_mode":"local"}]
 EOF
 chown root:olivia "${ETC_ROOT}/olivia.env"
 chmod 0640 "${ETC_ROOT}/olivia.env"
 
 systemctl daemon-reload
+systemctl enable --now llama-local
+for _ in $(seq 1 120); do
+  if curl -fsS http://127.0.0.1:11434/health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+curl -fsS http://127.0.0.1:11434/health >/dev/null
+
 systemctl enable --now olivia
 
-# Direct-to-Oracle HTTPS; Cloudflare is not in the runtime path.
+# Direct-to-Oracle HTTPS. Cloudflare remains outside chat/voice/memory.
 PUBLIC_IP=""
 for _ in $(seq 1 30); do
   PUBLIC_IP="$(curl -4fsS --max-time 4 https://api.ipify.org 2>/dev/null || true)"
@@ -112,7 +176,9 @@ systemctl restart caddy
 cat > "${STATE_ROOT}/bootstrap-info" <<EOF
 URL=https://${HOST}
 TOKEN=${TOKEN}
-MODEL=${OLLAMA_MODEL}
+MODEL_PROFILE=${MODEL_PROFILE}
+MODEL=${MODEL_NAME}
+RUNTIME=llama.cpp-${LLAMA_BUILD}
 COST_MODE=local
 EOF
 chown root:adm "${STATE_ROOT}/bootstrap-info"
