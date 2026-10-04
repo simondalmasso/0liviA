@@ -42,6 +42,26 @@ class FakeCodingWorker:
         }
 
 
+class FakeWebSearch:
+    configured = True
+
+    def __init__(self):
+        self.queries = []
+
+    async def search(self, query, *, limit=5):
+        self.queries.append((query, limit))
+        return {
+            "items": [
+                {
+                    "url": "https://example.com/result",
+                    "title": "Resultado",
+                    "description": "UNIQUE_SEARCH_FACT_88",
+                }
+            ],
+            "metadata": {"query": query, "provider": "fake"},
+        }
+
+
 class FakeWebReader:
     def __init__(self, text="UNIQUE_WEB_PAGE_FACT_77"):
         self.text = text
@@ -693,3 +713,53 @@ async def test_read_command_uses_ephemeral_web_context_without_persisting_page(a
     assert "UNIQUE_WEB_PAGE_FACT_77" in repr(router.calls[-1])
     assert "UNIQUE_WEB_PAGE_FACT_77" not in repr(store.recent_messages(session_id))
     assert "/read https://example.com resumí la fuente" in repr(store.recent_messages(session_id))
+
+
+@pytest.mark.asyncio
+async def test_search_command_is_fail_closed_without_configured_adapter(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "search-unavailable.sqlite3")
+    router = FakeRouter(parts=("MODEL_SHOULD_NOT_RUN",))
+    agent = Agent(store, router, settings)
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", web_search=None)
+    )
+    session_id = store.create_session("search")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/search noticias IA"},
+        headers=auth(),
+    )
+    body = await response.text()
+    assert "búsqueda web no está habilitada" in body
+    assert router.calls == []
+
+
+@pytest.mark.asyncio
+async def test_search_command_uses_ephemeral_untrusted_context(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "search.sqlite3")
+    router = FakeRouter(parts=("Encontré el resultado.",))
+    agent = Agent(store, router, settings)
+    search = FakeWebSearch()
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="test-token",
+            web_search=search,
+        )
+    )
+    session_id = store.create_session("search")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/search novedades agentes"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    assert "Encontré el resultado." in await response.text()
+    assert search.queries == [("novedades agentes", 5)]
+    assert "UNIQUE_SEARCH_FACT_88" in repr(router.calls[-1])
+    assert "UNIQUE_SEARCH_FACT_88" not in repr(store.recent_messages(session_id))
