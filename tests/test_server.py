@@ -289,12 +289,13 @@ async def test_projects_and_chats_exist_without_visual_clutter(client):
 async def test_reference_inspired_violet_blue_cyan_visual_system(client):
     response = await client.get("/")
     html = await response.text()
-    for token in ("--violet:", "--blue:", "--cyan:"):
+    for token in ("--violet:", "--magenta:", "--blue:", "--cyan:"):
         assert token in html
     assert "linear-gradient(180deg" in html
     assert "radial-gradient" in html
     assert ".composer{" in html
     assert "#voiceLive{" in html
+    assert ".voice-stage::before" in html
     assert ".drawer{" in html
 
 
