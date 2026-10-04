@@ -111,8 +111,9 @@ class Gateway:
         self._turns_lock = asyncio.Lock()
         self._login_failures: dict[str, list[float]] = {}
 
-    def _owner_cookie_value(self, expires_at: int) -> str:
-        payload = f"v2:{expires_at}"
+    def _owner_cookie_value(self, expires_at: int, device_id: str | None = None) -> str:
+        device = device_id or "-"
+        payload = f"v3:{expires_at}:{device}"
         signature = hmac.new(
             self.auth_token.encode("utf-8"),
             payload.encode("utf-8"),
@@ -124,18 +125,23 @@ class Gateway:
         if not self.auth_token or not value:
             return False
         try:
-            version, expires_raw, signature = value.split(":", 2)
+            version, expires_raw, device_id, signature = value.split(":", 3)
             expires_at = int(expires_raw)
         except (ValueError, TypeError):
             return False
-        if version != "v2" or expires_at <= int(time.time()):
+        if version != "v3" or expires_at <= int(time.time()):
             return False
+        payload = f"{version}:{expires_at}:{device_id}"
         expected = hmac.new(
             self.auth_token.encode("utf-8"),
-            f"{version}:{expires_at}".encode("utf-8"),
+            payload.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
-        return hmac.compare_digest(signature, expected)
+        if not hmac.compare_digest(signature, expected):
+            return False
+        if device_id != "-" and not self.agent.store.trusted_device_active(device_id):
+            return False
+        return True
 
     def _authorized(self, request: web.Request) -> bool:
         if not self.auth_token:
@@ -201,6 +207,7 @@ class Gateway:
         email = payload.get("email")
         password = payload.get("password")
         remember = payload.get("remember", False)
+        device_name = payload.get("device_name", "Este dispositivo")
         if (
             not isinstance(email, str)
             or not email.strip()
@@ -209,6 +216,8 @@ class Gateway:
             or not password
             or len(password) > 512
             or not isinstance(remember, bool)
+            or not isinstance(device_name, str)
+            or len(device_name) > 120
         ):
             self._record_login_failure(request)
             return _json({"error": "invalid credentials"}, 400)
@@ -223,10 +232,17 @@ class Gateway:
         self._clear_login_failures(request)
         ttl_s = OWNER_REMEMBER_TTL_S if remember else OWNER_SESSION_TTL_S
         expires_at = int(time.time()) + ttl_s
+        device_id = None
+        if remember:
+            device_id = self.agent.store.create_trusted_device(
+                device_name.strip() or "Este dispositivo",
+                expires_at=expires_at,
+            )
         response = _json({
             "authenticated": True,
             "email": self.owner_email,
             "remembered": remember,
+            "device_id": device_id,
             "expires_at": expires_at,
         })
         cookie_kwargs = {
@@ -239,7 +255,7 @@ class Gateway:
             cookie_kwargs["max_age"] = OWNER_REMEMBER_TTL_S
         response.set_cookie(
             OWNER_COOKIE,
-            self._owner_cookie_value(expires_at),
+            self._owner_cookie_value(expires_at, device_id),
             **cookie_kwargs,
         )
         return response
@@ -248,6 +264,21 @@ class Gateway:
         response = _json({"authenticated": False})
         response.del_cookie(OWNER_COOKIE, path="/")
         return response
+
+    async def list_devices(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        devices = self.agent.store.list_trusted_devices()
+        return _json({"devices": devices})
+
+    async def revoke_device(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        device_id = request.match_info["device_id"]
+        revoked = self.agent.store.delete_trusted_device(device_id) > 0
+        return _json({"revoked": revoked})
 
     async def _read_json(self, request: web.Request) -> dict[str, Any]:
         content_length = request.headers.get("Content-Length")
@@ -1137,6 +1168,8 @@ def create_app(
     app.router.add_get("/healthz", gateway.healthz)
     app.router.add_post("/api/auth/login", gateway.login)
     app.router.add_post("/api/auth/logout", gateway.logout)
+    app.router.add_get("/api/auth/devices", gateway.list_devices)
+    app.router.add_delete("/api/auth/devices/{device_id}", gateway.revoke_device)
     app.router.add_get("/api/workspace", gateway.workspace)
     app.router.add_post("/api/projects", gateway.create_project)
     app.router.add_post("/api/library", gateway.create_library_item)
