@@ -117,3 +117,26 @@ def test_zero_cost_provider_mode_is_fail_closed_when_omitted(tmp_path):
     assert pool.zero_cost_blocked == [
         {"provider": "legacy", "cost_mode": "free_unverified"}
     ]
+
+
+def test_local_provider_allows_no_api_key(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        hard_zero_cost=True,
+        providers=(
+            {
+                "name": "ollama-local",
+                "base_url": "http://127.0.0.1:11434/v1",
+                "model": "qwen3:1.7b",
+                "cost_mode": "local",
+                "priority": 1,
+            },
+        ),
+    )
+    store = Store(tmp_path / "db.sqlite3")
+    pool = ProviderPool.from_settings(settings, store)
+    assert len(pool.providers) == 1
+    provider = pool.providers[0]
+    assert provider.name == "ollama-local"
+    assert provider.spec.api_key_env == ""
+    assert provider.cost_mode == "local"
