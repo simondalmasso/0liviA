@@ -52,7 +52,7 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "--read AGENTS.md" in workflow
     assert "--read docs/ARCHITECTURE.md" in workflow
     assert "repair_pass" in workflow
-    assert "MAX_AGENT_PASSES=2" in workflow
+    assert 'MAX_AGENT_PASSES: "2"' in workflow
     assert 'if ! git diff --quiet || ! git diff --cached --quiet; then' in workflow
     assert 'git add -A' in workflow
     assert 'git commit -m "agent: persist verified coding result"' in workflow
