@@ -58,3 +58,14 @@ def test_env_examples_document_owner_cookie_auth_without_plaintext_password():
         content = path.read_text(encoding="utf-8")
         assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" in content
         assert "OLIVIA_OWNER_PASSWORD=" not in content
+
+
+def test_bootstrap_verifies_llama_and_model_sha256_before_use():
+    bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
+    assert "LLAMA_SHA256=" in bootstrap
+    assert "MODEL_SHA256=" in bootstrap
+    assert bootstrap.count("sha256sum -c -") >= 2
+    assert "9f454c895ab49d4173cfb3995a39e4f8fe21b364787db8e1ca2778ee7f39aa36" in bootstrap
+    assert "43bfc230e612d20efd483be7d1ce98ff5f7a0ec6e82a7ec959586b3313ee239f" in bootstrap
+    assert "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897" in bootstrap
+    assert "cd47557a67d7e8f2891d98b5e1dbf2988544569fdf4f1bdb30e92b71aa61b548" in bootstrap
