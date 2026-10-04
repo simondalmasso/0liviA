@@ -16,6 +16,7 @@ def test_coding_worker_validates_fixed_repo_and_refs(monkeypatch):
         CodingJobRequest(
             task="Fix the failing tests.",
             base_ref="arch/gpt-synthesis-v1",
+            mode="repair",
             publish_branch=False,
         )
     )
@@ -23,6 +24,8 @@ def test_coding_worker_validates_fixed_repo_and_refs(monkeypatch):
         worker.validate_request(CodingJobRequest(task="", base_ref="main"))
     with pytest.raises(ValueError):
         worker.validate_request(CodingJobRequest(task="x", base_ref="../main"))
+    with pytest.raises(ValueError):
+        worker.validate_request(CodingJobRequest(task="x", base_ref="main", mode="unknown"))
 
 
 def test_coding_worker_headers_never_include_token_name(monkeypatch):
@@ -45,6 +48,11 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "${{ inputs.base_ref }}..." not in workflow
     assert "git check-ref-format --allow-onelevel \"$BASE_REF\"" in workflow
     assert "pytest -q" in workflow
+    assert "MODE: ${{ inputs.mode }}" in workflow
+    assert "--read AGENTS.md" in workflow
+    assert "--read docs/ARCHITECTURE.md" in workflow
+    assert "repair_pass" in workflow
+    assert "MAX_AGENT_PASSES=2" in workflow
     assert 'if ! git diff --quiet || ! git diff --cached --quiet; then' in workflow
     assert 'git add -A' in workflow
     assert 'git commit -m "agent: persist verified coding result"' in workflow
