@@ -77,3 +77,35 @@ def test_existing_sessions_are_migrated_into_default_project(tmp_path: Path):
     row = next(item for item in store.list_sessions() if item["id"] == "legacy")
     assert row["project_id"]
     assert store.project_exists(row["project_id"])
+
+
+def test_store_redacts_secrets_at_durable_boundary(tmp_path: Path):
+    store = Store(tmp_path / "dlp-boundary.sqlite3")
+    secret = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+
+    project_id = store.create_project(f"Proyecto {secret}")
+    session_id = store.create_session(f"Sesión {secret}", project_id=project_id)
+    store.append_message(session_id, "user", f"mensaje {secret}")
+    store.create_library_item("Clave", f"valor {secret}")
+    store.promote_memory("global", "token", f"memoria {secret}", source="test")
+    job_id = store.create_job("code")
+    store.checkpoint_job(job_id, "failed", {"error": f"falló con {secret}"})
+    store.record_event("demo", {"detail": f"evento {secret}"}, session_id=session_id)
+
+    rendered = repr({
+        "projects": store.list_projects(),
+        "sessions": store.list_sessions(),
+        "messages": store.recent_messages(session_id),
+        "library": store.list_library_items(),
+        "memories": store.list_memories(),
+        "job": store.get_job(job_id),
+    })
+    assert secret not in rendered
+    assert "[REDACTED_SECRET]" in rendered
+
+    with store._lock:
+        event_payloads = [
+            row["payload_json"]
+            for row in store._conn.execute("SELECT payload_json FROM events").fetchall()
+        ]
+    assert secret not in repr(event_payloads)
