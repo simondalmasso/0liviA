@@ -39,6 +39,7 @@ class Settings:
     circuit_base_s: int = 15
     circuit_max_s: int = 600
     max_history: int = 24
+    max_context_chars: int = 48_000
     providers: tuple[dict[str, Any], ...] = ()
     # --- router reliability (impl/deepseek-router-v1) ---
     circuit_half_open_probes: int = 1      # probes allowed while HALF_OPEN
@@ -69,7 +70,8 @@ class Settings:
             ttft_timeout_s=_env_float("OLIVIA_TTFT_TIMEOUT_S", 12.0, 0.05, 300.0),
             circuit_base_s=_env_int("OLIVIA_CIRCUIT_BASE_S", 15, 1, 3600),
             circuit_max_s=_env_int("OLIVIA_CIRCUIT_MAX_S", 600, 1, 86400),
-            max_history=int(os.getenv("OLIVIA_MAX_HISTORY", "24")),
+            max_history=_env_int("OLIVIA_MAX_HISTORY", 24, 1, 200),
+            max_context_chars=_env_int("OLIVIA_MAX_CONTEXT_CHARS", 48_000, 16_000, 250_000),
             providers=tuple(parsed),
             circuit_half_open_probes=_env_int("OLIVIA_CIRCUIT_HALF_OPEN_PROBES", 1, 1, 8),
             circuit_jitter_ratio=_env_float("OLIVIA_CIRCUIT_JITTER", 0.2, 0.0, 1.0),
