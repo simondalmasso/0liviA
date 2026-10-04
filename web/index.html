@@ -8,40 +8,36 @@
 <style>
 :root{
   color-scheme:dark;
-  --bg:#070a12;
-  --panel:#0d1321;
-  --panel2:#121a2c;
-  --line:rgba(255,255,255,.10);
-  --text:#f5f7fb;
-  --muted:#919caf;
-  --cyan:#69e7ff;
-  --blue:#6d87ff;
-  --violet:#8a66ff;
-  --pink:#ff66d1;
+  --bg:#020706;
+  --panel:#06100f;
+  --panel2:#081816;
+  --line:rgba(25,255,240,.18);
+  --text:#e8fffc;
+  --muted:#79a6a1;
+  --cyan:#19fff0;
+  --danger:#ff6477;
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:
-  radial-gradient(circle at 50% -10%,rgba(89,104,255,.16),transparent 34rem),
+  radial-gradient(circle at 50% 18%,rgba(0,255,235,.045),transparent 32rem),
   var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 body{min-height:100svh}
 button,input{font:inherit}
 button{cursor:pointer}
-.shell{width:min(900px,100%);min-height:100svh;margin:auto;padding:24px 18px 18px;display:grid;grid-template-rows:auto auto 1fr auto auto;gap:14px}
+.shell{width:min(980px,100%);min-height:100svh;margin:auto;padding:24px 18px 18px;display:grid;grid-template-rows:auto auto 1fr auto auto;gap:14px}
 header{display:flex;justify-content:space-between;align-items:center;gap:16px}
-.brand{font-size:20px;font-weight:670;letter-spacing:-.03em}
+.brand{font-size:18px;font-weight:560;letter-spacing:.14em}
 .meta{color:var(--muted);font-size:13px}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .hint{margin:0;color:var(--muted);font-size:13px}
-#log{min-height:52svh;padding:20px;border:1px solid var(--line);border-radius:26px;background:
-  linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.01)),
-  rgba(9,14,25,.72);backdrop-filter:blur(16px);white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 28px 90px rgba(0,0,0,.30)}
+#log{min-height:52svh;padding:20px;border:1px solid var(--line);border-radius:22px;background:rgba(2,12,11,.76);white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 20px 70px rgba(0,0,0,.24)}
 .row{display:flex;gap:10px}
-input{min-width:0;flex:1;border:1px solid var(--line);border-radius:18px;background:var(--panel);color:var(--text);padding:13px 15px;outline:none}
-input:focus{border-color:rgba(105,231,255,.48);box-shadow:0 0 0 3px rgba(105,231,255,.08)}
-button{border:1px solid var(--line);border-radius:18px;background:var(--panel2);color:var(--text);padding:12px 16px}
-button.primary{background:linear-gradient(135deg,#4562ff,#765cff);border-color:transparent}
-button.secondary{background:#182133}
-button.voice-launch{display:inline-flex;align-items:center;gap:9px;background:linear-gradient(135deg,rgba(105,231,255,.12),rgba(138,102,255,.16));border-color:rgba(123,150,255,.25)}
+input{min-width:0;flex:1;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--text);padding:13px 15px;outline:none}
+input:focus{border-color:rgba(25,255,240,.52);box-shadow:0 0 0 3px rgba(25,255,240,.07)}
+button{border:1px solid var(--line);border-radius:16px;background:var(--panel2);color:var(--text);padding:12px 16px}
+button.primary{background:#0acfc4;color:#00110f;border-color:#19fff0;font-weight:650}
+button.secondary{background:#071513}
+button.voice-launch{display:inline-flex;align-items:center;gap:9px;background:#061816;border-color:rgba(25,255,240,.32);color:#74fff6}
 button:disabled{opacity:.45;cursor:default}
 button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
@@ -49,12 +45,13 @@ button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8
 #voiceLive{position:fixed;inset:0;z-index:1000;display:none;overflow:hidden;background:
   radial-gradient(circle at 50% 44%,rgba(0,255,235,.055),transparent 24rem),
   #020706}
-#voiceLive.active{display:grid;grid-template-rows:auto 1fr auto}
+#voiceLive.active{display:grid;grid-template-rows:auto 1fr}
 .voice-top{display:flex;justify-content:space-between;align-items:center;padding:max(18px,env(safe-area-inset-top)) 24px 8px}
 .voice-name{font-size:13px;color:#78b7b3;letter-spacing:.16em;text-transform:uppercase}
 .icon-btn{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;padding:0;background:rgba(0,28,27,.72);border:1px solid rgba(0,255,235,.32)}
-.voice-stage{position:relative;display:grid;place-items:center;padding:16px}
-.orb-wrap{position:relative;width:min(78vw,620px);aspect-ratio:1;display:grid;place-items:center}
+.voice-main{min-height:0;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);gap:18px;padding:4px 22px 22px}
+.voice-stage{position:relative;min-height:0;display:grid;place-items:center;padding:10px 12px 92px}
+.orb-wrap{position:relative;width:min(62vw,680px);aspect-ratio:1;display:grid;place-items:center}
 .orb-glow{position:absolute;inset:9%;border-radius:50%;background:transparent;box-shadow:
   0 0 56px rgba(0,255,235,.17),
   0 0 110px rgba(0,255,235,.08);
@@ -66,21 +63,31 @@ button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8
 .voice-ring-line{fill:none;stroke:#19fff0;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;
   filter:drop-shadow(0 0 3px #19fff0) drop-shadow(0 0 9px rgba(25,255,240,.72))}
 
-.voice-copy{position:absolute;left:50%;transform:translateX(-50%);bottom:12%;width:min(88vw,560px);text-align:center;color:#58a7a2;font-size:14px}
+.voice-copy{position:absolute;left:50%;transform:translateX(-50%);bottom:86px;width:min(88%,560px);text-align:center;color:#58a7a2;font-size:14px}
 .voice-copy strong{display:block;color:#7ffdf4;font-size:17px;font-weight:500;margin-bottom:5px}
-.voice-bottom{padding:8px 18px max(26px,env(safe-area-inset-bottom));display:flex;justify-content:center}
+.voice-bottom{position:absolute;left:0;right:0;bottom:18px;display:flex;justify-content:center}
 .voice-controls{display:flex;gap:18px;align-items:center;background:transparent;border:0;padding:0}
 .voice-controls .icon-btn{width:58px;height:58px}
 .voice-controls .main-mic{width:68px;height:68px;background:rgba(0,36,34,.82);color:#20fff0;border:1px solid rgba(32,255,240,.68)}
 .voice-controls .end-call{color:#ff6477;border-color:rgba(255,100,119,.52);background:rgba(48,7,12,.78)}
 .voice-controls svg,.voice-top svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.voice-chat{min-height:0;display:grid;grid-template-rows:1fr auto;gap:12px;padding:12px 0}
+.voice-transcript{min-height:0;overflow:auto;border:1px solid rgba(25,255,240,.18);border-radius:22px;background:rgba(1,12,11,.74);padding:18px;color:#cce8e5;white-space:pre-wrap;overflow-wrap:anywhere;scrollbar-width:thin}
+.voice-chat-form{display:flex;gap:8px}
+.voice-chat-form input{background:#04110f}
+.voice-chat-form button{width:48px;padding:0;display:grid;place-items:center;color:#19fff0;background:#041412}
+.voice-chat-form svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:620px){
   .shell{padding:18px 12px 12px}
   .row{flex-wrap:wrap}
   .row input{flex-basis:100%}
   #log{min-height:54svh;border-radius:22px}
-  .orb-wrap{width:min(94vw,560px)}
-  .voice-copy{bottom:18%}
+  .voice-main{grid-template-columns:1fr;grid-template-rows:minmax(330px,58svh) minmax(180px,1fr);padding:0 12px 12px}
+  .voice-stage{padding:0 4px 82px}
+  .orb-wrap{width:min(94vw,520px)}
+  .voice-copy{bottom:78px}
+  .voice-chat{padding:0}
+  .voice-transcript{border-radius:18px}
 }
 </style>
 </head>
@@ -119,29 +126,39 @@ button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8
     <span class="meta">es-AR</span>
   </div>
 
-  <div class="voice-stage">
-    <div class="orb-wrap" aria-hidden="true">
-      <div class="orb-glow"></div>
-      <svg class="orb" id="voiceOrbSvg" viewBox="0 0 240 240" focusable="false">
-        <path id="voiceRingFill" class="voice-ring-fill"></path>
-        <path id="voiceRingPath" class="voice-ring-line"></path>
-      </svg>
+  <div class="voice-main">
+    <div class="voice-stage">
+      <div class="orb-wrap" aria-hidden="true">
+        <div class="orb-glow"></div>
+        <svg class="orb" id="voiceOrbSvg" viewBox="0 0 240 240" focusable="false">
+          <path id="voiceRingFill" class="voice-ring-fill"></path>
+          <path id="voiceRingPath" class="voice-ring-line"></path>
+        </svg>
+      </div>
+      <div class="voice-copy">
+        <strong id="voiceHeadline">Live Voice</strong>
+        <span id="voiceStatus">Listo.</span>
+      </div>
+      <div class="voice-bottom">
+        <div class="voice-controls">
+          <button id="voiceMain" class="icon-btn main-mic" type="button" aria-label="Activar o silenciar micrófono">
+            <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>
+          </button>
+          <button id="voiceEnd" class="icon-btn end-call" type="button" aria-label="Finalizar Live Voice">
+            <svg viewBox="0 0 24 24"><path d="M5 15c4-4 10-4 14 0"/><path d="M8 13l-2-3M16 13l2-3"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="voice-copy">
-      <strong id="voiceHeadline">Live Voice</strong>
-      <span id="voiceStatus">Listo para hablar cuando la conexión de voz esté disponible.</span>
-    </div>
-  </div>
-
-  <div class="voice-bottom">
-    <div class="voice-controls">
-      <button id="voiceMain" class="icon-btn main-mic" type="button" aria-label="Activar o silenciar micrófono">
-        <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>
-      </button>
-      <button id="voiceEnd" class="icon-btn end-call" type="button" aria-label="Finalizar Live Voice">
-        <svg viewBox="0 0 24 24"><path d="M5 15c4-4 10-4 14 0"/><path d="M8 13l-2-3M16 13l2-3"/></svg>
-      </button>
-    </div>
+    <aside class="voice-chat">
+      <div id="voiceTranscript" class="voice-transcript" aria-live="polite"></div>
+      <form id="voiceChatForm" class="voice-chat-form">
+        <input id="voiceText" autocomplete="off" placeholder="Escribile a 0liviA…">
+        <button type="submit" aria-label="Enviar mensaje">
+          <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>
+        </button>
+      </form>
+    </aside>
   </div>
 </section>
 
@@ -153,6 +170,8 @@ const status=document.querySelector('#status');
 const text=document.querySelector('#text');
 const voiceLive=document.querySelector('#voiceLive');
 const voiceStatus=document.querySelector('#voiceStatus');
+const voiceTranscript=document.querySelector('#voiceTranscript');
+const voiceText=document.querySelector('#voiceText');
 const headers=()=>({'Content-Type':'application/json','Authorization':'Bearer '+token});
 
 async function api(url,options={}){
@@ -161,9 +180,16 @@ async function api(url,options={}){
   if(!r.ok)throw new Error(await r.text());
   return r;
 }
+function syncVoiceTranscript(){
+  if(!voiceTranscript)return;
+  voiceTranscript.textContent=log.textContent;
+  voiceTranscript.scrollTop=voiceTranscript.scrollHeight;
+}
 function show(role,value){
   log.textContent+=`${role}: ${value}\n\n`;
   log.scrollTop=log.scrollHeight;
+          syncVoiceTranscript();
+  syncVoiceTranscript();
 }
 async function resume(){
   try{
@@ -241,6 +267,7 @@ document.querySelector('form').onsubmit=async e=>{
           answer+=event.text;
           log.textContent=current+`0liviA: ${answer}`;
           log.scrollTop=log.scrollHeight;
+          syncVoiceTranscript();
         }
         if(event.type==='error')throw new Error(event.code||event.error);
       }
@@ -253,9 +280,11 @@ document.querySelector('form').onsubmit=async e=>{
       }
     }
     log.textContent+='\n\n';
+    syncVoiceTranscript();
   }catch(e){
     if(e.name==='AbortError')log.textContent+='[turno cancelado]\n\n';
     else log.textContent+=`[error: ${e.message}]\n\n`;
+    syncVoiceTranscript();
   }finally{
     controller=null;turnId=null;
     document.querySelector('#cancel').disabled=true;
@@ -382,9 +411,18 @@ document.querySelector('#openVoice').onclick=()=>{
   voiceLive.classList.add('active');
   voiceLive.setAttribute('aria-hidden','false');
   setVoiceState('idle','Live Voice','Tocá el micrófono para empezar.');
+  syncVoiceTranscript();
   drawVoiceRing();
 };
 document.querySelector('#voiceEnd').onclick=closeVoice;
+document.querySelector('#voiceChatForm').onsubmit=e=>{
+  e.preventDefault();
+  const value=voiceText.value.trim();
+  if(!value)return;
+  voiceText.value='';
+  text.value=value;
+  document.querySelector('main form').requestSubmit();
+};
 
 document.querySelector('#voiceMain').onclick=async()=>{
   if(!voiceStream){
