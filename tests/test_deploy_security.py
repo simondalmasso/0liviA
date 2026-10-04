@@ -23,9 +23,9 @@ def test_bootstrap_pins_and_verifies_runtime_and_model_artifacts():
     assert "sha256sum -c -" in BOOTSTRAP
 
 
-def test_bootstrap_configures_owner_auth_without_exposing_gateway_token():
-    assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" in BOOTSTRAP
-    assert "make_password_verifier" in BOOTSTRAP
-    assert "/root/0livia-owner-password" in BOOTSTRAP
+def test_bootstrap_uses_first_run_registration_without_exposing_gateway_token():
+    assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" not in BOOTSTRAP
+    assert "/root/0livia-owner-password" not in BOOTSTRAP
+    assert "REGISTRATION=first-run" in BOOTSTRAP
     info_block = BOOTSTRAP.split('cat > "${STATE_ROOT}/bootstrap-info"', 1)[1]
     assert "TOKEN=${TOKEN}" not in info_block
