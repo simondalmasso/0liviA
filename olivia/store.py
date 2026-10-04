@@ -239,6 +239,37 @@ class Store:
                 self._conn.execute("ROLLBACK")
                 raise
 
+    def list_memories(
+        self,
+        scope: str = "global",
+        limit: int = 100,
+        *,
+        include_inactive: bool = False,
+    ) -> list[dict[str, Any]]:
+        where = "scope=?"
+        args: list[Any] = [scope]
+        if not include_inactive:
+            where += " AND is_active=1"
+        args.append(max(1, min(limit, 500)))
+        with self._lock:
+            rows = self._conn.execute(
+                f"""SELECT id,scope,key,value,source,confidence,is_active,created_at
+                    FROM memories
+                    WHERE {where}
+                    ORDER BY id DESC
+                    LIMIT ?""",
+                tuple(args),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def deactivate_memory(self, scope: str, key: str) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE memories SET is_active=0 WHERE scope=? AND key=? AND is_active=1",
+                (scope, key),
+            )
+        return int(cur.rowcount)
+
     def recall_memories(self, query: str, scope: str = "global", limit: int = 8) -> list[dict[str, Any]]:
         tokens = re.findall(r"[\wÀ-ÿ]+", query.lower(), flags=re.UNICODE)
         if not tokens:
