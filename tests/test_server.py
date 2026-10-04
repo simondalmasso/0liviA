@@ -443,3 +443,42 @@ async def test_browser_can_use_canonical_core_without_exposing_gateway_secret(cl
     assert "remoteSessionId" in html
     assert "OLIVIA_GATEWAY_TOKEN" not in html
     assert "Bearer " not in html
+
+
+@pytest.mark.asyncio
+async def test_session_creation_can_import_redacted_history(client, gateway):
+    _, store, _ = gateway
+    secret = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+    response = await client.post(
+        "/api/sessions",
+        json={
+            "title": "Migrado",
+            "messages": [
+                {"role": "user", "content": f"token {secret}"},
+                {"role": "assistant", "content": "respuesta previa"},
+            ],
+        },
+        headers=auth(),
+    )
+    assert response.status == 201
+    session_id = (await response.json())["id"]
+    messages = store.recent_messages(session_id)
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    assert secret not in repr(messages)
+    assert "[REDACTED_SECRET]" in messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_ui_can_switch_from_bridge_to_canonical_cookie_sessions(client):
+    response = await client.get("/")
+    html = await response.text()
+    assert "backendMode='bridge'" in html
+    assert "body.api_mode==='canonical'" in html
+    assert 'id="ownerLogin"' in html
+    assert 'type="password"' in html
+    assert "credentials:'same-origin'" in html
+    assert "ensureRemoteSession" in html
+    assert "/api/auth/login" in html
+    assert "/api/sessions" in html
+    assert "/api/chat/${chat.remoteSessionId}" in html
+    assert "Authorization" not in html
