@@ -62,12 +62,12 @@ def make_password_verifier(password: str, *, salt: bytes | None = None) -> str:
         p=_SCRYPT_P,
         dklen=_SCRYPT_DKLEN,
     )
-    return f"scrypt:{_SCRYPT_N}:{_SCRYPT_R}:{_SCRYPT_P}:{_b64e(salt)}:{_b64e(digest)}"
+    return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${_b64e(salt)}${_b64e(digest)}"
 
 
 def verify_password(password: str, verifier: str) -> bool:
     try:
-        scheme, n_raw, r_raw, p_raw, salt_raw, digest_raw = str(verifier or "").split(":", 5)
+        scheme, n_raw, r_raw, p_raw, salt_raw, digest_raw = str(verifier or "").split("$", 5)
         if scheme != "scrypt":
             return False
         n, r, p = int(n_raw), int(r_raw), int(p_raw)
