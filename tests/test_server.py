@@ -1014,3 +1014,90 @@ async def test_search_and_research_redact_secrets_before_external_provider(aioht
     external = repr(search.queries)
     assert secret not in external
     assert "[REDACTED_SECRET]" in external
+
+
+@pytest.mark.asyncio
+async def test_owner_login_requires_configured_email_and_password(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "owner-email.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    wrong_email = await client.post(
+        "/api/auth/login",
+        json={"email": "other@example.com", "password": "owner-passphrase", "remember": True},
+    )
+    assert wrong_email.status == 401
+
+    ok = await client.post(
+        "/api/auth/login",
+        json={"email": "OWNER@example.com", "password": "owner-passphrase", "remember": True},
+    )
+    assert ok.status == 200
+    body = await ok.json()
+    assert body["authenticated"] is True
+    assert body["email"] == "owner@example.com"
+    assert body["remembered"] is True
+    cookie = ok.cookies["olivia_owner"]
+    assert cookie["httponly"] is True
+    assert cookie["secure"] is True
+    assert cookie["samesite"] == "Strict"
+    assert int(cookie["max-age"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_owner_login_without_remember_uses_session_cookie(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "owner-session.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": "owner@example.com", "password": "owner-passphrase", "remember": False},
+    )
+    assert response.status == 200
+    body = await response.json()
+    assert body["remembered"] is False
+    cookie = response.cookies["olivia_owner"]
+    assert cookie["max-age"] == ""
+
+
+@pytest.mark.asyncio
+async def test_owner_auth_is_unavailable_without_owner_email(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "owner-no-email.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="",
+        )
+    )
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": "owner@example.com", "password": "owner-passphrase"},
+    )
+    assert response.status == 503
