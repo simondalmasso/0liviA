@@ -833,7 +833,7 @@ async def test_agentic_slash_palette_is_contextual_not_permanent_clutter(client)
     html = await (await client.get("/")).text()
     assert 'id="slashPalette"' in html
     assert "SLASH_COMMANDS" in html
-    for command in ("/read", "/search", "/code", "/repair", "/review", "/job"):
+    for command in ("/read", "/search", "/research", "/code", "/repair", "/review", "/job"):
         assert command in html
     assert "backendMode!=='canonical'" in html
     assert "textInput.addEventListener('input',renderSlashPalette)" in html
@@ -880,4 +880,64 @@ async def test_optional_web_search_misconfiguration_does_not_break_core(aiohttp_
     )
     text_body = await response.text()
     assert "búsqueda web no está habilitada" in text_body
+    assert router.calls == []
+
+
+@pytest.mark.asyncio
+async def test_research_command_searches_then_reads_bounded_sources_ephemerally(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "research-command.sqlite3")
+    router = FakeRouter(parts=("Síntesis grounded.",))
+    agent = Agent(store, router, settings)
+    search = FakeWebSearch()
+    reader = FakeWebReader(text="UNIQUE_RESEARCH_PAGE_FACT_99")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="test-token",
+            web_search=search,
+            web_reader=reader,
+        )
+    )
+    session_id = store.create_session("research")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/research agentes de coding 2026"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    assert "Síntesis grounded." in await response.text()
+    assert search.queries == [("agentes de coding 2026", 3)]
+    assert reader.urls == ["https://example.com/result"]
+
+    model_blob = repr(router.calls[-1])
+    assert "UNIQUE_SEARCH_FACT_88" in model_blob
+    assert "UNIQUE_RESEARCH_PAGE_FACT_99" in model_blob
+
+    durable = repr(store.recent_messages(session_id))
+    assert "/research agentes de coding 2026" in durable
+    assert "UNIQUE_SEARCH_FACT_88" not in durable
+    assert "UNIQUE_RESEARCH_PAGE_FACT_99" not in durable
+
+
+@pytest.mark.asyncio
+async def test_research_command_fails_closed_without_search_route(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "research-disabled.sqlite3")
+    router = FakeRouter(parts=("MODEL_SHOULD_NOT_RUN",))
+    agent = Agent(store, router, settings)
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", web_search=None)
+    )
+    session_id = store.create_session("research-disabled")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/research algo actual"},
+        headers=auth(),
+    )
+    body = await response.text()
+    assert "búsqueda web no está habilitada" in body
     assert router.calls == []
