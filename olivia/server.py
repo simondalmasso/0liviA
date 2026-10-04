@@ -19,6 +19,7 @@ from .agent import Agent
 from .config import Settings
 from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWorker, coding_worker_from_env
 from .router import ProviderPool
+from .research import SearchUnavailable, WebSearch, web_search_from_env
 from .security import redact_secrets, verify_password
 from .store import Store
 from .web import SafeWebReader, WebReadError
@@ -82,6 +83,7 @@ class Gateway:
         static_root: Path | None = None,
         coding_worker: GitHubActionsCodingWorker | None = None,
         web_reader: SafeWebReader | None = None,
+        web_search: WebSearch | None = None,
     ):
         self.agent = agent
         self.settings = settings
@@ -96,6 +98,7 @@ class Gateway:
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
         self.coding_worker = coding_worker
         self.web_reader = web_reader or SafeWebReader()
+        self.web_search = web_search
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
         self._login_failures: dict[str, list[float]] = {}
@@ -547,7 +550,7 @@ class Gateway:
     def _parse_chat_command(text: str) -> tuple[str, str] | None:
         command, separator, argument = text.partition(" ")
         command = command.lower()
-        if command in {"/code", "/repair", "/read"}:
+        if command in {"/code", "/repair", "/read", "/search"}:
             if not separator or not argument.strip():
                 return command, ""
             return command, argument.strip()
@@ -618,6 +621,69 @@ class Gateway:
                 response,
                 session_id,
                 prompt,
+                turn_id,
+                ephemeral_context=context,
+            )
+            return
+
+        if name == "/search":
+            if not argument:
+                assistant = "Usá /search seguido de una consulta."
+                self.agent.store.append_message(session_id, "user", safe_user)
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="web-search"
+                )
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+            if self.web_search is None or not self.web_search.configured:
+                assistant = "La búsqueda web no está habilitada con una ruta $0 verificada."
+                self.agent.store.append_message(session_id, "user", safe_user)
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="web-search"
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "web_search_unavailable",
+                    "retryable": False,
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+            try:
+                result = await self.web_search.search(argument, limit=5)
+            except (SearchUnavailable, ValueError) as exc:
+                assistant = f"No pude ejecutar la búsqueda web segura: {str(exc)}."
+                self.agent.store.append_message(session_id, "user", safe_user)
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="web-search"
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "web_search_failed",
+                    "retryable": isinstance(exc, SearchUnavailable),
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+
+            lines = []
+            for idx, item in enumerate(result.get("items") or [], start=1):
+                lines.append(
+                    f"[{idx}] {item.get('title','')}\n"
+                    f"URL: {item.get('url','')}\n"
+                    f"Descripción: {item.get('description','')}"
+                )
+            context = "Resultados de búsqueda web no confiables:\n\n" + "\n\n".join(lines)
+            await self._stream_turn(
+                response,
+                session_id,
+                safe_user,
                 turn_id,
                 ephemeral_context=context,
             )
@@ -891,6 +957,7 @@ def create_app(
     static_root: Path | None = None,
     coding_worker: GitHubActionsCodingWorker | None = None,
     web_reader: SafeWebReader | None = None,
+    web_search: WebSearch | None = None,
 ) -> web.Application:
     settings = settings or Settings.from_env()
     if agent is None:
@@ -898,6 +965,8 @@ def create_app(
         agent = Agent(store, ProviderPool.from_settings(settings, store), settings)
     if coding_worker is None:
         coding_worker = coding_worker_from_env()
+    if web_search is None:
+        web_search = web_search_from_env()
     gateway = Gateway(
         agent,
         settings,
@@ -908,6 +977,7 @@ def create_app(
         static_root=static_root,
         coding_worker=coding_worker,
         web_reader=web_reader,
+        web_search=web_search,
     )
     app = web.Application(client_max_size=MAX_BODY_BYTES)
     app["gateway"] = gateway
