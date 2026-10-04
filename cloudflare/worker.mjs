@@ -280,75 +280,262 @@ function providerCatalog(env) {
   ];
 }
 
-function modelText(result) {
-  if (typeof result === "string") return result.trim();
-  if (typeof result?.response === "string") return result.response.trim();
-  if (typeof result?.result?.response === "string") return result.result.response.trim();
-  const content = result?.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content.trim();
-  if (Array.isArray(content)) {
-    return content.map(part => typeof part?.text === "string" ? part.text : "").join("").trim();
-  }
+function isVisibleText(text) {
+  return typeof text === "string" && /\S/.test(text);
+}
+
+function deltaText(event) {
+  if (!event || typeof event !== "object") return "";
+  if (typeof event.response === "string") return event.response;
+  if (typeof event.result?.response === "string") return event.result.response;
+  const choice = event.choices?.[0];
+  if (typeof choice?.delta?.content === "string") return choice.delta.content;
+  if (typeof choice?.message?.content === "string") return choice.message.content;
   return "";
 }
 
-async function generateNvidia(provider, messages, env) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort("timeout"), 60000);
+function sseDataFromBlock(block) {
+  const lines = String(block || "").split(/\r?\n/);
+  const data = lines
+    .filter(line => line.startsWith("data:"))
+    .map(line => line.slice(5).replace(/^ /, ""))
+    .join("\n");
+  return data || null;
+}
+
+async function readWithTimeout(reader, timeoutMs) {
+  let timer;
   try {
-    const response = await fetch(NVIDIA_CHAT_URL, {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("provider_stream_timeout")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readSseEvent(state, timeoutMs = 45000) {
+  while (true) {
+    const match = state.buffer.match(/\r?\n\r?\n/);
+    if (match && typeof match.index === "number") {
+      const block = state.buffer.slice(0, match.index);
+      state.buffer = state.buffer.slice(match.index + match[0].length);
+      const data = sseDataFromBlock(block);
+      if (data !== null) return data;
+      continue;
+    }
+
+    if (state.done) {
+      const tail = state.buffer;
+      state.buffer = "";
+      const data = sseDataFromBlock(tail);
+      return data;
+    }
+
+    const part = await readWithTimeout(state.reader, timeoutMs);
+    if (part.done) {
+      state.buffer += state.decoder.decode();
+      state.done = true;
+      continue;
+    }
+    if (part.value?.byteLength) {
+      state.buffer += state.decoder.decode(part.value, { stream: true });
+    }
+  }
+}
+
+async function nextTextEvent(state, timeoutMs) {
+  while (true) {
+    const raw = await readSseEvent(state, timeoutMs);
+    if (raw === null || raw.trim() === "[DONE]") return { done: true, text: "" };
+    let event;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const text = deltaText(event);
+    if (typeof text === "string" && text.length) return { done: false, text };
+  }
+}
+
+async function openNvidiaStream(provider, messages, env) {
+  const controller = new AbortController();
+  const connectTimer = setTimeout(() => controller.abort("connect_timeout"), 15000);
+  let response;
+  try {
+    response = await fetch(NVIDIA_CHAT_URL, {
       method: "POST",
       signal: controller.signal,
       headers: {
         "content-type": "application/json",
-        "authorization": `Bearer ${env.NVIDIA_API_KEY}`,
+        "authorization": \`Bearer \${env.NVIDIA_API_KEY}\`,
       },
       body: JSON.stringify({
         model: provider.model,
         messages,
-        stream: false,
+        stream: true,
         max_tokens: MAX_PRIMARY_OUTPUT_TOKENS,
         temperature: 0.35,
         top_p: 0.9,
       }),
     });
-    if (!response.ok) {
-      const detail = (await readResponseTextLimited(response)).slice(0, 400);
-      throw new Error(`nvidia_http_${response.status}:${detail}`);
-    }
-    const result = await response.json();
-    const text = modelText(result);
-    if (!text) throw new Error("nvidia_empty_response");
-    return text;
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(connectTimer);
   }
+  if (!response.ok || !response.body) {
+    const detail = response.body
+      ? (await readResponseTextLimited(response)).slice(0, 400)
+      : "";
+    controller.abort("upstream_rejected");
+    throw new Error(\`nvidia_http_\${response.status}:\${detail}\`);
+  }
+  return {
+    body: response.body,
+    abort: () => controller.abort("downstream_cancelled"),
+  };
 }
 
-async function generateCloudflare(provider, messages, env) {
+async function openCloudflareStream(provider, messages, env) {
   const guard = await takeZeroCostSlot(env);
   if (!guard.ok) throw new Error("cloudflare_zero_cost_cap");
   const result = await env.AI.run(provider.model, {
     messages,
-    stream: false,
+    stream: true,
     max_tokens: MAX_OUTPUT_TOKENS,
     temperature: 0.35,
     top_p: 0.9,
   });
-  const text = modelText(result);
-  if (!text) throw new Error("cloudflare_empty_response");
-  return text;
+  const body = result?.body || result;
+  if (!body || typeof body.getReader !== "function") {
+    throw new Error("cloudflare_stream_unavailable");
+  }
+  return { body, abort: null };
 }
 
-async function generateWithFailover(messages, env) {
+async function prepareProviderStream(provider, messages, env) {
+  const opened = provider.kind === "nvidia"
+    ? await openNvidiaStream(provider, messages, env)
+    : await openCloudflareStream(provider, messages, env);
+  const reader = opened.body.getReader();
+  const state = {
+    reader,
+    decoder: new TextDecoder(),
+    buffer: "",
+    done: false,
+  };
+  const deadline = Date.now() + 20000;
+  let prefix = "";
+  try {
+    while (true) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error("provider_first_segment_timeout");
+      const event = await nextTextEvent(state, remaining);
+      if (event.done) throw new Error("provider_empty_stream");
+      prefix += event.text;
+      if (prefix.length > 512 && !isVisibleText(prefix)) {
+        throw new Error("provider_no_visible_output");
+      }
+      if (isVisibleText(event.text)) {
+        return {
+          provider,
+          reader,
+          state,
+          firstText: prefix,
+          abort: opened.abort,
+        };
+      }
+    }
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {}
+    try {
+      opened.abort?.();
+    } catch {}
+    throw error;
+  }
+}
+
+function encodeSse(data) {
+  return new TextEncoder().encode(\`data: \${JSON.stringify(data)}\\n\\n\`);
+}
+
+function encodeDone() {
+  return new TextEncoder().encode("data: [DONE]\\n\\n");
+}
+
+function streamingSseResponse(prepared) {
+  let cancelled = false;
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encodeSse({
+        type: "route",
+        provider: prepared.provider.id,
+        model: prepared.provider.model,
+      }));
+      controller.enqueue(encodeSse({ response: prepared.firstText }));
+
+      (async () => {
+        try {
+          while (!cancelled) {
+            const event = await nextTextEvent(prepared.state, 45000);
+            if (event.done) break;
+            if (event.text) controller.enqueue(encodeSse({ response: event.text }));
+          }
+        } catch {
+          if (!cancelled) {
+            controller.enqueue(encodeSse({
+              error: "provider_stream_interrupted",
+              partial: true,
+              provider: prepared.provider.id,
+            }));
+          }
+        } finally {
+          if (!cancelled) {
+            controller.enqueue(encodeDone());
+            controller.close();
+          }
+          try {
+            await prepared.reader.cancel();
+          } catch {}
+          try {
+            prepared.abort?.();
+          } catch {}
+        }
+      })();
+    },
+    async cancel() {
+      cancelled = true;
+      try {
+        await prepared.reader.cancel();
+      } catch {}
+      try {
+        prepared.abort?.();
+      } catch {}
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-store",
+      "x-accel-buffering": "no",
+    },
+  });
+}
+
+async function streamWithFailover(messages, env) {
   const attempts = [];
   for (const provider of providerCatalog(env)) {
     if (!provider.available) continue;
     try {
-      const text = provider.kind === "nvidia"
-        ? await generateNvidia(provider, messages, env)
-        : await generateCloudflare(provider, messages, env);
-      return { text, provider, attempts };
+      const prepared = await prepareProviderStream(provider, messages, env);
+      return streamingSseResponse(prepared);
     } catch (error) {
       attempts.push({
         provider: provider.id,
@@ -475,11 +662,7 @@ async function chat(request, env) {
   }
 
   try {
-    const generated = await generateWithFailover(modelMessages, env);
-    return fixedSse(generated.text, {
-      provider: generated.provider.id,
-      model: generated.provider.model,
-    });
+    return await streamWithFailover(modelMessages, env);
   } catch (error) {
     const message = String(error?.message || error || "AI unavailable");
     const limited = /zero_cost|allocation|limit|quota|429/i.test(message);
