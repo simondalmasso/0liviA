@@ -203,7 +203,7 @@ async def test_live_voice_is_fullscreen_and_chat_stays_available(client):
     assert 'position:fixed;inset:0' in html
     assert 'class="orb"' in html
     assert '#19fff0' in html
-    assert '#020706' in html
+    assert '#voiceLive.open{display:grid' in html
     assert 'id="voiceBtn"' in html
     assert 'id="text"' in html
     assert 'id="send"' in html
