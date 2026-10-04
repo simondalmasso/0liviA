@@ -153,27 +153,12 @@ print(secrets.token_urlsafe(32))
 PY
 )"
 
-readarray -t OWNER_AUTH < <("${APP_ROOT}/venv/bin/python" - <<'PY'
-import secrets
-from olivia.security import make_password_verifier
-
-password = secrets.token_urlsafe(24)
-print(password)
-print(make_password_verifier(password))
-PY
-)
-OWNER_PASSWORD="${OWNER_AUTH[0]}"
-OWNER_VERIFIER="${OWNER_AUTH[1]}"
-test -n "$OWNER_PASSWORD"
-test -n "$OWNER_VERIFIER"
-
 cat > "${ETC_ROOT}/olivia.env" <<EOF
 OLIVIA_DATA_DIR=${STATE_ROOT}
 OLIVIA_BIND=127.0.0.1
 OLIVIA_PORT=8080
 OLIVIA_HARD_ZERO_COST=1
 OLIVIA_GATEWAY_TOKEN=${TOKEN}
-OLIVIA_OWNER_PASSWORD_VERIFIER=${OWNER_VERIFIER}
 OLIVIA_MAX_HISTORY=24
 OLIVIA_TTFT_TIMEOUT_S=45
 OLIVIA_STREAM_IDLE_TIMEOUT_S=120
@@ -226,12 +211,9 @@ EOF
 systemctl enable --now caddy
 systemctl restart caddy
 
-printf '%s\n' "OWNER_PASSWORD=${OWNER_PASSWORD}" > /root/0livia-owner-password
-chmod 0600 /root/0livia-owner-password
-
 cat > "${STATE_ROOT}/bootstrap-info" <<EOF
 URL=https://${HOST}
-OWNER_PASSWORD_FILE=/root/0livia-owner-password
+REGISTRATION=first-run
 MODEL_PROFILE=${MODEL_PROFILE}
 MODEL=${MODEL_NAME}
 MODEL_SHA256=${MODEL_SHA256}
@@ -242,7 +224,7 @@ SOURCE_REF=${REF}
 EOF
 chown root:root "${STATE_ROOT}/bootstrap-info"
 chmod 0600 "${STATE_ROOT}/bootstrap-info"
-unset OWNER_PASSWORD OWNER_VERIFIER TOKEN
+unset TOKEN
 
 for _ in $(seq 1 90); do
   if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
