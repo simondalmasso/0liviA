@@ -113,3 +113,14 @@ def test_failover_commits_only_after_visible_text():
     failover = WORKER.index("async function streamWithFailover")
     assert WORKER.index("await prepareProviderStream", failover) > failover
     assert WORKER.index("return streamingSseResponse(prepared)", failover) > failover
+
+
+def test_cloudflare_fallbacks_are_blocked_until_account_zero_cost_is_verified():
+    assert "available: Boolean(env.AI && ACCOUNT_ZERO_COST_VERIFIED)" in WORKER
+    assert "provider_ready: providerCatalog(env).some(p => p.available)" in WORKER
+
+
+def test_health_never_claims_verified_zero_cost_when_guard_is_false():
+    assert "hard_zero_cost: ACCOUNT_ZERO_COST_VERIFIED" in WORKER
+    assert "account_overage_guard_verified: ACCOUNT_ZERO_COST_VERIFIED" in WORKER
+    assert "provider_ready: true" not in WORKER
