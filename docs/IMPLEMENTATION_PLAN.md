@@ -1,77 +1,74 @@
-# Implementation plan — active synthesis
+# Implementation plan — productization checkpoint
 
 Branch: `arch/gpt-synthesis-v1`
 
-This file is the orchestration checkpoint. Architecture decisions remain in `docs/DECISIONS.md`.
+This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
-## Integration rules
+## What is already integrated
 
-- Agents work in isolated branches/workspaces; no direct work on `main`.
-- We absorb mechanisms, not whole sandboxes.
-- Every imported component is reviewed against the current interfaces and retested here.
-- No code may add local-PC filesystem/shell/background-agent access.
-- Default user-facing locale is `es-AR`; provider language drift is a kernel/gateway concern.
-- Cloudflare is not in the normal chat/voice/memory path.
+- Python control plane with sessions, messages, memory, jobs, checkpoints and events.
+- Persistent provider-health state with quota admission, circuit breaker, half-open recovery, cancellation and redacted telemetry.
+- Failover only before validated visible output; partial answers are preserved rather than silently replayed through another provider.
+- Browser/API gateway with auth, bounded bodies and one active turn per session.
+- Current browser product shell with rail navigation, projects, library, memory, config and fullscreen Live Voice UI.
+- Temporary Cloudflare bridge with read-only URL ingestion, SSRF/redirect/body limits and fail-closed provider eligibility.
+- Isolated GitHub Actions coding worker with durable job IDs, exact base refs and deterministic post-agent verification.
+- Voice contracts/pipeline/sequence/cancel tests and benchmark recorder.
+- Repository hygiene tests preventing stale build claims and active-doc duplication.
 
-## Active workers
+## Productization gates
 
-### Manus — browser/API gateway
-Status: **integrated** via PR #2 into `arch/gpt-synthesis-v1`; integrator then hardened SSE parsing, es-AR drift detection, and removed browser persistence.
+### 1. Canonical cloud runtime
+Target remains Oracle A1 ARM64 (2 OCPU / 12 GB). Do not claim production runtime until an actual host is available and passes install, restart, backup and latency/resource smoke tests.
 
-Source branch: `impl/manus-gateway-v1`
+### 2. Durable multi-device workspace
+The temporary bridge UI still uses IndexedDB for Projects/Chats/Library/Memory. Treat it as disposable cache. Move these surfaces behind authenticated server APIs backed by canonical durable storage before calling persistence complete.
 
-Scope:
-- aiohttp gateway + minimal browser client;
-- explicit cancel endpoint / disconnect cleanup;
-- one active turn per session;
-- static UI served safely;
-- non-persistent bearer token;
-- pluggable es-AR first-segment guard;
-- gateway tests.
+### 3. Stable zero-cost model routing
+Provider routing must remain catalog-driven and fail closed:
+- never move to a paid/unverified route silently;
+- DeepSeek V4.1 Flash/NVIDIA NIM remains development/evaluation-only unless explicit production entitlement exists;
+- Cloudflare Workers AI remains unavailable to the bridge until account-wide zero-cost behavior is independently verified;
+- local inference is allowed as a zero-cost fallback but is not the quality target for normal chat.
 
-### DeepSeek — router reliability
-Status: **integrated and CI-verified** in `arch/gpt-synthesis-v1`.
+### 4. Research/browser worker
+Read-only URL ingestion is implemented. General search, JS-heavy browsing and browser automation still require an isolated on-demand worker with prompt-injection boundaries and no arbitrary gateway shell.
 
-Integrated:
-- persistent per-provider health state;
-- CLOSED → OPEN → HALF_OPEN recovery with probe lease;
-- quota-aware admission and day rollover;
-- TTFT watchdog and optional stream-idle watchdog;
-- cancellation without failover;
-- failover only before first visible segment;
-- no duplicate provider attempt per turn;
-- redacted telemetry/events and attempt metrics;
-- dedicated reliability/config/health regression tests.
+### 5. Live Voice
+The UI and Python contracts exist; production speech engines do not. Benchmark direct WSS + candidate VAD/STT/TTS on the actual target host for es-AR quality, TTFT/TTFA, barge-in and 60-minute stability before promotion.
 
-Verification:
-- GitHub Actions run `37179846028`: Python 3.11 PASS + Python 3.12 PASS.
-- Full suite: **45 passed**.
+### 6. Coding worker
+The GitHub Actions worker is implemented but remains opt-in:
+- secrets server-side only;
+- no auto-merge;
+- exact base ref;
+- isolated agent branch;
+- final deterministic verification required;
+- provider entitlement/cost must be verified before enabling a model route.
 
-### MiniMax — voice contracts
-Workspace/branch: `impl/minimax-voice-contracts-v1` if write access exists.
+## Repository discipline
 
-Scope:
-- direct WSS contract first;
-- pluggable VAD/EOT/STT/TTS interfaces;
-- turn_id/sequence/cancel/late-frame rejection;
-- benchmark harness;
-- es-AR voice acceptance metadata;
-- no heavy media framework dependency.
+- Work on `arch/gpt-synthesis-v1`; do not overwrite `main` user changes.
+- Historical council material is evidence, not active instruction.
+- Keep `README.md`, `AGENTS.md`, this checkpoint and `docs/ARCHITECTURE.md` consistent with live code.
+- Prefer deletion/archival of superseded scaffolding over parallel implementations.
+- Add a dependency only when it replaces more complexity than it introduces.
+- Do not deploy until CI is green and the relevant zero-cost/account entitlement gate is proven.
 
-## Integrator checklist
+## Verification contract
 
-1. Review each worker branch/patch.
-2. Port only compatible changes into `arch/gpt-synthesis-v1`.
-3. Run compile + tests after each integration.
-4. Keep runtime state outside Git.
-5. Keep provider secrets env-only.
-6. Do not deploy until core + gateway + router gates pass.
-7. Voice remains benchmark-gated on actual Oracle A1.
+Every meaningful mutation must preserve:
+- `python -m compileall -q olivia tests`
+- `bash -n deploy/*.sh`
+- browser inline JS syntax check
+- `node --check cloudflare/worker.mjs`
+- `pytest -q`
+- GitHub Actions matrix on Python 3.11 + 3.12
 
+## Exact next engineering gates
 
-## Current verification
-
-- GitHub Actions `core-ci`: Python 3.11 PASS + Python 3.12 PASS.
-- Latest verified suite at this checkpoint: **45 passed**.
-- Browser/API gateway is integrated.
-- DeepSeek router reliability is integrated and CI-verified; MiniMax voice contracts remain isolated until reviewed.
+1. Finish repo/product cleanup and rerun all gates.
+2. Add authenticated server-side workspace APIs and migrate the browser cache contract.
+3. Add the isolated research/browser worker.
+4. Provision/verify an Oracle A1 host when capacity exists; run the target-host benchmark matrix.
+5. Only after those gates, reconcile/remove the temporary Cloudflare bridge and prepare a production release.
