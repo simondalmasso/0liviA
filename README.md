@@ -47,8 +47,15 @@ The repository is intentionally not committed to one stack yet. The council shou
 - OpenVoice — https://github.com/myshell-ai/OpenVoice
 - CosyVoice — https://github.com/QwenAudio/CosyVoice
 
+## Start here
+
+**Council / implementation order:** [`SUPER_ORDER_END_TO_END.md`](./SUPER_ORDER_END_TO_END.md)
+
+Give that single file to any zero-context LLM/coding agent with GitHub access. It is intentionally architecture-neutral and instructs the agent to research stronger alternatives and implement evidence-backed improvements directly in this repository.
+
 ## Repository map
 
+- `SUPER_ORDER_END_TO_END.md` — canonical zero-context council + end-to-end build order.
 - `AGENTS.md` — invariant operating contract for any coding/research agent.
 - `docs/COUNCIL_HANDOFF.md` — compact zero-context handoff for independent LLM council review.
 - `docs/RESEARCH.md` — verified facts, candidates, caveats and open questions.
