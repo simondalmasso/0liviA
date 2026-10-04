@@ -3,8 +3,8 @@ import { DurableObject } from "cloudflare:workers";
 const PRIMARY_MODEL = "deepseek-ai/deepseek-v4.1-flash";
 const NVIDIA_CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const CLOUDFLARE_FALLBACKS = [
+  { id: "cloudflare-gpt-oss-120b", model: "@cf/openai/gpt-oss-120b" },
   { id: "cloudflare-glm-4.7-flash", model: "@cf/zai-org/glm-4.7-flash" },
-  { id: "cloudflare-qwen3-30b", model: "@cf/qwen/qwen3-30b-a3b-fp8" },
 ];
 const MAX_CALLS_PER_UTC_DAY = 80;
 const ACCOUNT_ZERO_COST_VERIFIED = false;
@@ -364,7 +364,7 @@ function fixedSelfAnswer(messages, env) {
   ) {
     const configured = providerCatalog(env).filter(p => p.available).map(p => p.model);
     const suffix = configured.length ? ` Rutas activas: ${configured.join(" → ")}.` : "";
-    return `0liviA usa un router de modelos. El primario es DeepSeek V4.1 Flash vía NVIDIA NIM; GLM-4.7-Flash y Qwen3-30B-A3B-FP8 quedan como fallbacks $0.${suffix}`;
+    return `0liviA usa un router de modelos. El primario es DeepSeek V4.1 Flash vía NVIDIA NIM; GPT-OSS-120B y GLM-4.7-Flash quedan como fallbacks $0.${suffix}`;
   }
 
   if (
