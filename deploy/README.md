@@ -1,0 +1,32 @@
+# Oracle deployment
+
+Target: Oracle Always Free A1 ARM64, 2 OCPU / 12 GB. This directory does not create paid resources.
+
+## Runtime shape
+
+Internet → HTTPS/Caddy → `127.0.0.1:8080` → 0liviA Core → SQLite in `/var/lib/0livia`.
+
+Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's PC is not part of the runtime.
+
+## Bootstrap
+
+1. Provision the A1 VM with a public IPv4 and Ubuntu ARM64.
+2. Open OCI ingress TCP 80/443 only (SSH 22 restricted to the minimum source needed for administration).
+3. Run `sudo REF=arch/gpt-synthesis-v1 ./deploy/install.sh`.
+4. Edit `/etc/0livia/olivia.env` (0600): generate the gateway token and add at least one legitimate provider key/route.
+5. Pick an HTTPS hostname. Preferred: a domain you control pointing DNS-only at the Oracle IP. For bootstrap, an IP-derived DNS hostname can be used if you deliberately accept that external DNS dependency.
+6. Configure Caddy from `deploy/Caddyfile.example`; keep `OLIVIA_PUBLIC_HOST` and `ACME_EMAIL` outside Git.
+7. `sudo systemctl restart caddy olivia`.
+8. Run `deploy/smoke.sh https://HOST TOKEN`.
+
+## Provider policy
+
+No provider is the brain. Provider keys stay in `/etc/0livia/olivia.env`; `OLIVIA_PROVIDERS_JSON` references their environment variable names. If all free lanes are exhausted, 0liviA reports unavailable/degraded instead of silently paying.
+
+## Backups
+
+The durable runtime file is `/var/lib/0livia/olivia.sqlite3` plus WAL/SHM while live. Use SQLite's online backup API or stop the service briefly before copying; never copy only the main DB file while WAL has uncheckpointed data. Git remains the source of truth for code/docs, not conversations.
+
+## Rollback
+
+Deploys are branch/commit based. Keep the previous checkout under a versioned release path before production rollout; switch `/opt/0livia/current` only after compile/tests/smoke pass. The first bootstrap script is intentionally simple; atomic release switching is the next deployment hardening gate.
