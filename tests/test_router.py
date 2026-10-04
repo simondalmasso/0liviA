@@ -58,3 +58,62 @@ async def test_no_failover_after_first_token(tmp_path, settings):
     )
     with pytest.raises(ProviderStreamInterrupted):
         _ = [e async for e in pool.stream([{"role": "user", "content": "x"}])]
+
+
+def test_hard_zero_cost_blocks_unverified_and_paid_routes(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        hard_zero_cost=True,
+        providers=(
+            {
+                "name": "safe",
+                "base_url": "https://safe.example/v1",
+                "model": "m",
+                "api_key_env": "SAFE_KEY",
+                "cost_mode": "free_hard_cap",
+            },
+            {
+                "name": "maybe-free",
+                "base_url": "https://maybe.example/v1",
+                "model": "m",
+                "api_key_env": "MAYBE_KEY",
+                "cost_mode": "free_unverified",
+            },
+            {
+                "name": "paid",
+                "base_url": "https://paid.example/v1",
+                "model": "m",
+                "api_key_env": "PAID_KEY",
+                "cost_mode": "paid",
+            },
+        ),
+    )
+    store = Store(tmp_path / "db.sqlite3")
+    pool = ProviderPool.from_settings(settings, store)
+    assert [p.name for p in pool.providers] == ["safe"]
+    assert pool.zero_cost_blocked == [
+        {"provider": "maybe-free", "cost_mode": "free_unverified"},
+        {"provider": "paid", "cost_mode": "paid"},
+    ]
+    assert pool.metrics()["hard_zero_cost"] is True
+
+
+def test_zero_cost_provider_mode_is_fail_closed_when_omitted(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        hard_zero_cost=True,
+        providers=(
+            {
+                "name": "legacy",
+                "base_url": "https://legacy.example/v1",
+                "model": "m",
+                "api_key_env": "LEGACY_KEY",
+            },
+        ),
+    )
+    store = Store(tmp_path / "db.sqlite3")
+    pool = ProviderPool.from_settings(settings, store)
+    assert pool.providers == []
+    assert pool.zero_cost_blocked == [
+        {"provider": "legacy", "cost_mode": "free_unverified"}
+    ]
