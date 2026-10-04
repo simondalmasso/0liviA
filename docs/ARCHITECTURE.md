@@ -13,7 +13,7 @@ Target: one user, Oracle A1 ARM64 (2 OCPU / 12 GB), recurring infrastructure tar
 → direct OpenAI-compatible provider router
 → on-demand workers for coding, browser research and voice.
 
-Cloudflare is not in the chat, model, memory or voice hot path. It remains available for deploying user applications only.
+Cloudflare is not part of the canonical chat, memory or voice hot path. It may host a thin frontend or a temporary compatibility bridge, but such a bridge must remain deployment-gated and must not become durable product state.
 
 ## Core
 
@@ -54,16 +54,29 @@ A free quota disappearing must cause degradation, rerouting or pause — never h
 
 Coding is a worker, not the control plane.
 
-Default design:
-- OpenCode-compatible worker launched on demand;
-- one isolated Git worktree per job;
-- scoped GitHub credentials;
-- official GitHub MCP for repository operations;
-- checkpoints before/after meaningful mutations;
-- tests and verification before push/PR;
-- no arbitrary model-written shell in the internet-facing gateway.
+Current implemented design:
+- coding is dispatched as a durable job from the Python core;
+- GitHub Actions executes the burst worker away from the internet-facing gateway;
+- each run works on an isolated agent branch and starts from an explicit ref;
+- Aider is the current bounded coding harness, with DeepSeek V4.1 Flash available only in development/evaluation when the required NIM entitlement/key is present;
+- deterministic compile/test/JS/Worker checks run after the agent;
+- publication is optional and never merges automatically;
+- gateway credentials never grant arbitrary shell execution.
 
-A bounded container / bwrap / equivalent sandbox is a deployment gate before autonomous code execution is enabled.
+The harness is replaceable. OpenCode/other coding agents remain challengers, not permanent dependencies.
+
+## Temporary production bridge
+
+`cloudflare/worker.mjs` exists as a transitional public bridge because Oracle A1 capacity has not yet been proven available for production. It intentionally duplicates only a narrow subset of the canonical core:
+
+- stateless message history supplied by the browser;
+- provider catalog/failover before visible output;
+- read-only URL ingestion with SSRF/redirect/body limits;
+- a local request guard.
+
+It is **not** the source of truth for Projects, Library, Memory or jobs. Its current account-level zero-cost status is unverified, so provider readiness fails closed unless entitlement is explicitly proven. This bridge may be removed without changing the canonical Python state formats.
+
+The browser shell currently keeps temporary workspace state in IndexedDB to preserve usability while the bridge exists. That state is cache only and must migrate to server-side storage before multi-device/durable persistence can be called complete.
 
 ## Research/browser
 
@@ -163,4 +176,4 @@ Language is a kernel policy, not a model preference:
 - unexpected language drift causes cancellation/retry, not German/English text leaking into the session;
 - a user request for another language overrides the guard for that turn.
 
-The owner's PC is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access, and 0liviA does not persist its session state in localStorage/sessionStorage.
+The owner's PC is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access. Browser persistence, where present in the temporary bridge UI, is disposable cache and never durable truth.
