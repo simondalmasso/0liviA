@@ -184,7 +184,10 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
     <button id="railNewChat" class="rail-btn" type="button" title="Nuevo chat" aria-label="Nuevo chat">
       <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
     </button>
-    <button class="rail-btn active" type="button" data-side="projects" title="Proyectos" aria-label="Proyectos">
+    <button class="rail-btn active" type="button" data-side="chats" title="Chats" aria-label="Chats">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4Z"/><path d="M8 9h8M8 12h5"/></svg>
+    </button>
+    <button class="rail-btn" type="button" data-side="projects" title="Proyectos" aria-label="Proyectos">
       <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3Z"/><path d="M3 7V5h7l2 2"/></svg>
     </button>
     <button class="rail-btn" type="button" data-side="library" title="Biblioteca" aria-label="Biblioteca">
@@ -196,6 +199,9 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
     <div class="rail-spacer"></div>
     <button class="rail-btn" type="button" data-side="config" title="Config" aria-label="Config">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
+    </button>
+    <button class="rail-btn" type="button" data-side="session" title="Sesión" aria-label="Sesión">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
     </button>
   </aside>
 
@@ -236,7 +242,10 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
   </div>
 
   <nav class="side-tabs">
-    <button class="side-tab active" data-side="projects" type="button">
+    <button class="side-tab active" data-side="chats" type="button">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4Z"/><path d="M8 9h8M8 12h5"/></svg><span>Chats</span>
+    </button>
+    <button class="side-tab" data-side="projects" type="button">
       <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3Z"/></svg><span>Proyectos</span>
     </button>
     <button class="side-tab" data-side="library" type="button">
@@ -248,10 +257,17 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
     <button class="side-tab" data-side="config" type="button">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg><span>Config</span>
     </button>
+    <button class="side-tab" data-side="session" type="button">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Sesión</span>
+    </button>
   </nav>
 
   <div class="side-body">
-    <section id="sideProjects" class="side-section active">
+    <section id="sideChats" class="side-section active">
+      <div class="side-section-head">Chats</div>
+      <div id="chatList" class="side-list"></div>
+    </section>
+    <section id="sideProjects" class="side-section">
       <div class="side-section-head">Proyectos
         <button id="newProject" class="mini" type="button" aria-label="Nuevo proyecto">
           <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
@@ -278,6 +294,10 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
     <section id="sideConfig" class="side-section">
       <div class="side-section-head">Config</div>
       <div id="configList" class="side-list"></div>
+    </section>
+    <section id="sideSession" class="side-section">
+      <div class="side-section-head">Sesión</div>
+      <div id="sessionList" class="side-list"></div>
     </section>
   </div>
 </aside>
