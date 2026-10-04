@@ -301,3 +301,16 @@ Other reviewed projects:
 - `JCodesMore/ai-website-cloner-template`: useful visual-reconstruction/QA methodology; not a runtime dependency.
 - `openark/orchestrator`: MySQL HA tooling; unrelated to 0liviA's agent orchestration.
 - Omarchy: useful product/agent-OS inspiration, but violates the cloud-first/no-owner-PC runtime constraint as a core dependency.
+
+
+### Cloudflare account guard audit result
+
+A dedicated GitHub Actions audit was executed from `simondalmasso/simon` using the already-existing Cloudflare deploy credentials.
+
+Result:
+- credentials were present;
+- `GET /accounts/{account_id}/subscriptions` returned HTTP 403;
+- therefore the deploy token lacks the Billing Read permission needed to prove the account plan;
+- the audit records `ACCOUNT_ZERO_COST_VERIFIED=NO` and `REASON=billing_read_permission_unavailable`.
+
+Consequence: the latest inference bridge must not be deployed under a claim of account-wide zero-cost safety until billing-plan evidence is available. Production remains unchanged.
