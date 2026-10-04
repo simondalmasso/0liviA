@@ -399,7 +399,8 @@ async def test_coding_job_fails_closed_without_worker(aiohttp_client, tmp_path):
         json={"task": "do work"},
         headers=auth(),
     )
-    assert response.status == 503
+    assert response.status == 409
+    assert (await response.json())["error"] == "registration_required"
     assert (await response.json())["error"] == "coding_worker_unavailable"
 
 
@@ -1091,7 +1092,7 @@ async def test_owner_login_without_remember_uses_session_cookie(aiohttp_client, 
 
 
 @pytest.mark.asyncio
-async def test_owner_auth_is_unavailable_without_owner_email(aiohttp_client, tmp_path):
+async def test_owner_auth_requires_registration_when_owner_not_seeded(aiohttp_client, tmp_path):
     settings = Settings(data_dir=tmp_path)
     store = Store(tmp_path / "owner-no-email.sqlite3")
     agent = Agent(store, FakeRouter(), settings)
@@ -1213,11 +1214,17 @@ async def test_registered_owner_can_login_and_revoke_remembered_device(aiohttp_c
     cookie = login.cookies["olivia_owner"].value
     assert client.app["gateway"]._owner_cookie_valid(cookie) is True
 
-    listed = await client.get("/api/auth/devices", headers=auth())
+    listed = await client.get(
+        "/api/auth/devices",
+        headers={"Authorization": "Bearer gateway-signing-secret"},
+    )
     devices = (await listed.json())["devices"]
     assert any(row["id"] == device_id and row["label"] == "Firefox · Linux" for row in devices)
 
-    revoked = await client.delete(f"/api/auth/devices/{device_id}", headers=auth())
+    revoked = await client.delete(
+        f"/api/auth/devices/{device_id}",
+        headers={"Authorization": "Bearer gateway-signing-secret"},
+    )
     assert revoked.status == 200
     assert (await revoked.json())["revoked"] is True
     assert client.app["gateway"]._owner_cookie_valid(cookie) is False
