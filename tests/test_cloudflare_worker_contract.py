@@ -34,3 +34,22 @@ def test_cloudflare_web_reader_blocks_additional_reserved_networks():
 
 def test_health_declares_web_read_once():
     assert WORKER.count("web_read: true") == 1
+
+
+def test_web_fetch_is_guarded_before_any_external_read():
+    chat_start = WORKER.index("async function chat(request, env)")
+    web_start = WORKER.index("const webContext = await webContextFor(messages);", chat_start)
+    guard_start = WORKER.index("const guard = await takeZeroCostSlot(env);", chat_start)
+    assert guard_start < web_start
+
+    read_route = WORKER.index('url.pathname === "/api/read-url"')
+    read_guard = WORKER.index("await takeZeroCostSlot(env)", read_route)
+    read_fetch = WORKER.index("await fetchWebContext(target)", read_route)
+    assert read_guard < read_fetch
+
+
+def test_web_reader_streams_with_a_hard_body_cap():
+    assert "const MAX_WEB_BYTES_PER_URL = 65536;" in WORKER
+    assert "response.body.getReader()" in WORKER
+    assert "await reader.cancel()" in WORKER
+    assert "await response.text()" not in WORKER
