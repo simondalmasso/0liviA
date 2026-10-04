@@ -144,3 +144,23 @@ These are gates to measure on the actual Oracle A1, not current PASS claims.
 - reverse-engineered consumer-session APIs;
 - mandatory paid inference;
 - Cloudflare in normal 0liviA turns.
+
+
+## Stability and locale invariants
+
+0liviA is designed to degrade instead of stall:
+- one active turn per session;
+- bounded context reads and explicit backpressure;
+- provider TTFT watchdog + circuit breaker;
+- failover only before first validated output;
+- turn IDs and sequence numbers for reconnect/resume;
+- partial output is checkpointed instead of silently discarded;
+- process supervision restarts failed services, while SQLite/Git preserve state.
+
+Language is a kernel policy, not a model preference:
+- default locale is **es-AR**;
+- the first short output segment is buffered and language-checked locally before it is displayed or sent to TTS;
+- unexpected language drift causes cancellation/retry, not German/English text leaking into the session;
+- a user request for another language overrides the guard for that turn.
+
+The owner's PC is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access.
