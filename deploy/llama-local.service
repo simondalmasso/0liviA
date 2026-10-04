@@ -10,7 +10,7 @@ Group=olivia
 WorkingDirectory=/opt/llama
 EnvironmentFile=/etc/olivia/llama.env
 Environment=LD_LIBRARY_PATH=/opt/llama
-ExecStart=/opt/llama/llama-server -m ${LLAMA_MODEL_PATH} --host 127.0.0.1 --port 11434 --alias local-qwen -c ${LLAMA_CTX} -t ${LLAMA_THREADS} --parallel 1 --jinja --reasoning-format nothink --no-ui
+ExecStart=/opt/llama/llama-server -m ${LLAMA_MODEL_PATH} --host 127.0.0.1 --port 11434 --alias local-qwen -c ${LLAMA_CTX} -t ${LLAMA_THREADS} --parallel 1 --jinja --reasoning off --reasoning-format none --no-ui
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=20
