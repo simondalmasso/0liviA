@@ -31,7 +31,7 @@ jobs:
           from pathlib import Path
           import re
           html = Path("web/index.html").read_text(encoding="utf-8")
-          scripts = re.findall(r"<script>([\\s\\S]*?)</script>", html)
+          scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
           if len(scripts) != 1:
               raise SystemExit(f"expected exactly one inline script, got {len(scripts)}")
           Path("/tmp/olivia-ui.js").write_text(scripts[0], encoding="utf-8")
