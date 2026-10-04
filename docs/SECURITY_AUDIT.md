@@ -9,8 +9,8 @@ This document records which findings apply to the active integration branch `arc
 ### PUBLIC-PROD-STALE — OPEN / deployment gate
 The public Worker was observed serving an older UI/Worker generation. Its exact live SHA and billing plan are not independently verified here. Do not claim the public deployment is current, private or guaranteed USD 0 until an exact-SHA deploy and smoke are performed.
 
-### UI-GATEWAY-CONTRACT — OPEN
-The browser shell currently targets the temporary stateless bridge at `POST /api/chat`. The canonical Python Gateway exposes authenticated `POST /api/chat/{session_id}` plus server-side sessions. This mismatch is real and blocks calling the browser shell a canonical-core client.
+### UI-GATEWAY-CONTRACT — FIXED IN BRANCH
+The browser shell detects the canonical core, authenticates with a Secure/HttpOnly/SameSite owner cookie, creates/reuses server-side sessions, imports local history through the redacting session API, reconciles unknown server sessions into its disposable cache, and streams via `POST /api/chat/{session_id}`.
 
 ### CODING-WORKFLOW-INPUTS — FIXED IN BRANCH
 Direct `workflow_dispatch` inputs are no longer interpolated into shell commands for diff/ref operations. `base_ref` is passed through an environment variable and validated; checkout credentials are not persisted. The GitHub token is exposed only to the final optional publish step.
@@ -34,8 +34,9 @@ The active Worker uses JavaScript string/template escape sequences such as `\n\n
 
 ## Remaining release blockers
 
-1. Replace/retire the stale public Worker deployment only after the target backend/auth model is settled.
-2. Unify the browser shell with the canonical authenticated server-side session API.
-3. Establish owner authentication that does not put bearer tokens in URLs or browser durable storage.
-4. Verify provider/account cost guarantees before enabling any externally metered production route.
-5. Pin production bootstrap/deploy refs to immutable SHAs and verify downloaded runtime/model artifacts.
+1. Replace/retire the stale public Worker only after an exact-SHA canonical target host passes smoke.
+2. Verify provider/account cost guarantees before enabling externally metered production routes.
+3. Verify Oracle A1 capacity plus restart/backup/latency/resource gates on the real host.
+4. Perform an exact-release production smoke before declaring the public URL current.
+
+The bootstrap now rejects mutable production refs, generates browser owner authentication without exposing the bearer, and verifies pinned SHA-256 digests for llama.cpp and GGUF artifacts.
