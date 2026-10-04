@@ -6,6 +6,7 @@ const MAX_CONTEXT_BYTES = 7000;
 const MAX_OUTPUT_TOKENS = 384;
 const MAX_URLS_PER_TURN = 2;
 const MAX_WEB_CHARS_PER_URL = 12000;
+const MAX_WEB_BYTES_PER_URL = 65536;
 const MAX_REDIRECTS = 3;
 
 const SYSTEM = [
@@ -121,6 +122,39 @@ function htmlToText(html) {
   );
 }
 
+async function readResponseTextLimited(response) {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+
+  const decoder = new TextDecoder();
+  let total = 0;
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value?.byteLength) continue;
+
+    const remaining = MAX_WEB_BYTES_PER_URL - total;
+    if (remaining <= 0) {
+      await reader.cancel();
+      break;
+    }
+
+    const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+    total += chunk.byteLength;
+    text += decoder.decode(chunk, { stream: true });
+
+    if (chunk.byteLength < value.byteLength || total >= MAX_WEB_BYTES_PER_URL) {
+      await reader.cancel();
+      break;
+    }
+  }
+
+  text += decoder.decode();
+  return text;
+}
+
 async function fetchWebContext(urlString) {
   let url;
   try {
@@ -169,7 +203,7 @@ async function fetchWebContext(urlString) {
       if (!/(text\/|application\/json|application\/xml|application\/xhtml)/.test(type)) {
         return { url: current.toString(), error: "tipo de contenido no textual" };
       }
-      const raw = (await response.text()).slice(0, MAX_WEB_CHARS_PER_URL * 3);
+      const raw = await readResponseTextLimited(response);
       const text = (type.includes("html") ? htmlToText(raw) : raw.replace(/\s+/g, " ").trim())
         .slice(0, MAX_WEB_CHARS_PER_URL);
       return { url: current.toString(), text };
@@ -294,13 +328,8 @@ async function chat(request, env) {
   const fixed = fixedSelfAnswer(messages);
   if (fixed) return fixedSse(fixed);
 
-  const webContext = await webContextFor(messages);
-  const modelMessages = webContext
-    ? [{ role: "system", content: SYSTEM }, { role: "system", content: webContext }, ...messages]
-    : [{ role: "system", content: SYSTEM }, ...messages];
-
-  const bytes = byteCount(messages) + (webContext ? new TextEncoder().encode(webContext).byteLength : 0);
-  if (bytes > MAX_CONTEXT_BYTES) {
+  const baseBytes = byteCount(messages);
+  if (baseBytes > MAX_CONTEXT_BYTES) {
     return json({
       error: "context_too_large",
       max_bytes: MAX_CONTEXT_BYTES,
@@ -313,6 +342,19 @@ async function chat(request, env) {
       error: "zero_cost_daily_cap",
       message: "Límite diario $0 alcanzado.",
     }, 429);
+  }
+
+  const webContext = await webContextFor(messages);
+  const modelMessages = webContext
+    ? [{ role: "system", content: SYSTEM }, { role: "system", content: webContext }, ...messages]
+    : [{ role: "system", content: SYSTEM }, ...messages];
+
+  const bytes = baseBytes + (webContext ? new TextEncoder().encode(webContext).byteLength : 0);
+  if (bytes > MAX_CONTEXT_BYTES) {
+    return json({
+      error: "context_too_large",
+      max_bytes: MAX_CONTEXT_BYTES,
+    }, 413);
   }
 
   try {
@@ -370,6 +412,13 @@ export default {
 
     if (url.pathname === "/api/read-url" && request.method === "GET") {
       if (!sameOrigin(request)) return json({ error: "origin" }, 403);
+      const guard = await takeZeroCostSlot(env);
+      if (!guard.ok) {
+        return json({
+          error: "zero_cost_daily_cap",
+          message: "Límite diario $0 alcanzado.",
+        }, 429);
+      }
       const target = url.searchParams.get("url") || "";
       const item = await fetchWebContext(target);
       if (!item) return json({ error: "invalid_url" }, 400);
