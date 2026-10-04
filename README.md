@@ -1,4 +1,4 @@
-# 0liviA 🌠
+# 0liviA 🎲
 
 0liviA is a **personal super-AI**: one persistent cloud intelligence for its owner, combining conversation, coding, repository control, research, tools, memory, autonomous execution and live voice. It is not a generic SaaS workspace, a team product, or a thin chatbot wrapper.
 
