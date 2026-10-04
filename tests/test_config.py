@@ -84,3 +84,25 @@ def test_from_env_rejects_non_list_providers(monkeypatch):
 def test_hard_zero_cost_can_only_be_disabled_explicitly(monkeypatch):
     monkeypatch.setenv("OLIVIA_HARD_ZERO_COST", "0")
     assert Settings.from_env().hard_zero_cost is False
+
+
+def test_deploy_paths_use_single_canonical_zero_livia_root():
+    from pathlib import Path
+
+    bootstrap = Path("deploy/bootstrap-a1.sh").read_text(encoding="utf-8")
+    service = Path("deploy/0livia.service").read_text(encoding="utf-8")
+    llama = Path("deploy/llama-local.service").read_text(encoding="utf-8")
+    cloud_init = Path("deploy/cloud-init-a1.yaml").read_text(encoding="utf-8")
+
+    for text in (bootstrap, service, llama):
+        assert "/var/lib/olivia" not in text
+        assert "/etc/olivia" not in text
+    assert "/var/lib/0livia" in bootstrap
+    assert "/etc/0livia" in bootstrap
+    assert "/var/lib/0livia/models" in llama
+    assert "/etc/0livia/llama.env" in llama
+
+    # Cloud-init delegates to the canonical bootstrap instead of duplicating it.
+    assert "deploy/bootstrap-a1.sh" in cloud_init
+    assert "MODEL_NAME=" not in cloud_init
+    assert "OLIVIA_PROVIDERS_JSON=" not in cloud_init
