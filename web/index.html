@@ -134,6 +134,11 @@ linear-gradient(180deg,#050506 0%,#08070c 48%,#090811 100%)}
 .side-empty{padding:12px 8px;color:#8186b5;font-size:12px}
 .side-actions{display:flex;gap:6px;padding:4px}
 .side-actions button{flex:1;padding:9px 10px;border-radius:10px;background:rgba(255,255,255,.07);color:#d6d8f5;font-size:12px}
+.device-row{display:flex;align-items:center;gap:8px}
+.device-row .device-copy{min-width:0;flex:1}
+.device-row .device-copy strong,.device-row .device-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.device-revoke{flex:0 0 auto;padding:6px 8px;border-radius:9px;background:rgba(255,255,255,.07);color:#c9cbea;font-size:11px}
+.device-revoke:hover{background:rgba(255,90,120,.12);color:#ff9aac}
 #voiceLive{position:fixed;inset:0;z-index:100;display:none;background:
 radial-gradient(circle at 50% 48%,rgba(29,231,220,.11),transparent 20rem),
 radial-gradient(circle at 50% 48%,rgba(29,231,220,.045),transparent 34rem),
@@ -280,15 +285,15 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
 <section id="ownerLogin" class="auth-gate" aria-hidden="true">
   <form id="ownerLoginForm" class="auth-card">
     <div class="auth-mark">0</div>
-    <strong>Entrar a 0liviA</strong>
-    <p>Tu cuenta personal. Sin cuentas externas.</p>
+    <strong id="ownerAuthTitle">Entrar a 0liviA</strong>
+    <p id="ownerAuthCopy">Tu cuenta personal. Sin cuentas externas.</p>
     <input id="ownerEmail" type="email" autocomplete="username" placeholder="Mail" aria-label="Mail" required>
     <input id="ownerPassword" type="password" autocomplete="current-password" placeholder="Contraseña" aria-label="Contraseña" required>
     <label class="auth-remember">
       <input id="ownerRemember" type="checkbox" checked>
       <span>Recordarme en este dispositivo</span>
     </label>
-    <button class="auth-submit" type="submit">Entrar</button>
+    <button id="ownerAuthSubmit" class="auth-submit" type="submit">Entrar</button>
     <div id="ownerLoginError" class="auth-error" role="status"></div>
   </form>
 </section>
@@ -331,6 +336,7 @@ let coreOnline=false;
 let coreHealth=null;
 let backendMode='bridge';
 let ownerAuthReady=false;
+let trustedDevices=[];
 let controller=null;
 let syncing=false;
 let activeSide='projects';
@@ -360,6 +366,9 @@ const ownerEmail=$('#ownerEmail');
 const ownerPassword=$('#ownerPassword');
 const ownerRemember=$('#ownerRemember');
 const ownerLoginError=$('#ownerLoginError');
+const ownerAuthTitle=$('#ownerAuthTitle');
+const ownerAuthCopy=$('#ownerAuthCopy');
+const ownerAuthSubmit=$('#ownerAuthSubmit');
 
 function uid(prefix){return prefix+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)}
 function now(){return Date.now()}
@@ -435,9 +444,14 @@ async function canonicalAuthCheck(){
   }catch(e){ownerAuthReady=false;return false}
 }
 function showOwnerLogin(){
+  const registering=coreHealth?.registration_open===true;
+  ownerAuthTitle.textContent=registering?'Registrate':'Entrar a 0liviA';
+  ownerAuthCopy.textContent=registering?'Creá tu cuenta personal.':'Tu cuenta personal.';
+  ownerAuthSubmit.textContent=registering?'Registrate':'Entrar';
+  ownerPassword.autocomplete=registering?'new-password':'current-password';
   ownerLogin.classList.add('open');
   ownerLogin.setAttribute('aria-hidden','false');
-  setTimeout(()=>ownerPassword.focus(),0);
+  setTimeout(()=>ownerEmail.focus(),0);
 }
 function hideOwnerLogin(){
   ownerLogin.classList.remove('open');
@@ -445,6 +459,33 @@ function hideOwnerLogin(){
   ownerLoginError.textContent='';
   ownerPassword.value='';
 }
+function simpleDeviceName(){
+  const ua=navigator.userAgent||'';
+  const browser=/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':/Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Navegador';
+  const platform=navigator.userAgentData?.platform||navigator.platform||'Dispositivo';
+  return (browser+' · '+platform).slice(0,120);
+}
+async function loadTrustedDevices(){
+  if(backendMode!=='canonical'||!ownerAuthReady){trustedDevices=[];return}
+  try{
+    const r=await fetch('/api/auth/devices',{cache:'no-store',credentials:'same-origin'});
+    if(r.status===401){ownerAuthReady=false;trustedDevices=[];showOwnerLogin();return}
+    if(!r.ok)return;
+    trustedDevices=(await r.json()).devices||[];
+    if(activeSide==='config')renderConfig();
+  }catch(e){}
+}
+async function revokeTrustedDevice(deviceId){
+  try{
+    const r=await fetch('/api/auth/devices/'+encodeURIComponent(deviceId),{
+      method:'DELETE',
+      credentials:'same-origin'
+    });
+    if(!r.ok)return;
+    await loadTrustedDevices();
+  }catch(e){}
+}
+
 async function probeCore(){
   try{
     const r=await fetch('/healthz',{cache:'no-store',credentials:'same-origin'});
@@ -455,6 +496,7 @@ async function probeCore(){
     backendMode=body.api_mode==='canonical'?'canonical':'bridge';
     const authOk=await canonicalAuthCheck();
     setCoreState(body.provider_ready&&authOk?'online':body.provider_ready?'locked':'locked');
+    if(authOk)await loadTrustedDevices();
     if(workspace)renderConfig();
     return body.provider_ready===true&&authOk;
   }catch(e){
@@ -469,22 +511,34 @@ ownerLoginForm.onsubmit=async e=>{
   const email=ownerEmail.value.trim();
   const password=ownerPassword.value;
   if(!email||!password)return;
+  const registering=coreHealth?.registration_open===true;
   ownerLoginError.textContent='';
   try{
-    const r=await fetch('/api/auth/login',{
+    const r=await fetch(registering?'/api/auth/register':'/api/auth/login',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       credentials:'same-origin',
-      body:JSON.stringify({email,password,remember:ownerRemember.checked})
+      body:JSON.stringify({
+        email,
+        password,
+        remember:ownerRemember.checked,
+        device_name:simpleDeviceName()
+      })
     });
     if(!r.ok){
       ownerLoginError.textContent=
         r.status===401?'Mail o contraseña incorrectos':
+        r.status===409?'La registración ya está cerrada. Recargá e iniciá sesión.':
         r.status===429?'Demasiados intentos. Probá de nuevo en un minuto.':
+        registering?'Usá un mail válido y una contraseña de al menos 10 caracteres.':
         'No se pudo iniciar sesión';
       return;
     }
-    ownerAuthReady=true;hideOwnerLogin();await probeCore();await syncCanonicalWorkspace();syncQueued();
+    ownerAuthReady=true;
+    hideOwnerLogin();
+    await probeCore();
+    await syncCanonicalWorkspace();
+    syncQueued();
   }catch(e){ownerLoginError.textContent='Core no disponible'}
 };
 
@@ -648,6 +702,36 @@ function renderConfig(){
     const strong=document.createElement('strong');strong.textContent=title;
     const small=document.createElement('small');small.textContent=value;
     card.append(strong,small);el.appendChild(card);
+  }
+  if(backendMode==='canonical'&&ownerAuthReady){
+    const heading=document.createElement('div');
+    heading.className='side-section-head';
+    heading.textContent='Dispositivos recordados';
+    el.appendChild(heading);
+    if(!trustedDevices.length){
+      const empty=document.createElement('div');
+      empty.className='side-empty';
+      empty.textContent='Ningún dispositivo recordado.';
+      el.appendChild(empty);
+    }
+    for(const device of trustedDevices){
+      const row=document.createElement('div');
+      row.className='side-card device-row';
+      const copy=document.createElement('div');
+      copy.className='device-copy';
+      const strong=document.createElement('strong');
+      strong.textContent=device.label||'Dispositivo';
+      const small=document.createElement('small');
+      small.textContent='Recordado';
+      copy.append(strong,small);
+      const revoke=document.createElement('button');
+      revoke.type='button';
+      revoke.className='device-revoke';
+      revoke.textContent='Revocar';
+      revoke.onclick=()=>revokeTrustedDevice(device.id);
+      row.append(copy,revoke);
+      el.appendChild(row);
+    }
   }
 }
 function renderAll(){renderTree();renderLibrary();renderMemory();renderConfig();renderMessages()}
