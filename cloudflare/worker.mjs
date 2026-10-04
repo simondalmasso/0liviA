@@ -312,11 +312,22 @@ export default {
         max_output_tokens: MAX_OUTPUT_TOKENS,
         web_read: true,
         max_urls_per_turn: MAX_URLS_PER_TURN,
+        web_read: true,
+        max_urls_per_turn: MAX_URLS_PER_TURN,
       });
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
       return chat(request, env);
+    }
+
+    if (url.pathname === "/api/read-url" && request.method === "GET") {
+      if (!sameOrigin(request)) return json({ error: "origin" }, 403);
+      const target = url.searchParams.get("url") || "";
+      const item = await fetchWebContext(target);
+      if (!item) return json({ error: "invalid_url" }, 400);
+      if (item.error) return json({ error: "fetch_failed", detail: item.error, url: item.url }, 502);
+      return json({ ok: true, url: item.url, text: item.text.slice(0, MAX_WEB_CHARS_PER_URL) });
     }
 
     if (url.pathname.startsWith("/api/")) {
