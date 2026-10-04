@@ -204,3 +204,27 @@ async def test_model_context_is_bounded_and_keeps_recent_turns(tmp_path):
     assert "CURRENT_QUESTION_" in blob
     assert "OLD_0_" not in blob
     assert "WEB_CONTEXT_" in blob
+
+
+@pytest.mark.asyncio
+async def test_minimum_context_budget_keeps_maximum_user_message(tmp_path):
+    store = Store(tmp_path / "context-current.sqlite3")
+    sid = store.create_session()
+    router = CaptureRouter()
+    settings = Settings(data_dir=tmp_path, max_history=100, max_context_chars=16_000)
+    agent = Agent(store, router, settings)
+
+    current = "CURRENT_FULL_" + ("z" * 11_900)
+    _ = [
+        event
+        async for event in agent.stream_turn(
+            sid,
+            current,
+            ephemeral_context="WEB_" + ("w" * 20_000),
+        )
+    ]
+
+    outbound = router.calls[-1]
+    user_messages = [m["content"] for m in outbound if m["role"] == "user"]
+    assert current in user_messages
+    assert sum(len(m["content"]) for m in outbound) <= settings.max_context_chars
