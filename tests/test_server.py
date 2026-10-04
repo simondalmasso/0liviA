@@ -171,13 +171,15 @@ def test_default_locale_guard_rejects_obvious_german():
 
 
 @pytest.mark.asyncio
-async def test_ui_uses_buffered_sse_parser_and_never_persists_token(client):
+async def test_ui_streams_sse_and_never_persists_auth_token(client):
     response = await client.get("/")
     html = await response.text()
-    assert "sseBuffer+=chunk" in html
-    assert "sseBuffer=lines.pop()" in html
-    assert "sessionStorage.setItem(key,token)" not in html
+    assert "pipeThrough(new TextDecoderStream())" in html
+    assert "line.startsWith('data: ')" in html
+    assert "Token de acceso" not in html
+    assert "Authorization" not in html
     assert "localStorage" not in html
+    assert "sessionStorage" not in html
 
 
 @pytest.mark.asyncio
@@ -202,15 +204,37 @@ async def test_live_voice_is_fullscreen_and_chat_stays_available(client):
     assert 'class="orb"' in html
     assert '#19fff0' in html
     assert '#020706' in html
-    assert 'id="openVoice"' in html
+    assert 'id="voiceBtn"' in html
     assert 'id="text"' in html
     assert 'id="send"' in html
-    assert 'id="voiceTranscript"' in html
-    assert 'id="voiceChatForm"' in html
+    assert 'id="voiceChat"' in html
     assert 'navigator.mediaDevices.getUserMedia' in html
     assert 'SpeechRecognition' in html
     assert "rec.lang='es-AR'" in html
-    assert "normalizeLocale(v.lang)==='es-ar'" in html
+    assert "==='es-ar'" in html
     assert 'speechSynthesis' in html
     assert 'localStorage' not in html
     assert 'sessionStorage' not in html
+
+
+@pytest.mark.asyncio
+async def test_projects_and_chats_exist_without_visual_clutter(client):
+    response = await client.get("/")
+    html = await response.text()
+    assert 'id="drawer"' in html
+    assert 'id="tree"' in html
+    assert 'id="newProject"' in html
+    assert "indexedDB.open" in html
+    assert "selectedProjectId" in html
+    assert "selectedChatId" in html
+    assert "remoteSessionId" in html
+    assert "status:'queued'" in html
+    for literal in (
+        "Chat persistente + Live Voice",
+        "Nueva sesión",
+        ">Enviar<",
+        ">Cancelar<",
+        "Token de acceso",
+        "core cloud todavía no conectado",
+    ):
+        assert literal not in html
