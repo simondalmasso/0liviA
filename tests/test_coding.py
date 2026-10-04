@@ -44,6 +44,10 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "test -n \"$AIDER_OPENAI_API_KEY\"" in workflow
     assert 'BRANCH="agent/coding-${GITHUB_RUN_ID}"' in workflow
     assert "persist-credentials: false" in workflow
+    assert "permissions:\n  contents: read" in workflow
+    assert "publish:\n    needs: code" in workflow
+    assert "contents: write" in workflow
+    assert "agent-series.patch" in workflow
     assert "BASE_REF: ${{ inputs.base_ref }}" in workflow
     assert "${{ inputs.base_ref }}..." not in workflow
     assert "git check-ref-format --allow-onelevel \"$BASE_REF\"" in workflow
