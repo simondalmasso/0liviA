@@ -399,8 +399,7 @@ async def test_coding_job_fails_closed_without_worker(aiohttp_client, tmp_path):
         json={"task": "do work"},
         headers=auth(),
     )
-    assert response.status == 409
-    assert (await response.json())["error"] == "registration_required"
+    assert response.status == 503
     assert (await response.json())["error"] == "coding_worker_unavailable"
 
 
@@ -1110,7 +1109,8 @@ async def test_owner_auth_requires_registration_when_owner_not_seeded(aiohttp_cl
         "/api/auth/login",
         json={"email": "owner@example.com", "password": "owner-passphrase"},
     )
-    assert response.status == 503
+    assert response.status == 409
+    assert (await response.json())["error"] == "registration_required"
 
 
 @pytest.mark.asyncio
@@ -1255,3 +1255,17 @@ async def test_sidebar_has_chats_projects_config_and_session_surfaces(client):
     assert "/api/auth/session" in html
     assert "/api/auth/logout" in html
     assert "Dispositivos recordados" in html
+
+
+@pytest.mark.asyncio
+async def test_mobile_layout_is_hardened_for_360_to_430px(client):
+    html = await (await client.get("/")).text()
+    assert "@media(max-width:430px)" in html
+    assert "@media(max-width:720px)" in html
+    assert "height:100dvh" in html
+    assert "env(safe-area-inset-bottom)" in html
+    assert "width:calc(100vw - 48px)" in html
+    assert ".composer input{font-size:16px" in html
+    assert ".auth-gate{align-items:start;overflow-y:auto" in html
+    assert ".voice-grid{grid-template-columns:1fr" in html
+    assert "overscroll-behavior:none" in html
