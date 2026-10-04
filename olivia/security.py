@@ -13,7 +13,7 @@ _PATTERNS = (
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{20,}\b", re.IGNORECASE),
     re.compile(
         r"\b(?:API[_-]?KEY|ACCESS[_-]?TOKEN|AUTH[_-]?TOKEN|SECRET|PASSWORD)\s*[=:]\s*"
-        r"(["']?)[A-Za-z0-9._~+/=-]{16,}\1",
+        r"""(["']?)[A-Za-z0-9._~+/=-]{16,}\1""",
         re.IGNORECASE,
     ),
 )
