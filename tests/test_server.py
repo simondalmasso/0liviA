@@ -1130,3 +1130,106 @@ async def test_health_does_not_disclose_owner_email(aiohttp_client, tmp_path):
     body = await (await client.get("/healthz")).json()
     assert body["owner_auth_configured"] is True
     assert "private@example.com" not in repr(body)
+
+
+@pytest.mark.asyncio
+async def test_first_run_registration_creates_single_owner_and_closes_registration(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "register.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="gateway-signing-secret")
+    )
+
+    health = await (await client.get("/healthz")).json()
+    assert health["registration_open"] is True
+    assert health["owner_auth_configured"] is False
+
+    created = await client.post(
+        "/api/auth/register",
+        json={
+            "email": "Owner@Example.com",
+            "password": "una-password-segura",
+            "remember": True,
+            "device_name": "Chrome · Windows",
+        },
+    )
+    assert created.status == 200
+    body = await created.json()
+    assert body["authenticated"] is True
+    assert body["email"] == "owner@example.com"
+    assert body["device_id"]
+
+    closed = await client.post(
+        "/api/auth/register",
+        json={
+            "email": "other@example.com",
+            "password": "otra-password-segura",
+        },
+    )
+    assert closed.status == 409
+
+    account = store.get_owner_account()
+    assert account["email"] == "owner@example.com"
+
+    health = await (await client.get("/healthz")).json()
+    assert health["registration_open"] is False
+    assert health["owner_auth_configured"] is True
+
+
+@pytest.mark.asyncio
+async def test_registered_owner_can_login_and_revoke_remembered_device(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "register-login.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="gateway-signing-secret")
+    )
+
+    registered = await client.post(
+        "/api/auth/register",
+        json={
+            "email": "owner@example.com",
+            "password": "una-password-segura",
+            "remember": False,
+        },
+    )
+    assert registered.status == 200
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "una-password-segura",
+            "remember": True,
+            "device_name": "Firefox · Linux",
+        },
+    )
+    assert login.status == 200
+    payload = await login.json()
+    device_id = payload["device_id"]
+    assert device_id
+
+    cookie = login.cookies["olivia_owner"].value
+    assert client.app["gateway"]._owner_cookie_valid(cookie) is True
+
+    listed = await client.get("/api/auth/devices", headers=auth())
+    devices = (await listed.json())["devices"]
+    assert any(row["id"] == device_id and row["label"] == "Firefox · Linux" for row in devices)
+
+    revoked = await client.delete(f"/api/auth/devices/{device_id}", headers=auth())
+    assert revoked.status == 200
+    assert (await revoked.json())["revoked"] is True
+    assert client.app["gateway"]._owner_cookie_valid(cookie) is False
+
+
+@pytest.mark.asyncio
+async def test_ui_supports_first_run_register_login_and_device_management(client):
+    html = await (await client.get("/")).text()
+    assert "/api/auth/register" in html
+    assert "registration_open" in html
+    assert "Registrate" in html
+    assert "Recordarme en este dispositivo" in html
+    assert "device_name" in html
+    assert "/api/auth/devices" in html
+    assert "Dispositivos recordados" in html
