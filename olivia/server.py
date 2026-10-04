@@ -15,6 +15,7 @@ from aiohttp import web
 
 from .agent import Agent
 from .config import Settings
+from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWorker, coding_worker_from_env
 from .router import ProviderPool
 from .store import Store
 
@@ -69,6 +70,7 @@ class Gateway:
         locale_validator: LocaleValidator = default_es_ar_validator,
         locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
         static_root: Path | None = None,
+        coding_worker: GitHubActionsCodingWorker | None = None,
     ):
         self.agent = agent
         self.settings = settings
@@ -76,6 +78,7 @@ class Gateway:
         self.locale_validator = locale_validator
         self.locale_buffer_chars = max(1, locale_buffer_chars)
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
+        self.coding_worker = coding_worker
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
 
@@ -143,6 +146,7 @@ class Gateway:
             "providers_configured": configured,
             "providers_available": available,
             "hard_zero_cost": bool(self.settings.hard_zero_cost),
+            "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
         })
 
     async def list_sessions(self, request: web.Request) -> web.Response:
@@ -180,6 +184,74 @@ class Gateway:
         except ValueError:
             return _json({"error": "limit must be an integer"}, 400)
         return _json({"session_id": session_id, "messages": self.agent.store.recent_messages(session_id, limit)})
+
+    async def create_code_job(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        if self.coding_worker is None or not self.coding_worker.configured:
+            return _json({"error": "coding_worker_unavailable"}, 503)
+
+        payload = await self._read_json(request)
+        task = payload.get("task")
+        base_ref = payload.get("base_ref", "arch/gpt-synthesis-v1")
+        publish_branch = payload.get("publish_branch", False)
+        if not isinstance(task, str) or not isinstance(base_ref, str) or not isinstance(publish_branch, bool):
+            return _json({"error": "invalid coding job payload"}, 400)
+
+        request_data = CodingJobRequest(task=task, base_ref=base_ref, publish_branch=publish_branch)
+        try:
+            self.coding_worker.validate_request(request_data)
+        except ValueError as exc:
+            return _json({"error": str(exc)}, 400)
+
+        job_id = self.agent.store.create_job("code", repo=self.coding_worker.repo)
+        self.agent.store.checkpoint_job(job_id, "dispatching", {
+            "base_ref": base_ref,
+            "publish_branch": publish_branch,
+        })
+        try:
+            remote = await self.coding_worker.dispatch(job_id, request_data)
+        except CodingWorkerError as exc:
+            self.agent.store.checkpoint_job(job_id, "failed", {
+                "base_ref": base_ref,
+                "publish_branch": publish_branch,
+                "error": str(exc)[:500],
+            })
+            return _json({"error": "coding_dispatch_failed", "job_id": job_id}, 502)
+
+        checkpoint = {
+            "base_ref": base_ref,
+            "publish_branch": publish_branch,
+            **remote,
+        }
+        self.agent.store.checkpoint_job(job_id, "dispatched", checkpoint)
+        return _json({"job_id": job_id, "status": "dispatched", **remote}, 202)
+
+    async def get_job(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        job_id = request.match_info["job_id"]
+        job = self.agent.store.get_job(job_id)
+        if job is None:
+            return _json({"error": "job not found"}, 404)
+
+        if job.get("kind") == "code" and self.coding_worker is not None and self.coding_worker.configured:
+            try:
+                remote = await self.coding_worker.status(job_id)
+            except CodingWorkerError:
+                remote = None
+            if remote:
+                status = str(remote.get("remote_status") or job["status"])
+                conclusion = remote.get("remote_conclusion")
+                if status == "completed":
+                    status = "succeeded" if conclusion == "success" else "failed"
+                checkpoint = {**job.get("checkpoint", {}), **remote}
+                self.agent.store.checkpoint_job(job_id, status, checkpoint)
+                job = self.agent.store.get_job(job_id) or job
+
+        return _json({"job": job})
 
     async def chat(self, request: web.Request) -> web.StreamResponse:
         denied = await self._require_auth(request)
@@ -313,11 +385,14 @@ def create_app(
     locale_validator: LocaleValidator = default_es_ar_validator,
     locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
     static_root: Path | None = None,
+    coding_worker: GitHubActionsCodingWorker | None = None,
 ) -> web.Application:
     settings = settings or Settings.from_env()
     if agent is None:
         store = Store(settings.db_path)
         agent = Agent(store, ProviderPool.from_settings(settings, store), settings)
+    if coding_worker is None:
+        coding_worker = coding_worker_from_env()
     gateway = Gateway(
         agent,
         settings,
@@ -325,6 +400,7 @@ def create_app(
         locale_validator=locale_validator,
         locale_buffer_chars=locale_buffer_chars,
         static_root=static_root,
+        coding_worker=coding_worker,
     )
     app = web.Application(client_max_size=MAX_BODY_BYTES)
     app["gateway"] = gateway
@@ -336,6 +412,8 @@ def create_app(
     app.router.add_get("/api/sessions/{session_id}/messages", gateway.get_messages)
     app.router.add_post("/api/chat/{session_id}", gateway.chat)
     app.router.add_post("/api/chat/{session_id}/cancel", gateway.cancel)
+    app.router.add_post("/api/jobs/code", gateway.create_code_job)
+    app.router.add_get("/api/jobs/{job_id}", gateway.get_job)
     return app
 
 
