@@ -30,3 +30,10 @@ The durable runtime file is `/var/lib/0livia/olivia.sqlite3` plus WAL/SHM while 
 ## Rollback
 
 Deploys are branch/commit based. Keep the previous checkout under a versioned release path before production rollout; switch `/opt/0livia/current` only after compile/tests/smoke pass. The first bootstrap script is intentionally simple; atomic release switching is the next deployment hardening gate.
+
+
+## Zero-spend gate
+
+Production keeps `OLIVIA_HARD_ZERO_COST=1`. Provider entries are accepted only with `cost_mode=local` or `cost_mode=free_hard_cap`, where the upstream account/route has a verified hard boundary that cannot create a charge.
+
+An advertised free quota without a hard billing boundary is `free_unverified` and is blocked. When all verified-free lanes are unavailable or quota-exhausted, the expected behavior is **degraded/unavailable, USD 0 spend**.
