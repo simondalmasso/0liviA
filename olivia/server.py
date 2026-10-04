@@ -29,13 +29,24 @@ LocaleValidator = Callable[[str], bool]
 def default_es_ar_validator(text: str) -> bool:
     """Conservative, replaceable first-segment guard; not a language model."""
     normalized = f" {re.sub(r'[^a-záéíóúüñ ]', ' ', text.lower())} "
-    english_markers = (" the ", " you ", " your ", " are ", " and ", " this ", " that ", "hello ")
-    spanish_markers = (" el ", " la ", " los ", " las ", " que ", " de ", " una ", " para ", " vos ", " hola ")
-    if any(marker in normalized for marker in english_markers) and not any(
-        marker in normalized for marker in spanish_markers
-    ):
-        return False
-    return True
+    spanish_markers = (
+        " el ", " la ", " los ", " las ", " que ", " de ", " una ", " para ",
+        " por ", " con ", " como ", " esto ", " esta ", " vos ", " tenés ", " podés ", " hola ",
+    )
+    foreign_markers = (
+        # English
+        " the ", " you ", " your ", " are ", " and ", " this ", " that ", "hello ",
+        # German
+        " der ", " die ", " das ", " und ", " ist ", " nicht ", " ich ", " sie ", " wir ", " guten ",
+        # French / Italian / Portuguese: enough to catch obvious drift, not loan words.
+        " le ", " les ", " est ", " avec ", " je ", " vous ",
+        " il ", " gli ", " non ", " sono ",
+        " não ", " você ", " vocês ", " com ",
+    )
+    spanish_score = sum(marker in normalized for marker in spanish_markers)
+    foreign_score = sum(marker in normalized for marker in foreign_markers)
+    # Reject only strong foreign evidence; technical answers with few stopwords remain allowed.
+    return not (foreign_score >= 2 and spanish_score == 0)
 
 
 def _json(payload: dict[str, Any], status: int = 200) -> web.Response:
