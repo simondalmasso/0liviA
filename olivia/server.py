@@ -567,7 +567,6 @@ class Gateway:
     ) -> None:
         name, argument = command
         safe_user = redact_secrets(text.strip())
-        self.agent.store.append_message(session_id, "user", safe_user)
 
         if name == "/read":
             if not argument:
@@ -623,6 +622,8 @@ class Gateway:
                 ephemeral_context=context,
             )
             return
+
+        self.agent.store.append_message(session_id, "user", safe_user)
 
         if name in {"/code", "/repair"}:
             mode = "repair" if name == "/repair" else "implement"
