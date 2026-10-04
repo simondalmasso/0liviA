@@ -41,7 +41,7 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "test -n \"$AIDER_OPENAI_API_KEY\"" in workflow
     assert 'BRANCH="agent/coding-${GITHUB_RUN_ID}"' in workflow
     assert "pytest -q" in workflow
-    assert 'git diff --quiet && git diff --cached --quiet' in workflow
+    assert 'if ! git diff --quiet || ! git diff --cached --quiet; then' in workflow
     assert 'git add -A' in workflow
     assert 'git commit -m "agent: persist verified coding result"' in workflow
     assert 'git push origin "HEAD:refs/heads/$AGENT_BRANCH"' in workflow
