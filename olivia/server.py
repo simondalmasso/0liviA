@@ -324,6 +324,18 @@ class Gateway:
         response.del_cookie(OWNER_COOKIE, path="/")
         return response
 
+    async def auth_session(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        account = self.agent.store.get_owner_account()
+        if account is None:
+            return _json({"authenticated": False}, 409)
+        return _json({
+            "authenticated": True,
+            "email": account["email"],
+        })
+
     async def list_devices(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
         if denied:
@@ -1231,6 +1243,7 @@ def create_app(
     app.router.add_post("/api/auth/register", gateway.register)
     app.router.add_post("/api/auth/login", gateway.login)
     app.router.add_post("/api/auth/logout", gateway.logout)
+    app.router.add_get("/api/auth/session", gateway.auth_session)
     app.router.add_get("/api/auth/devices", gateway.list_devices)
     app.router.add_delete("/api/auth/devices/{device_id}", gateway.revoke_device)
     app.router.add_get("/api/workspace", gateway.workspace)
