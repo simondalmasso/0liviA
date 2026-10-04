@@ -106,3 +106,14 @@ def test_deploy_paths_use_single_canonical_zero_livia_root():
     assert "deploy/bootstrap-a1.sh" in cloud_init
     assert "MODEL_NAME=" not in cloud_init
     assert "OLIVIA_PROVIDERS_JSON=" not in cloud_init
+
+
+def test_context_budget_is_bounded_from_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("OLIVIA_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("OLIVIA_MAX_CONTEXT_CHARS", "9999999")
+    settings = Settings.from_env()
+    assert settings.max_context_chars == 250_000
+
+    monkeypatch.setenv("OLIVIA_MAX_CONTEXT_CHARS", "1")
+    settings = Settings.from_env()
+    assert settings.max_context_chars == 16_000
