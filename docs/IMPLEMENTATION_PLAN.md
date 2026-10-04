@@ -9,15 +9,15 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Python control plane with sessions, projects, library, memory, jobs, checkpoints and events.
 - Persistent provider-health state with quota admission, circuit breaker, half-open recovery, cancellation and redacted telemetry.
 - Failover only before validated visible output; partial answers are preserved rather than silently replayed through another provider.
-- Browser/API gateway with owner auth, login throttling, bounded bodies and one active turn per session.
+- Browser/API gateway with first-run single-owner registration, email/password login, remembered-device revocation, login throttling, bounded bodies and one active turn per session.
 - Authenticated server-side workspace API backed by SQLite; Projects/Chats/Library/Memory sync into browser cache when the canonical core is active.
-- Current browser product shell with rail navigation, projects, library, memory, config and fullscreen Live Voice UI.
+- Current browser product shell with Chats/Projects/Library/Memory/Config/Session rail navigation, first-run auth UI, remembered-device management, fullscreen Live Voice, and 360–430 px responsive hardening.
 - Canonical SSRF-safe `/read` tool with page content kept ephemeral and explicitly untrusted.
 - Replaceable `/search` adapter contract, disabled unless an exact route is configured and zero-cost verified.
 - Isolated GitHub Actions coding worker with durable job IDs, exact base refs, `implement/repair/review` modes and deterministic post-agent verification.
 - Review mode may only create/update `AGENT_REVIEW.md`; any product mutation fails the job.
 - Voice contracts/pipeline/sequence/cancel tests and benchmark recorder.
-- Production bootstrap source/artifact pinning, owner auth bootstrap and Caddy hardening.
+- Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
 - Repository hygiene tests preventing stale build claims and active-doc duplication.
 
 ## Productization gates
@@ -32,7 +32,7 @@ The canonical Python Core is now the durable source of truth for Projects/Chats/
 Provider routing must remain catalog-driven and fail closed:
 - never move to a paid/unverified route silently;
 - DeepSeek V4.1 Flash/NVIDIA NIM remains development/evaluation-only unless explicit production entitlement exists;
-- Cloudflare Workers AI remains unavailable to the bridge until account-wide zero-cost behavior is independently verified;
+- the transitional Cloudflare bridge is disabled by default; Workers AI/read routes remain unavailable until both identity and account-wide zero-cost behavior are independently verified;
 - local inference is allowed as a zero-cost fallback but is not the quality target for normal chat.
 
 ### 4. Research/browser
@@ -87,4 +87,4 @@ Every meaningful mutation must preserve:
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
 4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/backup/latency/resource gates.
 5. Verify production entitlement/cost for the preferred model/coding routes.
-6. Only after those gates, retire or demote the temporary Cloudflare bridge and prepare an exact-SHA production release.
+6. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
