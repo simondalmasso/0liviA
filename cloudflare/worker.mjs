@@ -7,6 +7,7 @@ const CLOUDFLARE_FALLBACKS = [
   { id: "cloudflare-glm-4.7-flash", model: "@cf/zai-org/glm-4.7-flash" },
 ];
 const MAX_CALLS_PER_UTC_DAY = 80;
+const TRANSITIONAL_BRIDGE_ENABLED = false;
 const ACCOUNT_ZERO_COST_VERIFIED = false;
 const MAX_CONTEXT_BYTES = 7000;
 const MAX_OUTPUT_TOKENS = 384;
@@ -683,7 +684,8 @@ export default {
     if (url.pathname === "/healthz") {
       return json({
         process_alive: true,
-        provider_ready: providerCatalog(env).some(p => p.available),
+        provider_ready: TRANSITIONAL_BRIDGE_ENABLED && providerCatalog(env).some(p => p.available),
+        bridge_enabled: TRANSITIONAL_BRIDGE_ENABLED,
         hard_zero_cost: ACCOUNT_ZERO_COST_VERIFIED,
         local_daily_cap: true,
         account_overage_guard_verified: ACCOUNT_ZERO_COST_VERIFIED,
@@ -705,10 +707,16 @@ export default {
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
+      if (!TRANSITIONAL_BRIDGE_ENABLED) {
+        return json({ error: "bridge_disabled" }, 503);
+      }
       return chat(request, env);
     }
 
     if (url.pathname === "/api/read-url" && request.method === "GET") {
+      if (!TRANSITIONAL_BRIDGE_ENABLED) {
+        return json({ error: "bridge_disabled" }, 503);
+      }
       if (!sameOrigin(request)) return json({ error: "origin" }, 403);
       const guard = await takeZeroCostSlot(env);
       if (!guard.ok) {
