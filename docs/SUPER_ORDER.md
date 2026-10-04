@@ -33,7 +33,7 @@ Do not optimize for what is fashionable. Optimize for:
 
 # 1. PRODUCT OUTCOME
 
-Build **0liviA**, a cloud-resident personal AI workspace that can operate for long periods without the user's PC.
+Build **0liviA**, the user's **personal super-AI**: one persistent cloud intelligence that can converse, code, research, operate repositories and tools, remember, relearn, recover, deploy when authorized, and speak naturally in realtime without depending on the user's PC.
 
 It must be capable of:
 
@@ -788,9 +788,9 @@ If blocked, leave a precise checkpoint and continue on every independent path th
 
 # 20. FINAL STANDARD
 
-0liviA should not be a wrapper around one chatbot.
+0liviA should not be a wrapper around one chatbot, a generic multi-user platform, or a dashboard of disconnected agents.
 
-It should be a **persistent cloud AI workbench** capable of conversation, code, repositories, research, tools, memory, autonomous execution, recovery and live voice.
+It should be a **personal super-AI**: one coherent persistent identity and working memory, backed by replaceable models and tools, capable of conversation, code, repositories, research, autonomous execution, recovery and live voice.
 
 The design succeeds only if it remains:
 - fast;
