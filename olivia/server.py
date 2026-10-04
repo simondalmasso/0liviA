@@ -30,7 +30,8 @@ MAX_TITLE_CHARS = 200
 MAX_WORKSPACE_VALUE_CHARS = 20_000
 LOCALE_BUFFER_CHARS = 32
 OWNER_COOKIE = "olivia_owner"
-OWNER_COOKIE_TTL_S = 30 * 24 * 60 * 60
+OWNER_SESSION_TTL_S = 12 * 60 * 60
+OWNER_REMEMBER_TTL_S = 30 * 24 * 60 * 60
 LOGIN_FAILURE_LIMIT = 5
 LOGIN_FAILURE_WINDOW_S = 60
 
@@ -78,6 +79,7 @@ class Gateway:
         *,
         auth_token: str | None = None,
         owner_password_verifier: str | None = None,
+        owner_email: str | None = None,
         locale_validator: LocaleValidator = default_es_ar_validator,
         locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
         static_root: Path | None = None,
@@ -93,6 +95,12 @@ class Gateway:
             if owner_password_verifier is not None
             else os.getenv("OLIVIA_OWNER_PASSWORD_VERIFIER", "")
         )
+        configured_email = (
+            owner_email
+            if owner_email is not None
+            else os.getenv("OLIVIA_OWNER_EMAIL", "")
+        )
+        self.owner_email = str(configured_email or "").strip().casefold()
         self.locale_validator = locale_validator
         self.locale_buffer_chars = max(1, locale_buffer_chars)
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
@@ -104,7 +112,7 @@ class Gateway:
         self._login_failures: dict[str, list[float]] = {}
 
     def _owner_cookie_value(self, expires_at: int) -> str:
-        payload = f"v1:{expires_at}"
+        payload = f"v2:{expires_at}"
         signature = hmac.new(
             self.auth_token.encode("utf-8"),
             payload.encode("utf-8"),
@@ -120,7 +128,7 @@ class Gateway:
             expires_at = int(expires_raw)
         except (ValueError, TypeError):
             return False
-        if version != "v1" or expires_at <= int(time.time()):
+        if version != "v2" or expires_at <= int(time.time()):
             return False
         expected = hmac.new(
             self.auth_token.encode("utf-8"),
@@ -182,7 +190,7 @@ class Gateway:
         self._login_failures.pop(self._login_key(request), None)
 
     async def login(self, request: web.Request) -> web.Response:
-        if not self.auth_token or not self.owner_password_verifier:
+        if not self.auth_token or not self.owner_password_verifier or not self.owner_email:
             return _json({"error": "owner_auth_unavailable"}, 503)
         retry_after = self._login_retry_after(request)
         if retry_after:
@@ -190,24 +198,49 @@ class Gateway:
             response.headers["Retry-After"] = str(retry_after)
             return response
         payload = await self._read_json(request)
+        email = payload.get("email")
         password = payload.get("password")
-        if not isinstance(password, str) or not password or len(password) > 512:
+        remember = payload.get("remember", False)
+        if (
+            not isinstance(email, str)
+            or not email.strip()
+            or len(email) > 254
+            or not isinstance(password, str)
+            or not password
+            or len(password) > 512
+            or not isinstance(remember, bool)
+        ):
             self._record_login_failure(request)
-            return _json({"error": "invalid password"}, 400)
-        if not verify_password(password, self.owner_password_verifier):
+            return _json({"error": "invalid credentials"}, 400)
+
+        normalized_email = email.strip().casefold()
+        email_ok = secrets.compare_digest(normalized_email, self.owner_email)
+        password_ok = verify_password(password, self.owner_password_verifier)
+        if not email_ok or not password_ok:
             self._record_login_failure(request)
             return _json({"error": "unauthorized"}, 401)
+
         self._clear_login_failures(request)
-        expires_at = int(time.time()) + OWNER_COOKIE_TTL_S
-        response = _json({"authenticated": True, "expires_at": expires_at})
+        ttl_s = OWNER_REMEMBER_TTL_S if remember else OWNER_SESSION_TTL_S
+        expires_at = int(time.time()) + ttl_s
+        response = _json({
+            "authenticated": True,
+            "email": self.owner_email,
+            "remembered": remember,
+            "expires_at": expires_at,
+        })
+        cookie_kwargs = {
+            "httponly": True,
+            "secure": True,
+            "samesite": "Strict",
+            "path": "/",
+        }
+        if remember:
+            cookie_kwargs["max_age"] = OWNER_REMEMBER_TTL_S
         response.set_cookie(
             OWNER_COOKIE,
             self._owner_cookie_value(expires_at),
-            max_age=OWNER_COOKIE_TTL_S,
-            httponly=True,
-            secure=True,
-            samesite="Strict",
-            path="/",
+            **cookie_kwargs,
         )
         return response
 
@@ -269,7 +302,9 @@ class Gateway:
             "providers_available": available,
             "hard_zero_cost": bool(self.settings.hard_zero_cost),
             "api_mode": "canonical",
-            "owner_auth_configured": bool(self.auth_token and self.owner_password_verifier),
+            "owner_auth_configured": bool(
+                self.auth_token and self.owner_password_verifier and self.owner_email
+            ),
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
             "web_read_configured": self.web_reader is not None,
             "web_search_configured": bool(self.web_search and self.web_search.configured),
@@ -1060,6 +1095,7 @@ def create_app(
     *,
     auth_token: str | None = None,
     owner_password_verifier: str | None = None,
+    owner_email: str | None = None,
     locale_validator: LocaleValidator = default_es_ar_validator,
     locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
     static_root: Path | None = None,
@@ -1086,6 +1122,7 @@ def create_app(
         settings,
         auth_token=auth_token,
         owner_password_verifier=owner_password_verifier,
+        owner_email=owner_email,
         locale_validator=locale_validator,
         locale_buffer_chars=locale_buffer_chars,
         static_root=static_root,
