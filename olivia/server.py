@@ -267,6 +267,7 @@ class Gateway:
             "owner_auth_configured": bool(self.auth_token and self.owner_password_verifier),
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
             "web_read_configured": self.web_reader is not None,
+            "web_search_configured": bool(self.web_search and self.web_search.configured),
         })
 
     async def workspace(self, request: web.Request) -> web.Response:
@@ -986,9 +987,15 @@ def create_app(
         store = Store(settings.db_path)
         agent = Agent(store, ProviderPool.from_settings(settings, store), settings)
     if coding_worker is None:
-        coding_worker = coding_worker_from_env()
+        try:
+            coding_worker = coding_worker_from_env()
+        except (CodingWorkerError, ValueError):
+            coding_worker = None
     if web_search is None:
-        web_search = web_search_from_env()
+        try:
+            web_search = web_search_from_env()
+        except (SearchUnavailable, ValueError):
+            web_search = None
     gateway = Gateway(
         agent,
         settings,
