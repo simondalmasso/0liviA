@@ -500,3 +500,27 @@ async def test_ui_can_use_canonical_cookie_auth_and_server_sessions(client):
     assert "Authorization" not in html
     assert "localStorage" not in html
     assert "sessionStorage" not in html
+
+
+@pytest.mark.asyncio
+async def test_owner_login_rate_limits_repeated_failures(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "login-rate.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+        )
+    )
+
+    for _ in range(5):
+        response = await client.post("/api/auth/login", json={"password": "wrong"})
+        assert response.status == 401
+
+    limited = await client.post("/api/auth/login", json={"password": "owner-passphrase"})
+    assert limited.status == 429
+    assert int(limited.headers["Retry-After"]) >= 1
