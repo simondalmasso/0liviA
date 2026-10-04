@@ -195,11 +195,22 @@ class Gateway:
         payload = await self._read_json(request)
         task = payload.get("task")
         base_ref = payload.get("base_ref", "arch/gpt-synthesis-v1")
+        mode = payload.get("mode", "implement")
         publish_branch = payload.get("publish_branch", False)
-        if not isinstance(task, str) or not isinstance(base_ref, str) or not isinstance(publish_branch, bool):
+        if (
+            not isinstance(task, str)
+            or not isinstance(base_ref, str)
+            or not isinstance(mode, str)
+            or not isinstance(publish_branch, bool)
+        ):
             return _json({"error": "invalid coding job payload"}, 400)
 
-        request_data = CodingJobRequest(task=task, base_ref=base_ref, publish_branch=publish_branch)
+        request_data = CodingJobRequest(
+            task=task,
+            base_ref=base_ref,
+            mode=mode,
+            publish_branch=publish_branch,
+        )
         try:
             self.coding_worker.validate_request(request_data)
         except ValueError as exc:
@@ -208,6 +219,7 @@ class Gateway:
         job_id = self.agent.store.create_job("code", repo=self.coding_worker.repo)
         self.agent.store.checkpoint_job(job_id, "dispatching", {
             "base_ref": base_ref,
+            "mode": mode,
             "publish_branch": publish_branch,
         })
         try:
@@ -215,6 +227,7 @@ class Gateway:
         except CodingWorkerError as exc:
             self.agent.store.checkpoint_job(job_id, "failed", {
                 "base_ref": base_ref,
+                "mode": mode,
                 "publish_branch": publish_branch,
                 "error": str(exc)[:500],
             })
@@ -222,6 +235,7 @@ class Gateway:
 
         checkpoint = {
             "base_ref": base_ref,
+            "mode": mode,
             "publish_branch": publish_branch,
             **remote,
         }
