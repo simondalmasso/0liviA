@@ -37,8 +37,17 @@
 ## ADR-0006 — Coding is an isolated worker
 - Date: 2026-10-04
 - Status: **accepted**
-- Decision: OpenCode-compatible worker, one worktree per job, scoped GitHub credentials/MCP, explicit checkpoints and verification gates.
-- Security: internet-facing gateway never runs unrestricted model-authored shell.
+- Decision: coding runs as a durable GitHub Actions worker, not inside the internet-facing core. The current bounded harness is Aider, started from an explicit validated ref on an isolated agent branch.
+- Modes:
+  - `implement`: bounded implementation with deterministic verification;
+  - `repair`: diagnose-first minimal repair with deterministic verification;
+  - `review`: adversarial senior review constrained to `AGENT_REVIEW.md`; product mutations fail the run.
+- Security:
+  - agent execution has `contents: read` and checkout credentials are not persisted;
+  - model/NIM credentials exist only in agent-edit steps and are absent from verification/publish steps;
+  - publication, when requested, happens in a separate write-capable job from a verified patch artifact;
+  - no auto-merge and no unrestricted model-authored shell in the Gateway.
+- Replaceability: Aider/DeepSeek are implementation choices, not product identity; other coding harnesses can challenge behind the same durable job contract.
 
 ## ADR-0007 — Cloudflare deploy-only
 - Date: 2026-10-04
