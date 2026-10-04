@@ -30,16 +30,22 @@ Scope:
 - gateway tests.
 
 ### DeepSeek — router reliability
-Workspace/branch: `impl/deepseek-router-v1` if write access exists.
+Status: **integrated and CI-verified** in `arch/gpt-synthesis-v1`.
 
-Scope:
-- half-open circuit breaker;
-- cooldown/backoff;
-- TTFT watchdog;
+Integrated:
+- persistent per-provider health state;
+- CLOSED → OPEN → HALF_OPEN recovery with probe lease;
+- quota-aware admission and day rollover;
+- TTFT watchdog and optional stream-idle watchdog;
 - cancellation without failover;
-- no post-first-visible-segment failover;
-- provider attempt metrics/events;
-- failure-mode tests.
+- failover only before first visible segment;
+- no duplicate provider attempt per turn;
+- redacted telemetry/events and attempt metrics;
+- dedicated reliability/config/health regression tests.
+
+Verification:
+- GitHub Actions run `37179846028`: Python 3.11 PASS + Python 3.12 PASS.
+- Full suite: **45 passed**.
 
 ### MiniMax — voice contracts
 Workspace/branch: `impl/minimax-voice-contracts-v1` if write access exists.
@@ -66,6 +72,6 @@ Scope:
 ## Current verification
 
 - GitHub Actions `core-ci`: Python 3.11 PASS + Python 3.12 PASS.
-- Latest verified suite at this checkpoint: **15 passed**.
+- Latest verified suite at this checkpoint: **45 passed**.
 - Browser/API gateway is integrated.
-- DeepSeek router reliability and MiniMax voice contracts remain isolated workers until reviewed.
+- DeepSeek router reliability is integrated and CI-verified; MiniMax voice contracts remain isolated until reviewed.
