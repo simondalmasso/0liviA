@@ -252,3 +252,13 @@ Measure on the actual Oracle A1 VM:
 - full stack RAM under concurrent voice + coding task.
 
 Architecture should remain provisional until these numbers exist.
+
+## Fresh official-source verification — 2026-10-04
+
+- LiveKit Agents README: programmable realtime participants; interchangeable STT/LLM/TTS/realtime integrations; WebRTC clients; semantic turn detection; MCP; built-in tests; self-hostable LiveKit stack. Source: https://github.com/livekit/agents/blob/main/README.md. This is capability evidence, not an A1 resource benchmark.
+- Moonshine Voice README: on-device operation, live streaming focus, Python/JS-WASM and Linux/Raspberry Pi support, MIT licensing with an explicit legacy non-English model exception. Source: https://github.com/moonshine-ai/moonshine/blob/main/README.md. Spanish ARM64 latency remains unmeasured here.
+- Silero VAD README: approximately 2 MB JIT model; under 1 ms for a 30+ ms chunk on one CPU thread; ONNX path; MIT. The README's Python examples list x86-64/AVX requirements, so ARM64 adoption must use an actual ONNX/runtime test rather than extrapolation. Source: https://github.com/snakers4/silero-vad/blob/master/README.md.
+- Kokoro README: Kokoro-82M; Apache-licensed weights; Spanish pipeline example (`lang_code='e'`). First-audio latency and memory on Oracle A1 remain unmeasured. Source: https://github.com/hexgrad/kokoro/blob/main/README.md.
+- GitHub MCP Server README: explicit read-only mode, toolset/tool allow-lists, environment-based PAT configuration and minimum-permission guidance. Lockdown mode is best-effort filtering, not an authorization boundary. Source: https://github.com/github/github-mcp-server/blob/main/README.md.
+
+No current source above proves that 0liviA can run realtime voice on 2 OCPU / 12 GB ARM64 at USD 0. That remains an explicit benchmark gate.
