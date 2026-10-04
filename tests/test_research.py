@@ -109,3 +109,24 @@ async def test_cloudflare_search_fails_closed_when_unverified():
     )
     with pytest.raises(SearchUnavailable):
         await search.search("hola")
+
+
+def test_cloudflare_byok_alias_matches_official_contract():
+    with pytest.raises(ValueError):
+        CloudflareWebSearch(
+            account_id="acct",
+            api_token="token",
+            gateway_id="default",
+            provider="exa",
+            byok_alias="alias with spaces",
+            zero_cost_verified=True,
+        )
+    with pytest.raises(ValueError):
+        CloudflareWebSearch(
+            account_id="acct",
+            api_token="token",
+            gateway_id="default",
+            provider="exa",
+            byok_alias="x" * 65,
+            zero_cost_verified=True,
+        )
