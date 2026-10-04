@@ -6,7 +6,7 @@ import pytest
 
 from olivia.agent import Agent
 from olivia.config import Settings
-from olivia.server import create_app
+from olivia.server import create_app, default_es_ar_validator
 from olivia.store import Store
 
 
@@ -162,3 +162,20 @@ async def test_cancel_requires_matching_turn_id(client, gateway):
     )
     first.close()
     await wait_until(lambda: router.cancelled and session_id not in client.app["gateway"]._turns)
+
+
+def test_default_locale_guard_rejects_obvious_german():
+    assert default_es_ar_validator("Das ist eine Antwort und wir können fortfahren.") is False
+    assert default_es_ar_validator("Esto es una respuesta para vos y podemos seguir.") is True
+    # Technical fragments without enough linguistic evidence are not falsely blocked.
+    assert default_es_ar_validator("HTTP 429 -> retry 2s") is True
+
+
+@pytest.mark.asyncio
+async def test_ui_uses_buffered_sse_parser_and_never_persists_token(client):
+    response = await client.get("/")
+    html = await response.text()
+    assert "sseBuffer+=value" in html
+    assert "sseBuffer=lines.pop()" in html
+    assert "sessionStorage.setItem(key,token)" not in html
+    assert "localStorage" not in html
