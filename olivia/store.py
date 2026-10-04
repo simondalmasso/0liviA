@@ -134,16 +134,6 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at REAL NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS trusted_devices (
-    id TEXT PRIMARY KEY,
-    label TEXT NOT NULL,
-    created_at REAL NOT NULL,
-    last_seen_at REAL NOT NULL,
-    expires_at REAL NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_trusted_devices_expiry
-    ON trusted_devices(expires_at);
-
 """
 
 
@@ -245,60 +235,6 @@ class Store:
                 (max(1, min(limit, 500)),),
             ).fetchall()
         return [dict(row) for row in rows]
-
-    def create_trusted_device(self, label: str, *, expires_at: float) -> str:
-        clean_label = redact_secrets(str(label or "").strip())[:120] or "Dispositivo"
-        now = time.time()
-        device_id = uuid.uuid4().hex
-        with self._lock:
-            self._conn.execute(
-                """INSERT INTO trusted_devices(id,label,created_at,last_seen_at,expires_at)
-                   VALUES(?,?,?,?,?)""",
-                (device_id, clean_label, now, now, float(expires_at)),
-            )
-        return device_id
-
-    def trusted_device_active(self, device_id: str, *, now: float | None = None) -> bool:
-        moment = time.time() if now is None else float(now)
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT expires_at FROM trusted_devices WHERE id=? LIMIT 1",
-                (str(device_id),),
-            ).fetchone()
-            if row is None:
-                return False
-            if float(row["expires_at"]) <= moment:
-                self._conn.execute("DELETE FROM trusted_devices WHERE id=?", (str(device_id),))
-                return False
-            self._conn.execute(
-                "UPDATE trusted_devices SET last_seen_at=? WHERE id=?",
-                (moment, str(device_id)),
-            )
-        return True
-
-    def list_trusted_devices(self, *, now: float | None = None, limit: int = 50) -> list[dict[str, Any]]:
-        moment = time.time() if now is None else float(now)
-        with self._lock:
-            self._conn.execute(
-                "DELETE FROM trusted_devices WHERE expires_at<=?",
-                (moment,),
-            )
-            rows = self._conn.execute(
-                """SELECT id,label,created_at,last_seen_at,expires_at
-                   FROM trusted_devices
-                   ORDER BY last_seen_at DESC
-                   LIMIT ?""",
-                (max(1, min(int(limit), 100)),),
-            ).fetchall()
-        return [dict(row) for row in rows]
-
-    def delete_trusted_device(self, device_id: str) -> int:
-        with self._lock:
-            cur = self._conn.execute(
-                "DELETE FROM trusted_devices WHERE id=?",
-                (str(device_id),),
-            )
-        return int(cur.rowcount)
 
     def close(self) -> None:
         with self._lock:
