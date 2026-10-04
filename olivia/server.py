@@ -28,6 +28,8 @@ MAX_TITLE_CHARS = 200
 LOCALE_BUFFER_CHARS = 32
 OWNER_COOKIE = "olivia_owner"
 OWNER_COOKIE_TTL_S = 30 * 24 * 60 * 60
+LOGIN_FAILURE_LIMIT = 5
+LOGIN_FAILURE_WINDOW_S = 60
 
 LocaleValidator = Callable[[str], bool]
 
@@ -92,6 +94,7 @@ class Gateway:
         self.coding_worker = coding_worker
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
+        self._login_failures: dict[str, list[float]] = {}
 
     def _owner_cookie_value(self, expires_at: int) -> str:
         payload = f"v1:{expires_at}"
@@ -133,15 +136,56 @@ class Gateway:
             return None
         return _json({"error": "unauthorized"}, status=401)
 
+    def _login_key(self, request: web.Request) -> str:
+        return request.remote or "unknown"
+
+    def _login_retry_after(self, request: web.Request) -> int:
+        key = self._login_key(request)
+        now = time.monotonic()
+        recent = [
+            stamp
+            for stamp in self._login_failures.get(key, [])
+            if now - stamp < LOGIN_FAILURE_WINDOW_S
+        ]
+        if recent:
+            self._login_failures[key] = recent
+        else:
+            self._login_failures.pop(key, None)
+        if len(recent) < LOGIN_FAILURE_LIMIT:
+            return 0
+        return max(1, int(LOGIN_FAILURE_WINDOW_S - (now - recent[0])) + 1)
+
+    def _record_login_failure(self, request: web.Request) -> None:
+        key = self._login_key(request)
+        now = time.monotonic()
+        recent = [
+            stamp
+            for stamp in self._login_failures.get(key, [])
+            if now - stamp < LOGIN_FAILURE_WINDOW_S
+        ]
+        recent.append(now)
+        self._login_failures[key] = recent[-LOGIN_FAILURE_LIMIT:]
+
+    def _clear_login_failures(self, request: web.Request) -> None:
+        self._login_failures.pop(self._login_key(request), None)
+
     async def login(self, request: web.Request) -> web.Response:
         if not self.auth_token or not self.owner_password_verifier:
             return _json({"error": "owner_auth_unavailable"}, 503)
+        retry_after = self._login_retry_after(request)
+        if retry_after:
+            response = _json({"error": "login_rate_limited"}, 429)
+            response.headers["Retry-After"] = str(retry_after)
+            return response
         payload = await self._read_json(request)
         password = payload.get("password")
         if not isinstance(password, str) or not password or len(password) > 512:
+            self._record_login_failure(request)
             return _json({"error": "invalid password"}, 400)
         if not verify_password(password, self.owner_password_verifier):
+            self._record_login_failure(request)
             return _json({"error": "unauthorized"}, 401)
+        self._clear_login_failures(request)
         expires_at = int(time.time()) + OWNER_COOKIE_TTL_S
         response = _json({"authenticated": True, "expires_at": expires_at})
         response.set_cookie(
