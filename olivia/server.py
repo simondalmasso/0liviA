@@ -120,16 +120,21 @@ class Gateway:
         providers = list(self.agent.router.providers)
         configured = 0
         available = 0
+        health = getattr(self.agent.router, "health", None)
+        health_metrics = health.metrics() if health is not None else {}
         for provider in providers:
             configured += 1
             spec = getattr(provider, "spec", None)
             env_name = getattr(spec, "api_key_env", "")
-            if env_name and os.getenv(env_name):
-                state = self.agent.store.provider_state(provider.name)
-                if float(state["cooldown_until"]) <= time.time() and (
-                    not provider.daily_limit or int(state["daily_requests"]) < provider.daily_limit
-                ):
-                    available += 1
+            if not env_name or not os.getenv(env_name):
+                continue
+            state = health_metrics.get(provider.name, {})
+            cooldown = float(state.get("cooldown_remaining_s", 0.0))
+            daily = int(state.get("daily_requests", 0)) if state.get("day_current", True) else 0
+            if cooldown <= 0 and (
+                not provider.daily_limit or daily < provider.daily_limit
+            ):
+                available += 1
         return _json({
             "process_alive": True,
             "provider_configured": bool(configured),
