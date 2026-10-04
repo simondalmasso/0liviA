@@ -72,6 +72,12 @@ linear-gradient(180deg,#050506 0%,#08070c 48%,#090811 100%)}
 .copy-btn.copied{color:var(--cyan)}
 .copy-btn svg{width:15px;height:15px}
 .composer-wrap{position:absolute;left:0;right:0;bottom:0;padding:12px 14px max(14px,env(safe-area-inset-bottom));pointer-events:none}
+.slash-palette{pointer-events:auto;display:none;position:absolute;left:50%;bottom:calc(100% - 4px);transform:translateX(-50%);width:min(560px,calc(100vw - 42px));padding:6px;border-radius:18px;background:linear-gradient(155deg,rgba(20,16,25,.985),rgba(8,8,11,.995));box-shadow:0 24px 70px rgba(0,0,0,.56),inset 0 0 0 1px rgba(255,255,255,.08);backdrop-filter:blur(20px)}
+.slash-palette.open{display:grid;gap:2px}
+.slash-option{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:12px;text-align:left;color:#d9daf4}
+.slash-option.active,.slash-option:hover{background:rgba(255,255,255,.08)}
+.slash-option code{min-width:64px;color:#fff;font:600 12px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace}
+.slash-option span{color:#8f95c8;font-size:12px}
 .composer{pointer-events:auto;display:flex;align-items:flex-end;gap:8px;max-width:860px;margin:auto;padding:6px 6px 6px 16px;border-radius:27px;background:linear-gradient(135deg,rgba(13,12,16,.97),rgba(20,16,25,.97));box-shadow:0 24px 70px rgba(0,0,0,.5),0 0 34px rgba(255,60,199,.055),inset 0 0 0 1px rgba(255,255,255,.105);backdrop-filter:blur(20px)}
 .composer input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--ink);padding:11px 0}
 .composer input::placeholder{color:#777da8}
@@ -201,6 +207,7 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
     <section id="messages" class="messages" aria-live="polite"></section>
 
     <form id="composer" class="composer-wrap">
+      <div id="slashPalette" class="slash-palette" aria-hidden="true"></div>
       <div class="composer">
         <input id="text" autocomplete="off" placeholder="Escribile a 0liviA…" aria-label="Mensaje">
         <button id="send" class="send" type="submit" aria-label="Enviar">
@@ -331,6 +338,7 @@ const coreDot=$('#coreDot');
 const drawer=$('#drawer');
 const backdrop=$('#drawerBackdrop');
 const textInput=$('#text');
+const slashPalette=$('#slashPalette');
 const sendBtn=$('#send');
 const voiceLive=$('#voiceLive');
 const voiceChat=$('#voiceChat');
@@ -943,6 +951,61 @@ async function sendRemote(chat,userMessage,speak){
     return true;
   }finally{controller=null;setSendMode(false)}
 }
+const SLASH_COMMANDS=[
+  {command:'/read',label:'leer URL'},
+  {command:'/search',label:'buscar web si hay ruta $0'},
+  {command:'/code',label:'construir'},
+  {command:'/repair',label:'reparar'},
+  {command:'/review',label:'auditar'},
+  {command:'/job',label:'estado de job'}
+];
+let slashMatches=[],slashIndex=0;
+function closeSlashPalette(){
+  slashPalette.classList.remove('open');
+  slashPalette.setAttribute('aria-hidden','true');
+  slashPalette.replaceChildren();
+  slashMatches=[];slashIndex=0;
+}
+function chooseSlashCommand(command){
+  textInput.value=command+' ';
+  closeSlashPalette();
+  textInput.focus();
+}
+function paintSlashActive(){
+  slashPalette.querySelectorAll('.slash-option').forEach((button,index)=>{
+    button.classList.toggle('active',index===slashIndex);
+  });
+}
+function renderSlashPalette(){
+  const raw=textInput.value.trimStart();
+  if(backendMode!=='canonical'||!raw.startsWith('/')||raw.includes(' ')){closeSlashPalette();return}
+  const query=raw.toLowerCase();
+  slashMatches=SLASH_COMMANDS.filter(item=>item.command.startsWith(query));
+  if(!slashMatches.length){closeSlashPalette();return}
+  slashIndex=Math.min(slashIndex,slashMatches.length-1);
+  slashPalette.replaceChildren(...slashMatches.map((item,index)=>{
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='slash-option'+(index===slashIndex?' active':'');
+    const command=document.createElement('code');command.textContent=item.command;
+    const label=document.createElement('span');label.textContent=item.label;
+    button.append(command,label);
+    button.onclick=()=>chooseSlashCommand(item.command);
+    return button;
+  }));
+  slashPalette.classList.add('open');
+  slashPalette.setAttribute('aria-hidden','false');
+}
+textInput.addEventListener('input',renderSlashPalette);
+textInput.addEventListener('keydown',event=>{
+  if(!slashPalette.classList.contains('open')||!slashMatches.length)return;
+  if(event.key==='ArrowDown'){event.preventDefault();slashIndex=(slashIndex+1)%slashMatches.length;paintSlashActive();return}
+  if(event.key==='ArrowUp'){event.preventDefault();slashIndex=(slashIndex-1+slashMatches.length)%slashMatches.length;paintSlashActive();return}
+  if(event.key==='Escape'){event.preventDefault();closeSlashPalette();return}
+  if(event.key==='Tab'||event.key==='Enter'){event.preventDefault();chooseSlashCommand(slashMatches[slashIndex].command)}
+});
+textInput.addEventListener('blur',()=>setTimeout(closeSlashPalette,120));
+
 function setSendMode(active){
   sendBtn.classList.toggle('stop',active);
   sendBtn.type=active?'button':'submit';
@@ -963,7 +1026,7 @@ async function sendChat(raw,{speak=false}={}){
 $('#composer').onsubmit=async e=>{
   e.preventDefault();if(controller)return;
   const value=textInput.value.trim();if(!value)return;
-  textInput.value='';await sendChat(value);
+  textInput.value='';closeSlashPalette();await sendChat(value);
 };
 async function syncQueued(){
   if(syncing||controller)return;
