@@ -1,21 +1,46 @@
 # Architecture decisions
 
-Use this file as an append-only ADR index. Do not turn candidate research into a decision without evidence.
+## ADR-0001 — Thin Python control plane
+- Date: 2026-10-04
+- Status: **accepted**
+- Decision: one small Python control plane owns sessions, memory, jobs, routing and cancellation. Frameworks may be workers/adapters, not the product shell.
+- Reason: strongest convergence across independent implementations and lowest operational surface on 2 OCPU / 12 GB.
+- Rollback: interfaces permit replacing the core without changing durable Git/SQLite state formats.
 
-## Status
+## ADR-0002 — SQLite WAL + FTS5 operational state
+- Date: 2026-10-04
+- Status: **accepted**
+- Decision: SQLite WAL + FTS5 is the initial state/memory engine; runtime DB lives outside the Git checkout. Markdown/Git stores curated durable truth.
+- Guardrails: bounded reads, short transactions, indexes, source/confidence on promoted memory.
+- Revisit: add vector retrieval only if benchmarked recall requires it.
 
-No architecture has been frozen yet.
+## ADR-0003 — Direct provider router
+- Date: 2026-10-04
+- Status: **accepted**
+- Decision: route directly to configured OpenAI-compatible providers; no always-on LiteLLM/router service.
+- Required behavior: quota awareness, circuit breaker, TTFT watchdog, metrics, cancellation, failover only before first token.
+- Cost policy: no automatic paid fallback.
 
-## Decision template
+## ADR-0004 — Direct WSS is voice transport v1
+- Date: 2026-10-04
+- Status: **accepted for first implementation**
+- Decision: browser ↔ Oracle direct WSS for one-user realtime audio/control.
+- Challengers: Pipecat SmallWebRTC first, StreamCore second.
+- Gate: switch only if A1/mobile benchmarks materially beat WSS in latency/stability.
 
-### ADR-XXXX — <title>
-- Date:
-- Status: proposed / accepted / superseded / rejected
-- Context:
-- Evidence:
-- Decision:
-- Alternatives:
-- Resource impact:
-- Security impact:
-- Rollback / replacement path:
-- Verification:
+## ADR-0005 — Speech stack remains benchmark-gated
+- Date: 2026-10-04
+- Status: **proposed**
+- Decision under test: Silero VAD; adaptive endpointing; Moonshine local STT with Groq Whisper quota lane and whisper.cpp fallback; Pocket TTS candidate with Piper fallback; Kokoro/MOSS challengers.
+- Argentine voice: independent acceptance test; generic Spanish support is insufficient.
+
+## ADR-0006 — Coding is an isolated worker
+- Date: 2026-10-04
+- Status: **accepted**
+- Decision: OpenCode-compatible worker, one worktree per job, scoped GitHub credentials/MCP, explicit checkpoints and verification gates.
+- Security: internet-facing gateway never runs unrestricted model-authored shell.
+
+## ADR-0007 — Cloudflare deploy-only
+- Date: 2026-10-04
+- Status: **accepted**
+- Decision: Cloudflare may host/deploy user applications and a thin frontend if desired, but normal 0liviA chat, memory, model and voice turns do not depend on Workers, Tunnel, DO, Containers or AI Gateway.
