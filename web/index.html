@@ -134,8 +134,7 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
 .voice-top .brand{margin-right:auto}
 .voice-grid{min-height:0;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(300px,.7fr);gap:10px;padding:0 16px 10px}
 .voice-stage{position:relative;display:grid;place-items:center;min-height:0}
-.voice-stage::before{content:"";position:absolute;width:min(48vmin,380px);aspect-ratio:1;border-radius:50%;border:1px solid rgba(25,230,227,.72);box-shadow:0 0 10px rgba(25,230,227,.9),0 0 32px rgba(25,230,227,.34),inset 0 0 18px rgba(25,230,227,.08);opacity:.72;pointer-events:none}
-.voice-stage::before{content:"";position:absolute;width:min(62vmin,520px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(29,231,220,.105) 0%,rgba(29,231,220,.045) 38%,transparent 70%);filter:blur(18px);pointer-events:none}
+.voice-stage::before{content:"";position:absolute;width:min(52vmin,430px);aspect-ratio:1;border-radius:50%;border:1px solid rgba(25,230,227,.72);background:radial-gradient(circle,rgba(29,231,220,.095) 0%,rgba(29,231,220,.035) 44%,transparent 72%);box-shadow:0 0 10px rgba(25,230,227,.9),0 0 34px rgba(25,230,227,.34),inset 0 0 18px rgba(25,230,227,.08);opacity:.78;pointer-events:none}
 .orb-wrap{width:min(70vmin,620px);aspect-ratio:1;display:grid;place-items:center}
 .orb{width:100%;overflow:visible;transform:scale(var(--voice-scale,1));will-change:transform}
 .voice-ring-fill{fill:rgba(0,18,17,.16)}
@@ -453,7 +452,7 @@ ownerLoginForm.onsubmit=async e=>{
       body:JSON.stringify({password})
     });
     if(!r.ok){ownerLoginError.textContent=r.status===401?'Contraseña incorrecta':'No se pudo iniciar sesión';return}
-    ownerAuthReady=true;hideOwnerLogin();await probeCore();syncQueued();
+    ownerAuthReady=true;hideOwnerLogin();await probeCore();await syncCanonicalSessions();syncQueued();
   }catch(e){ownerLoginError.textContent='Core no disponible'}
 };
 
@@ -565,6 +564,7 @@ function projectButton(project){
       cr.onclick=async()=>{
         workspace.selectedChatId=chat.id;
         await saveState();renderAll();closeDrawer();
+        if(backendMode==='canonical'&&chat.remoteSessionId&&!chat.messages.length)await hydrateCanonicalChat(chat);
       };
       chats.appendChild(cr);
     }
@@ -678,6 +678,62 @@ function streamText(event){
   if(typeof event.result?.response==='string')return event.result.response;
   return '';
 }
+function findChatByRemoteSessionId(sessionId){
+  for(const project of workspace.projects){
+    const chat=project.chats.find(item=>item.remoteSessionId===sessionId);
+    if(chat)return chat;
+  }
+  return null;
+}
+async function hydrateCanonicalChat(chat){
+  if(backendMode!=='canonical'||!ownerAuthReady||!chat?.remoteSessionId)return false;
+  if(chat.messages.some(m=>m.status==='queued'))return false;
+  const r=await fetch('/api/sessions/'+encodeURIComponent(chat.remoteSessionId)+'/messages?limit=200',{
+    cache:'no-store',
+    credentials:'same-origin'
+  });
+  if(r.status===401){ownerAuthReady=false;showOwnerLogin();return false}
+  if(!r.ok)return false;
+  const body=await r.json();
+  chat.messages=(body.messages||[]).map(item=>({
+    id:'srv_'+item.id,
+    role:item.role,
+    text:item.content,
+    status:item.status==='partial'?'partial':'synced',
+    ts:Math.round(Number(item.created_at||0)*1000)
+  }));
+  await saveState();
+  renderMessages();
+  return true;
+}
+async function syncCanonicalSessions(){
+  if(backendMode!=='canonical'||!ownerAuthReady||!workspace)return false;
+  const r=await fetch('/api/sessions?limit=50',{cache:'no-store',credentials:'same-origin'});
+  if(r.status===401){ownerAuthReady=false;showOwnerLogin();return false}
+  if(!r.ok)return false;
+  const body=await r.json();
+  const home=workspace.projects.find(p=>p.name==='0liviA')||workspace.projects[0];
+  for(const session of body.sessions||[]){
+    let chat=findChatByRemoteSessionId(session.id);
+    if(!chat){
+      chat={
+        id:uid('c'),
+        title:session.title||'Chat',
+        messages:[],
+        remoteSessionId:session.id
+      };
+      home.chats.push(chat);
+    }else if(session.title&&chat.title==='Nuevo chat'){
+      chat.title=session.title;
+    }
+  }
+  await saveState();
+  renderTree();
+  const current=selectedChat();
+  if(current?.remoteSessionId&&!current.messages.length)await hydrateCanonicalChat(current);
+  return true;
+}
+
 async function ensureRemoteSession(chat,excludeMessageId=null){
   if(backendMode!=='canonical')return null;
   if(chat.remoteSessionId)return chat.remoteSessionId;
@@ -860,7 +916,7 @@ window.addEventListener('online',syncQueued);window.addEventListener('focus',syn
   normalizeWorkspace();
   const p=selectedProject();if(!p.chats.length)p.chats.push({id:uid('c'),title:'Nuevo chat',messages:[]});
   if(!workspace.selectedChatId)workspace.selectedChatId=p.chats[0].id;
-  await saveState();renderAll();await probeCore();syncQueued();
+  await saveState();renderAll();await probeCore();if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalSessions();syncQueued();
 })();
 </script>
 </body>
