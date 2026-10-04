@@ -838,3 +838,46 @@ async def test_agentic_slash_palette_is_contextual_not_permanent_clutter(client)
     assert "backendMode!=='canonical'" in html
     assert "textInput.addEventListener('input',renderSlashPalette)" in html
     assert "chooseSlashCommand" in html
+
+
+@pytest.mark.asyncio
+async def test_optional_coding_worker_misconfiguration_does_not_break_core(aiohttp_client, tmp_path, monkeypatch):
+    monkeypatch.setenv("OLIVIA_CODING_WORKER_ENABLED", "1")
+    monkeypatch.delenv("OLIVIA_CODING_REPO", raising=False)
+
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "degraded-coding.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    health = await client.get("/healthz")
+    body = await health.json()
+    assert body["process_alive"] is True
+    assert body["coding_worker_configured"] is False
+
+
+@pytest.mark.asyncio
+async def test_optional_web_search_misconfiguration_does_not_break_core(aiohttp_client, tmp_path, monkeypatch):
+    monkeypatch.setenv("OLIVIA_WEB_SEARCH_ENABLED", "1")
+    monkeypatch.delenv("OLIVIA_WEB_SEARCH_ZERO_COST_VERIFIED", raising=False)
+
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "degraded-search.sqlite3")
+    router = FakeRouter(parts=("MODEL_SHOULD_NOT_RUN",))
+    agent = Agent(store, router, settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    health = await client.get("/healthz")
+    body = await health.json()
+    assert body["process_alive"] is True
+    assert body["web_search_configured"] is False
+
+    session_id = store.create_session("search-degraded")
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/search actualidad IA"},
+        headers=auth(),
+    )
+    text_body = await response.text()
+    assert "búsqueda web no está habilitada" in text_body
+    assert router.calls == []
