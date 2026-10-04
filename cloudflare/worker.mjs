@@ -6,6 +6,7 @@ const MAX_CONTEXT_BYTES = 7000;
 const MAX_OUTPUT_TOKENS = 384;
 const MAX_URLS_PER_TURN = 2;
 const MAX_WEB_CHARS_PER_URL = 12000;
+const MAX_REDIRECTS = 3;
 
 const SYSTEM = [
   "Tu identidad de producto es 0liviA.",
@@ -31,7 +32,7 @@ function json(data, status = 200, extra = {}) {
 
 function sameOrigin(request) {
   const origin = request.headers.get("origin");
-  if (!origin) return true;
+  if (!origin) return false;
   return origin === new URL(request.url).origin;
 }
 
@@ -61,13 +62,39 @@ function extractUrls(value) {
 }
 
 function blockedHost(hostname) {
-  const h = String(hostname || "").toLowerCase().replace(/\.$/, "");
-  if (!h || h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local")) return true;
-  if (h === "0.0.0.0" || h === "127.0.0.1" || h === "::1") return true;
-  if (/^10\./.test(h) || /^192\.168\./.test(h)) return true;
-  const m = h.match(/^172\.(\d+)\./);
-  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
-  if (/^169\.254\./.test(h)) return true;
+  const h = String(hostname || "")
+    .toLowerCase()
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .replace(/\.$/, "");
+  if (!h || h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) {
+    return true;
+  }
+
+  const v4 = h.split(".");
+  if (v4.length === 4 && v4.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)) {
+    const [a, b, c] = v4.map(Number);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 192 && b === 0 && c === 2) return true; // 192.0.2.0/24
+    if (a === 198 && (b === 18 || b === 19)) return true;
+    if (a === 198 && b === 51 && c === 100) return true; // 198.51.100.0/24
+    if (a === 203 && b === 0 && c === 113) return true; // 203.0.113.0/24
+    if (a >= 224) return true;
+  }
+
+  if (h.includes(":")) {
+    if (h === "::" || h === "::1") return true;
+    if (/^f[cd]/.test(h)) return true; // fc00::/7
+    if (/^fe[89ab]/.test(h)) return true; // fe80::/10
+    if (/^ff/.test(h)) return true;
+    if (/^2001:0?db8(?::|$)/.test(h)) return true; // 2001:db8::/32
+    if (/^::ffff:/.test(h)) return true;
+  }
+
   return false;
 }
 
@@ -101,37 +128,59 @@ async function fetchWebContext(urlString) {
   } catch {
     return null;
   }
-  if (!["https:", "http:"].includes(url.protocol) || blockedHost(url.hostname)) return null;
+  if (!["https:", "http:"].includes(url.protocol) || blockedHost(url.hostname) || url.username || url.password) {
+    return null;
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort("timeout"), 8000);
   try {
-    const response = await fetch(url.toString(), {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "user-agent": "0liviA/0.1 (+read-only web context)",
-        "accept": "text/html,text/plain,application/json;q=0.9,*/*;q=0.2",
-      },
-    });
-    if (!response.ok) {
-      return { url: url.toString(), error: `HTTP ${response.status}` };
+    let current = url;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+      if (!["https:", "http:"].includes(current.protocol) || blockedHost(current.hostname) || current.username || current.password) {
+        return { url: current.toString(), error: "URL bloqueada" };
+      }
+
+      const response = await fetch(current.toString(), {
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "user-agent": "0liviA/0.1 (+read-only web context)",
+          "accept": "text/html,text/plain,application/json;q=0.9,*/*;q=0.2",
+        },
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) return { url: current.toString(), error: `redirect HTTP ${response.status} sin Location` };
+        if (hop >= MAX_REDIRECTS) return { url: current.toString(), error: "demasiadas redirecciones" };
+        try {
+          current = new URL(location, current);
+        } catch {
+          return { url: current.toString(), error: "redirect inválido" };
+        }
+        continue;
+      }
+
+      if (!response.ok) {
+        return { url: current.toString(), error: `HTTP ${response.status}` };
+      }
+      const type = (response.headers.get("content-type") || "").toLowerCase();
+      if (!/(text\/|application\/json|application\/xml|application\/xhtml)/.test(type)) {
+        return { url: current.toString(), error: "tipo de contenido no textual" };
+      }
+      const raw = (await response.text()).slice(0, MAX_WEB_CHARS_PER_URL * 3);
+      const text = (type.includes("html") ? htmlToText(raw) : raw.replace(/\s+/g, " ").trim())
+        .slice(0, MAX_WEB_CHARS_PER_URL);
+      return { url: current.toString(), text };
     }
-    const type = (response.headers.get("content-type") || "").toLowerCase();
-    if (!/(text\/|application\/json|application\/xml|application\/xhtml)/.test(type)) {
-      return { url: url.toString(), error: "tipo de contenido no textual" };
-    }
-    const raw = (await response.text()).slice(0, MAX_WEB_CHARS_PER_URL * 3);
-    const text = (type.includes("html") ? htmlToText(raw) : raw.replace(/\s+/g, " ").trim())
-      .slice(0, MAX_WEB_CHARS_PER_URL);
-    return { url: response.url || url.toString(), text };
+    return { url: url.toString(), error: "demasiadas redirecciones" };
   } catch (error) {
     return { url: url.toString(), error: String(error?.message || error || "fetch_failed") };
   } finally {
     clearTimeout(timeout);
   }
 }
-
 async function webContextFor(messages) {
   const latest = messages[messages.length - 1]?.content || "";
   const urls = extractUrls(latest);
@@ -310,8 +359,6 @@ export default {
         max_calls_per_utc_day: MAX_CALLS_PER_UTC_DAY,
         max_context_bytes: MAX_CONTEXT_BYTES,
         max_output_tokens: MAX_OUTPUT_TOKENS,
-        web_read: true,
-        max_urls_per_turn: MAX_URLS_PER_TURN,
         web_read: true,
         max_urls_per_turn: MAX_URLS_PER_TURN,
       });
