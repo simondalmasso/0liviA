@@ -8,7 +8,7 @@ from ..contracts import AudioFrame, TranscriptChunk, VoiceEvent
 
 @runtime_checkable
 class VoiceTransport(Protocol):
-    async def recv(self) -> AsyncIterator[AudioFrame | VoiceEvent]: ...
+    def recv(self) -> AsyncIterator[AudioFrame | VoiceEvent]: ...
     async def send_event(self, event: VoiceEvent) -> None: ...
     async def send_audio(self, frame: AudioFrame) -> None: ...
     async def close(self) -> None: ...
@@ -38,7 +38,7 @@ class SpeechToText(Protocol):
 
 @runtime_checkable
 class TextToSpeech(Protocol):
-    async def stream(
+    def stream(
         self,
         text: AsyncIterator[str],
         *,
