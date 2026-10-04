@@ -826,3 +826,15 @@ async def test_review_job_status_recovers_redacted_durable_report(aiohttp_client
     assert "Informe senior" in report
     assert "[REDACTED_SECRET]" in report
     assert "ghp_1234567890abcdefghijklmnopqrstuvwxyz" not in report
+
+
+@pytest.mark.asyncio
+async def test_agentic_slash_palette_is_contextual_not_permanent_clutter(client):
+    html = await (await client.get("/")).text()
+    assert 'id="slashPalette"' in html
+    assert "SLASH_COMMANDS" in html
+    for command in ("/read", "/search", "/code", "/repair", "/review", "/job"):
+        assert command in html
+    assert "backendMode!=='canonical'" in html
+    assert "textInput.addEventListener('input',renderSlashPalette)" in html
+    assert "chooseSlashCommand" in html
