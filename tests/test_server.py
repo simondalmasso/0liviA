@@ -972,3 +972,45 @@ async def test_owner_login_throttle_separates_forwarded_clients(aiohttp_client, 
         headers={"X-Forwarded-For": "203.0.113.11"},
     )
     assert owner.status == 200
+
+
+@pytest.mark.asyncio
+async def test_search_and_research_redact_secrets_before_external_provider(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "search-dlp.sqlite3")
+    router = FakeRouter(parts=("ok",))
+    agent = Agent(store, router, settings)
+    search = FakeWebSearch()
+    reader = FakeWebReader()
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="test-token",
+            web_search=search,
+            web_reader=reader,
+        )
+    )
+    secret = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+
+    sid_search = store.create_session("search-dlp")
+    response = await client.post(
+        f"/api/chat/{sid_search}",
+        json={"text": f"/search novedades {secret}"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    await response.read()
+
+    sid_research = store.create_session("research-dlp")
+    response = await client.post(
+        f"/api/chat/{sid_research}",
+        json={"text": f"/research novedades {secret}"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    await response.read()
+
+    external = repr(search.queries)
+    assert secret not in external
+    assert "[REDACTED_SECRET]" in external
