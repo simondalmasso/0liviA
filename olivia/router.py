@@ -1,16 +1,31 @@
+"""OpenAI-compatible streaming router with per-provider reliability."""
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import time
+import uuid
+from collections import Counter, deque
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Protocol
+from email.utils import parsedate_to_datetime
+from typing import Any, AsyncIterator, Callable, Protocol
 
 import aiohttp
 
 from .config import Settings
+from .health import FailureKind, ProviderHealth, redact
 from .store import Store
+
+_ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
+
+
+def is_visible_segment(text: str | None) -> bool:
+    if not text:
+        return False
+    return bool(str(text).translate(_ZERO_WIDTH).strip())
 
 
 class ProviderError(RuntimeError):
@@ -23,6 +38,57 @@ class AllProvidersFailed(ProviderError):
 
 class ProviderStreamInterrupted(ProviderError):
     pass
+
+
+class ProviderConfigError(ProviderError):
+    pass
+
+
+class ProviderTimeout(ProviderError):
+    pass
+
+
+class ProviderHTTPError(ProviderError):
+    def __init__(
+        self,
+        provider: str,
+        status: int,
+        detail: str = "",
+        retry_after_s: float | None = None,
+    ):
+        self.provider = provider
+        self.status = int(status)
+        self.detail = redact(detail, max_len=300)
+        self.retry_after_s = retry_after_s
+        suffix = f": {self.detail}" if self.detail else ""
+        super().__init__(f"{provider}: HTTP {self.status}{suffix}")
+
+
+class _AttemptFailed(Exception):
+    def __init__(self, kind: Any, detail: str, retry_after_s: float | None = None):
+        self.kind = kind.value if isinstance(kind, FailureKind) else str(kind)
+        self.detail = redact(detail, max_len=300)
+        self.retry_after_s = retry_after_s
+        super().__init__(self.detail)
+
+
+def _parse_retry_after(raw: Any) -> float | None:
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when is None or when.tzinfo is None:
+        return None
+    return max(0.0, when.timestamp() - time.time())
 
 
 @dataclass(frozen=True)
@@ -73,115 +139,462 @@ class OpenAICompatibleProvider:
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         api_key = os.getenv(self.spec.api_key_env)
         if not api_key:
-            raise ProviderError(f"{self.name}: missing {self.spec.api_key_env}")
+            raise ProviderConfigError(f"{self.name}: missing {self.spec.api_key_env}")
 
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=90)
-        payload = {
-            "model": self.spec.model,
-            "messages": messages,
-            "stream": True,
-        }
+        payload = {"model": self.spec.model, "messages": messages, "stream": True}
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                self.spec.base_url + "/chat/completions",
-                json=payload,
-                headers=headers,
-            ) as response:
-                if response.status >= 400:
-                    body = (await response.text())[:1000]
-                    raise ProviderError(f"{self.name}: HTTP {response.status}: {body}")
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    self.spec.base_url + "/chat/completions",
+                    json=payload,
+                    headers=headers,
+                ) as response:
+                    if response.status >= 400:
+                        retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+                        body = (await response.text())[:1000]
+                        raise ProviderHTTPError(
+                            self.name,
+                            response.status,
+                            body,
+                            retry_after,
+                        )
 
-                async for raw in response.content:
-                    line = raw.decode("utf-8", "ignore").strip()
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        return
-                    try:
-                        obj = json.loads(data)
-                        token = obj["choices"][0]["delta"].get("content")
-                    except (KeyError, IndexError, TypeError, json.JSONDecodeError):
-                        continue
-                    if token:
-                        yield str(token)
+                    async for raw in response.content:
+                        line = raw.decode("utf-8", "ignore").strip()
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            return
+                        try:
+                            obj = json.loads(data)
+                            token = obj["choices"][0]["delta"].get("content")
+                        except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+                            continue
+                        if token:
+                            yield str(token)
+        except asyncio.CancelledError:
+            raise
+        except ProviderError:
+            raise
+        except (aiohttp.ServerTimeoutError, asyncio.TimeoutError) as exc:
+            raise ProviderTimeout(f"{self.name}: {type(exc).__name__}") from exc
+        except aiohttp.ClientError as exc:
+            raise ProviderError(
+                f"{self.name}: network {type(exc).__name__}: {redact(str(exc), max_len=160)}"
+            ) from exc
 
 
 class ProviderPool:
-    def __init__(self, providers: list[StreamProvider], store: Store, settings: Settings):
-        self.providers = sorted(providers, key=lambda p: p.priority)
-        self.store = store
+    def __init__(
+        self,
+        providers: list[StreamProvider],
+        store: Store,
+        settings: Settings,
+        *,
+        health: ProviderHealth | None = None,
+        clock: Callable[[], float] | None = None,
+        event_sink: Callable[[dict[str, Any]], None] | None = None,
+    ):
         self.settings = settings
+        self.store = store
+        self._clock = clock or time.time
+        self._health = health or ProviderHealth.from_store(
+            store,
+            settings,
+            now=self._clock,
+        )
+        self._sink = event_sink
+        self.telemetry: deque[dict[str, Any]] = deque(maxlen=400)
+        self.duplicates: list[str] = []
+        self._turns = 0
+
+        ordered: list[StreamProvider] = []
+        seen: set[str] = set()
+        for provider in sorted(providers, key=lambda p: (p.priority, p.name)):
+            if provider.name in seen:
+                self.duplicates.append(provider.name)
+                continue
+            seen.add(provider.name)
+            ordered.append(provider)
+        self.providers = ordered
+        if self.duplicates:
+            self.emit(
+                "pool.duplicates_dropped",
+                detail=",".join(sorted(set(self.duplicates))),
+            )
 
     @classmethod
     def from_settings(cls, settings: Settings, store: Store) -> "ProviderPool":
-        providers: list[StreamProvider] = []
-        for raw in settings.providers:
-            providers.append(OpenAICompatibleProvider(ProviderSpec.from_dict(raw)))
+        providers: list[StreamProvider] = [
+            OpenAICompatibleProvider(ProviderSpec.from_dict(raw))
+            for raw in settings.providers
+        ]
         return cls(providers, store, settings)
 
-    async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[RouteEvent]:
+    @property
+    def health(self) -> ProviderHealth:
+        return self._health
+
+    @staticmethod
+    def _safe(value: Any) -> Any:
+        if isinstance(value, str):
+            return redact(value, max_len=200)
+        if isinstance(value, (int, float, bool)) or value is None:
+            return value
+        if isinstance(value, (list, tuple)):
+            return [ProviderPool._safe(v) for v in value]
+        return redact(repr(value), max_len=200)
+
+    def emit(
+        self,
+        event_kind: str,
+        *,
+        provider: str | None = None,
+        detail: Any = None,
+        turn: str | None = None,
+        session_id: str | None = None,
+        **fields: Any,
+    ) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "ts": round(self._clock(), 3),
+            "kind": event_kind,
+        }
+        if provider:
+            record["provider"] = provider
+        if turn:
+            record["turn"] = turn
+        if detail is not None:
+            record["detail"] = redact(detail, max_len=200)
+        for key, value in fields.items():
+            if value is not None:
+                record[key] = self._safe(value)
+
+        self.telemetry.append(record)
+        if self._sink is not None:
+            with contextlib.suppress(Exception):
+                self._sink(dict(record))
+        record_event = getattr(self.store, "record_event", None)
+        if callable(record_event):
+            with contextlib.suppress(Exception):
+                payload = {k: v for k, v in record.items() if k != "ts"}
+                record_event(
+                    f"router.{event_kind}",
+                    payload,
+                    session_id=session_id,
+                )
+        return record
+
+    def drain_telemetry(self) -> list[dict[str, Any]]:
+        out = list(self.telemetry)
+        self.telemetry.clear()
+        return out
+
+    def metrics(self) -> dict[str, Any]:
+        return {
+            "turns": self._turns,
+            "events": dict(Counter(r["kind"] for r in self.telemetry)),
+            "providers": self._health.metrics(),
+            "duplicates_dropped": sorted(set(self.duplicates)),
+        }
+
+    async def stream(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> AsyncIterator[RouteEvent]:
+        turn_id = uuid.uuid4().hex[:8]
         errors: list[str] = []
-        now = time.time()
+        attempted: set[str] = set()
+        attempts = 0
+        max_attempts = max(1, int(self.settings.max_provider_attempts))
+        self._turns += 1
+        self.emit(
+            "turn.start",
+            turn=turn_id,
+            session_id=session_id,
+            providers=[p.name for p in self.providers],
+        )
 
         for provider in self.providers:
-            state = self.store.provider_state(provider.name)
-            if float(state["cooldown_until"]) > now:
-                continue
-            if provider.daily_limit and int(state["daily_requests"]) >= provider.daily_limit:
-                errors.append(f"{provider.name}: daily limit reached")
+            if attempts >= max_attempts:
+                self.emit(
+                    "attempts.capped",
+                    turn=turn_id,
+                    limit=max_attempts,
+                    detail="failover ceiling reached",
+                )
+                errors.append(f"failover ceiling reached ({max_attempts})")
+                break
+
+            if provider.name in attempted:
+                self.emit(
+                    "attempt.duplicate_skipped",
+                    provider=provider.name,
+                    turn=turn_id,
+                )
                 continue
 
-            self.store.provider_attempt(provider.name)
+            admission = self._health.admit(
+                provider.name,
+                daily_limit=provider.daily_limit,
+            )
+            if not admission.allowed:
+                if admission.reason == "quota_exhausted":
+                    errors.append(f"{provider.name}: daily quota exhausted")
+                    self.emit(
+                        "quota.exhausted",
+                        provider=provider.name,
+                        turn=turn_id,
+                        state=admission.state,
+                        daily_requests=admission.daily_requests,
+                        daily_limit=admission.daily_limit,
+                    )
+                else:
+                    errors.append(
+                        f"{provider.name}: {admission.reason} "
+                        f"({admission.cooldown_remaining_s:.1f}s)"
+                    )
+                    self.emit(
+                        "breaker.skip",
+                        provider=provider.name,
+                        turn=turn_id,
+                        state=admission.state,
+                        reason=admission.reason,
+                        cooldown_s=round(admission.cooldown_remaining_s, 1),
+                    )
+                continue
+
+            attempted.add(provider.name)
+            attempts += 1
+            self.emit(
+                "attempt",
+                provider=provider.name,
+                turn=turn_id,
+                state=admission.state,
+                probe=admission.is_probe,
+                attempt_no=attempts,
+            )
+
+            box: dict[str, Any] = {"visible": False, "ttft_ms": None}
             started = time.perf_counter()
-            agen = provider.stream(messages)
+            chunks = 0
+            first_segment = False
             try:
-                async with asyncio.timeout(self.settings.ttft_timeout_s):
-                    first = await anext(agen)
-            except StopAsyncIteration:
-                first = ""
+                async for event in self._attempt(provider, messages, box):
+                    if event.type == "route" and not first_segment:
+                        first_segment = True
+                        ttft_ms = float(box.get("ttft_ms") or 0.0)
+                        snapshot = self._health.record_success(
+                            provider.name,
+                            ttft_ms=ttft_ms,
+                        )
+                        self.emit(
+                            "first_segment",
+                            provider=provider.name,
+                            turn=turn_id,
+                            state=snapshot["state"],
+                            ttft_ms=round(ttft_ms, 1),
+                        )
+                        self.emit(
+                            "ttft",
+                            provider=provider.name,
+                            turn=turn_id,
+                            ttft_ms=round(ttft_ms, 1),
+                            budget_s=self.settings.ttft_timeout_s,
+                        )
+                    if event.type == "delta" and event.text:
+                        chunks += 1
+                    yield event
             except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                failures = int(state["failures"]) + 1
-                cooldown = min(
-                    self.settings.circuit_base_s * (2 ** max(0, failures - 1)),
-                    self.settings.circuit_max_s,
+                self.emit(
+                    "cancelled",
+                    provider=provider.name,
+                    turn=turn_id,
+                    visible=bool(box["visible"]),
+                    chunks=chunks,
                 )
-                self.store.provider_failure(provider.name, str(exc), time.time() + cooldown)
-                errors.append(f"{provider.name}: {exc}")
-                continue
-
-            if not first:
-                error = f"{provider.name}: empty stream"
-                self.store.provider_failure(
+                raise
+            except _AttemptFailed as exc:
+                failure_kind = (
+                    FailureKind.INTERRUPTED.value
+                    if box["visible"]
+                    else exc.kind
+                )
+                snapshot = self._health.record_failure(
                     provider.name,
-                    error,
-                    time.time() + self.settings.circuit_base_s,
+                    failure_kind,
+                    detail=exc.detail,
+                    retry_after_s=exc.retry_after_s,
                 )
-                errors.append(error)
+                self.emit(
+                    "failure",
+                    provider=provider.name,
+                    turn=turn_id,
+                    failure_kind=failure_kind,
+                    detail=exc.detail,
+                    state=snapshot["state"],
+                    cooldown_s=round(snapshot["cooldown_s"], 1),
+                    visible=bool(box["visible"]),
+                    chunks=chunks if box["visible"] else None,
+                )
+                if box["visible"]:
+                    raise ProviderStreamInterrupted(
+                        f"{provider.name}: stream failed after first visible segment: "
+                        f"{redact(exc.detail, max_len=120)}"
+                    ) from exc
+                errors.append(
+                    f"{provider.name}/{exc.kind}: "
+                    f"{redact(exc.detail, max_len=120)}"
+                )
                 continue
+            finally:
+                self._health.release(provider.name)
 
-            ttft_ms = (time.perf_counter() - started) * 1000
-            self.store.provider_success(provider.name, ttft_ms)
-            yield RouteEvent(type="route", provider=provider.name)
-            yield RouteEvent(type="delta", provider=provider.name, text=first)
-
-            try:
-                async for token in agen:
-                    yield RouteEvent(type="delta", provider=provider.name, text=token)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                raise ProviderStreamInterrupted(
-                    f"{provider.name}: stream failed after first token: {exc}"
-                ) from exc
+            total_ms = (time.perf_counter() - started) * 1000
+            self.emit(
+                "success",
+                provider=provider.name,
+                turn=turn_id,
+                chunks=chunks,
+                ms=round(total_ms, 1),
+                state="closed",
+            )
             return
 
         detail = "; ".join(errors) if errors else "no configured/available providers"
-        raise AllProvidersFailed(detail)
+        self.emit(
+            "turn.failed",
+            turn=turn_id,
+            detail=detail,
+            attempts=attempts,
+        )
+        raise AllProvidersFailed(redact(detail, max_len=600))
+
+    async def _attempt(
+        self,
+        provider: StreamProvider,
+        messages: list[dict[str, str]],
+        box: dict[str, Any],
+    ) -> AsyncIterator[RouteEvent]:
+        agen = provider.stream(messages)
+        started = time.perf_counter()
+        budget = float(self.settings.ttft_timeout_s)
+        prefix_max = int(self.settings.visible_prefix_max_chars)
+        idle = float(self.settings.stream_idle_timeout_s or 0.0)
+        try:
+            buffered_chunks: list[str] = []
+            buffered_chars = 0
+            try:
+                async with asyncio.timeout(budget):
+                    while True:
+                        try:
+                            token = await anext(agen)
+                        except StopAsyncIteration:
+                            raise _AttemptFailed(
+                                FailureKind.EMPTY_STREAM,
+                                f"{provider.name}: stream ended without a visible segment",
+                            ) from None
+                        if not token:
+                            continue
+                        buffered_chunks.append(token)
+                        buffered_chars += len(token)
+                        if is_visible_segment(token):
+                            break
+                        if buffered_chars > prefix_max:
+                            raise _AttemptFailed(
+                                FailureKind.EMPTY_STREAM,
+                                f"{provider.name}: no visible segment within "
+                                f"{prefix_max} chars",
+                            )
+            except TimeoutError as exc:
+                raise _AttemptFailed(
+                    FailureKind.TIMEOUT,
+                    f"{provider.name}: no first visible segment within {budget}s",
+                ) from exc
+
+            box["visible"] = True
+            box["ttft_ms"] = (time.perf_counter() - started) * 1000
+            yield RouteEvent(type="route", provider=provider.name)
+            for chunk in buffered_chunks:
+                yield RouteEvent(
+                    type="delta",
+                    provider=provider.name,
+                    text=chunk,
+                )
+
+            while True:
+                try:
+                    if idle:
+                        async with asyncio.timeout(idle):
+                            token = await anext(agen)
+                    else:
+                        token = await anext(agen)
+                except StopAsyncIteration:
+                    return
+                except TimeoutError as exc:
+                    raise _AttemptFailed(
+                        FailureKind.INTERRUPTED,
+                        f"{provider.name}: stream idle > {idle}s",
+                    ) from exc
+                if token:
+                    yield RouteEvent(
+                        type="delta",
+                        provider=provider.name,
+                        text=token,
+                    )
+        except asyncio.CancelledError:
+            raise
+        except _AttemptFailed:
+            raise
+        except Exception as exc:
+            failure_kind, detail, retry_after = _classify(exc)
+            raise _AttemptFailed(
+                failure_kind,
+                detail,
+                retry_after,
+            ) from exc
+        finally:
+            await _shutdown(agen)
+
+
+def _classify(exc: BaseException) -> tuple[str, str, float | None]:
+    if isinstance(exc, ProviderHTTPError):
+        kind = (
+            FailureKind.RATE_LIMIT
+            if exc.status == 429
+            else FailureKind.HTTP
+        )
+        return kind.value, str(exc), exc.retry_after_s
+    if isinstance(exc, (ProviderTimeout, asyncio.TimeoutError)):
+        return FailureKind.TIMEOUT.value, str(exc) or type(exc).__name__, None
+    if isinstance(exc, ProviderConfigError):
+        return FailureKind.CONFIG.value, str(exc), None
+    if isinstance(exc, (aiohttp.ClientError, OSError)):
+        return (
+            FailureKind.NETWORK.value,
+            f"{type(exc).__name__}: {redact(str(exc), max_len=120)}",
+            None,
+        )
+    if isinstance(exc, ProviderError):
+        return FailureKind.HTTP.value, str(exc), None
+    return (
+        FailureKind.UNKNOWN.value,
+        f"{type(exc).__name__}: {redact(str(exc), max_len=120)}",
+        None,
+    )
+
+
+async def _shutdown(agen: AsyncIterator[str]) -> None:
+    aclose = getattr(agen, "aclose", None)
+    if aclose is None:
+        return
+    with contextlib.suppress(BaseException):
+        await aclose()
