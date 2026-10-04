@@ -7,7 +7,10 @@ This document records which findings apply to the active integration branch `arc
 ## Applies to the active branch
 
 ### PUBLIC-PROD-STALE — OPEN / deployment gate
-The public Worker was observed serving an older UI/Worker generation. Its exact live SHA and billing plan are not independently verified here. Do not claim the public deployment is current, private or guaranteed USD 0 until an exact-SHA deploy and smoke are performed.
+The public Worker was observed serving an older UI/Worker generation. Its exact live SHA and billing plan are not independently verified here. The branch Worker is now disabled by default for chat/read, so an accidental future deploy fails closed; this does not change the unknown state of the currently live historical Worker. Do not claim the public deployment is current, private or guaranteed USD 0 until an exact-SHA canonical deploy and smoke are performed.
+
+### OWNER-REGISTRATION — FIXED IN BRANCH
+The canonical Core now uses first-run single-owner registration: email + scrypt password verifier are stored server-side, registration closes after the first owner, remembered sessions are bound to random server-side device IDs, and those devices are revocable from the Session UI. Session-only login leaves no durable trusted-device record. No API key or bearer is entered into the browser UI.
 
 ### UI-GATEWAY-CONTRACT — FIXED IN BRANCH
 The browser shell detects the canonical core, authenticates with a Secure/HttpOnly/SameSite owner cookie, creates/reuses server-side sessions, migrates cached history through the redacting session API, and streams via `POST /api/chat/{session_id}`. Projects, Chats, Library and Memory now reconcile through authenticated server-side workspace APIs; IndexedDB is cache/migration only in canonical mode.
@@ -22,7 +25,7 @@ The Python core now rejects secret-like durable-memory values and redacts common
 The canonical `/read` path uses an SSRF-safe URL reader and injects page text only as ephemeral untrusted model context; fetched page contents are not persisted. `/search` is disabled unless an explicit adapter is configured and its exact route is marked zero-cost verified. No Cloudflare Web Search call occurs by default.
 
 ### ZERO-COST-ACCOUNT-PROOF — OPEN / fail closed
-A request-count cap is not an account billing guard. Cloudflare account-wide billing status could not be verified with the available token. Worker provider readiness therefore remains gated; no production-cost guarantee is claimed.
+A request-count cap is not an account billing guard. Cloudflare account-wide billing status could not be verified with the available token. The transitional Worker runtime is now disabled by default, and provider readiness is false while disabled; no production-cost guarantee is claimed.
 
 ## Does not apply to the active branch
 
