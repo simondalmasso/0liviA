@@ -21,6 +21,7 @@ from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWork
 from .router import ProviderPool
 from .security import redact_secrets, verify_password
 from .store import Store
+from .web import SafeWebReader, WebReadError
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_MESSAGE_CHARS = 12_000
@@ -80,6 +81,7 @@ class Gateway:
         locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
         static_root: Path | None = None,
         coding_worker: GitHubActionsCodingWorker | None = None,
+        web_reader: SafeWebReader | None = None,
     ):
         self.agent = agent
         self.settings = settings
@@ -93,6 +95,7 @@ class Gateway:
         self.locale_buffer_chars = max(1, locale_buffer_chars)
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
         self.coding_worker = coding_worker
+        self.web_reader = web_reader or SafeWebReader()
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
         self._login_failures: dict[str, list[float]] = {}
@@ -260,6 +263,7 @@ class Gateway:
             "api_mode": "canonical",
             "owner_auth_configured": bool(self.auth_token and self.owner_password_verifier),
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
+            "web_read_configured": self.web_reader is not None,
         })
 
     async def workspace(self, request: web.Request) -> web.Response:
@@ -543,7 +547,7 @@ class Gateway:
     def _parse_chat_command(text: str) -> tuple[str, str] | None:
         command, separator, argument = text.partition(" ")
         command = command.lower()
-        if command in {"/code", "/repair"}:
+        if command in {"/code", "/repair", "/read"}:
             if not separator or not argument.strip():
                 return command, ""
             return command, argument.strip()
@@ -564,6 +568,61 @@ class Gateway:
         name, argument = command
         safe_user = redact_secrets(text.strip())
         self.agent.store.append_message(session_id, "user", safe_user)
+
+        if name == "/read":
+            if not argument:
+                assistant = "Usá /read seguido de una URL pública y, opcionalmente, una pregunta."
+                self.agent.store.append_message(session_id, "user", safe_user)
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="web-reader"
+                )
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+
+            url, separator, question = argument.partition(" ")
+            try:
+                document = await self.web_reader.read(url)
+            except WebReadError as exc:
+                self.agent.store.append_message(session_id, "user", safe_user)
+                assistant = f"No pude leer esa URL de forma segura: {str(exc)}."
+                self.agent.store.append_message(
+                    session_id,
+                    "assistant",
+                    assistant,
+                    provider="web-reader",
+                    status="complete",
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "web_read_failed",
+                    "retryable": str(exc) in {"timeout", "network_error"},
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+
+            prompt = safe_user if separator else f"/read {url} Resumí la fuente."
+            if separator and question.strip():
+                prompt = f"/read {url} {question.strip()}"
+            context = (
+                f"Source URL: {document.url}\n"
+                f"Title: {document.title or '(sin título)'}\n"
+                f"Content-Type: {document.content_type}\n"
+                f"Status: {document.status}\n\n"
+                f"{document.text}"
+            )
+            await self._stream_turn(
+                response,
+                session_id,
+                prompt,
+                turn_id,
+                ephemeral_context=context,
+            )
+            return
 
         if name in {"/code", "/repair"}:
             mode = "repair" if name == "/repair" else "implement"
@@ -754,8 +813,20 @@ class Gateway:
     async def _write_event(self, response: web.StreamResponse, event: dict[str, Any]) -> None:
         await response.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
 
-    async def _stream_turn(self, response: web.StreamResponse, session_id: str, text: str, turn_id: str) -> None:
-        events = self.agent.stream_turn(session_id, text)
+    async def _stream_turn(
+        self,
+        response: web.StreamResponse,
+        session_id: str,
+        text: str,
+        turn_id: str,
+        *,
+        ephemeral_context: str | None = None,
+    ) -> None:
+        events = self.agent.stream_turn(
+            session_id,
+            text,
+            ephemeral_context=ephemeral_context,
+        )
         pending: list[dict[str, Any]] = []
         first_text = ""
         validated = False
@@ -818,6 +889,7 @@ def create_app(
     locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
     static_root: Path | None = None,
     coding_worker: GitHubActionsCodingWorker | None = None,
+    web_reader: SafeWebReader | None = None,
 ) -> web.Application:
     settings = settings or Settings.from_env()
     if agent is None:
@@ -834,6 +906,7 @@ def create_app(
         locale_buffer_chars=locale_buffer_chars,
         static_root=static_root,
         coding_worker=coding_worker,
+        web_reader=web_reader,
     )
     app = web.Application(client_max_size=MAX_BODY_BYTES)
     app["gateway"] = gateway
