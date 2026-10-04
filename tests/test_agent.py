@@ -6,7 +6,7 @@ import pytest
 
 from olivia.agent import Agent, SYSTEM_PROMPT
 from olivia.config import Settings
-from olivia.router import RouteEvent
+from olivia.router import OpenAICompatibleProvider, ProviderSpec, RouteEvent
 from olivia.store import Store
 
 
@@ -123,3 +123,54 @@ async def test_ephemeral_web_context_reaches_provider_but_not_durable_messages(t
     assert context in repr(router.calls[-1])
     assert context not in repr(store.recent_messages(sid))
     assert "untrusted external context" in router.calls[-1][0]["content"].lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("question", [
+    "q modelo sos",
+    "qué modelo usás?",
+    "que modelo usas",
+])
+async def test_model_identity_question_is_local_exact_and_zero_cost(tmp_path, question):
+    store = Store(tmp_path / "identity.sqlite3")
+    sid = store.create_session()
+    router = CaptureRouter()
+    router.providers = [
+        OpenAICompatibleProvider(
+            ProviderSpec(
+                name="deepseek-free",
+                base_url="https://example.invalid/v1",
+                model="deepseek-v4.1-flash",
+                api_key_env="TEST_KEY",
+                priority=1,
+                cost_mode="free_hard_cap",
+            )
+        )
+    ]
+    agent = Agent(store, router, Settings(data_dir=tmp_path))
+
+    events = [event async for event in agent.stream_turn(sid, question)]
+    answer = "".join(event.get("text", "") for event in events if event["type"] == "delta")
+
+    assert router.calls == []
+    assert "Soy 0liviA" in answer
+    assert "deepseek-v4.1-flash" in answer
+    assert "deepseek-free" in answer
+    assert "No tengo un modelo específico" not in answer
+    assert "prioridad" in answer and "cuota" in answer and "salud" in answer
+    assert answer in repr(store.recent_messages(sid))
+
+
+@pytest.mark.asyncio
+async def test_model_identity_never_invents_provider_when_none_configured(tmp_path):
+    store = Store(tmp_path / "identity-empty.sqlite3")
+    sid = store.create_session()
+    router = CaptureRouter()
+    agent = Agent(store, router, Settings(data_dir=tmp_path))
+
+    events = [event async for event in agent.stream_turn(sid, "q modelo sos")]
+    answer = "".join(event.get("text", "") for event in events if event["type"] == "delta")
+
+    assert router.calls == []
+    assert "Soy 0liviA" in answer
+    assert "no tiene un modelo de inferencia configurado" in answer
