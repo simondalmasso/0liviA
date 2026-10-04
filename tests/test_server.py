@@ -209,6 +209,8 @@ async def test_ui_streams_sse_and_never_persists_auth_token(client):
     assert "line.startsWith('data: ')" in html
     assert "Token de acceso" not in html
     assert "Authorization" not in html
+    assert "/api/auth/login" in html
+    assert "olivia_owner" not in html
     assert "localStorage" not in html
     assert "sessionStorage" not in html
 
@@ -271,8 +273,11 @@ async def test_projects_and_chats_exist_without_visual_clutter(client):
     assert "indexedDB.open" in html
     assert "selectedProjectId" in html
     assert "selectedChatId" in html
-    assert "remoteSessionId" not in html
-    assert "fetch('/api/chat'" in html
+    assert "remoteSessionId" in html
+    assert "/api/auth/login" in html
+    assert "/api/sessions" in html
+    assert "/api/chat/" in html
+    assert "api_mode==='canonical'" in html
     assert "status:'queued'" in html
     for literal in (
         "Chat persistente + Live Voice",
@@ -426,3 +431,15 @@ async def test_owner_logout_expires_cookie(aiohttp_client, tmp_path):
     assert logout.status == 200
     cleared = logout.cookies["olivia_owner"]
     assert cleared["max-age"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_browser_can_use_canonical_core_without_exposing_gateway_secret(client):
+    html = await (await client.get("/")).text()
+    assert "ensureRemoteSession" in html
+    assert "sendCanonical" in html
+    assert "showOwnerLogin" in html
+    assert "credentials:'same-origin'" in html
+    assert "remoteSessionId" in html
+    assert "OLIVIA_GATEWAY_TOKEN" not in html
+    assert "Bearer " not in html
