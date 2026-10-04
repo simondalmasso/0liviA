@@ -27,3 +27,11 @@ def test_browser_cache_is_explicitly_non_durable():
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     assert "browser storage may be used only as a disposable bridge cache" in agents
     assert "never the durable source of truth" in agents
+
+
+def test_deploy_has_one_canonical_bootstrap():
+    assert (ROOT / "deploy" / "bootstrap-a1.sh").is_file()
+    assert not (ROOT / "deploy" / "install.sh").exists()
+    deploy_readme = (ROOT / "deploy" / "README.md").read_text(encoding="utf-8")
+    assert "./deploy/bootstrap-a1.sh" in deploy_readme
+    assert "./deploy/install.sh" not in deploy_readme
