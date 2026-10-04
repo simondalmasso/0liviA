@@ -7,6 +7,22 @@ from pathlib import Path
 from typing import Any
 
 
+def _env_float(name: str, default: float, lo: float, hi: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return min(hi, max(lo, value))
+
+
+def _env_int(name: str, default: int, lo: int, hi: int) -> int:
+    value = _env_float(name, float(default), float(lo), float(hi))
+    return int(value)
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path
@@ -17,6 +33,15 @@ class Settings:
     circuit_max_s: int = 600
     max_history: int = 24
     providers: tuple[dict[str, Any], ...] = ()
+    # --- router reliability (impl/deepseek-router-v1) ---
+    circuit_half_open_probes: int = 1      # probes allowed while HALF_OPEN
+    circuit_jitter_ratio: float = 0.2      # +/- ratio applied to exponential backoff
+    probe_lease_s: float = 90.0            # abandoned probes stop wedging HALF_OPEN
+    max_provider_attempts: int = 3         # per-turn failover ceiling
+    cooldown_rate_limit_s: int = 60        # floor for 429 cooldowns (Retry-After wins)
+    stream_idle_timeout_s: float = 0.0     # 0 disables inter-token watchdog
+    visible_prefix_max_chars: int = 256    # whitespace-only prefix budget
+    quota_utc_offset_h: int = 0            # daily quota day boundary
 
     @property
     def db_path(self) -> Path:
@@ -32,10 +57,18 @@ class Settings:
         return cls(
             data_dir=Path(os.getenv("OLIVIA_DATA_DIR", default_data)).expanduser(),
             bind=os.getenv("OLIVIA_BIND", "127.0.0.1"),
-            port=int(os.getenv("OLIVIA_PORT", "8080")),
-            ttft_timeout_s=float(os.getenv("OLIVIA_TTFT_TIMEOUT_S", "12")),
-            circuit_base_s=int(os.getenv("OLIVIA_CIRCUIT_BASE_S", "15")),
-            circuit_max_s=int(os.getenv("OLIVIA_CIRCUIT_MAX_S", "600")),
+            port=_env_int("OLIVIA_PORT", 8080, 1, 65535),
+            ttft_timeout_s=_env_float("OLIVIA_TTFT_TIMEOUT_S", 12.0, 0.05, 300.0),
+            circuit_base_s=_env_int("OLIVIA_CIRCUIT_BASE_S", 15, 1, 3600),
+            circuit_max_s=_env_int("OLIVIA_CIRCUIT_MAX_S", 600, 1, 86400),
             max_history=int(os.getenv("OLIVIA_MAX_HISTORY", "24")),
             providers=tuple(parsed),
+            circuit_half_open_probes=_env_int("OLIVIA_CIRCUIT_HALF_OPEN_PROBES", 1, 1, 8),
+            circuit_jitter_ratio=_env_float("OLIVIA_CIRCUIT_JITTER", 0.2, 0.0, 1.0),
+            probe_lease_s=_env_float("OLIVIA_PROBE_LEASE_S", 90.0, 1.0, 3600.0),
+            max_provider_attempts=_env_int("OLIVIA_MAX_PROVIDER_ATTEMPTS", 3, 1, 16),
+            cooldown_rate_limit_s=_env_int("OLIVIA_COOLDOWN_RATE_LIMIT_S", 60, 1, 86400),
+            stream_idle_timeout_s=_env_float("OLIVIA_STREAM_IDLE_TIMEOUT_S", 0.0, 0.0, 600.0),
+            visible_prefix_max_chars=_env_int("OLIVIA_VISIBLE_PREFIX_MAX", 256, 1, 65536),
+            quota_utc_offset_h=_env_int("OLIVIA_QUOTA_UTC_OFFSET_H", 0, -12, 14),
         )
