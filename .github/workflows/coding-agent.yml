@@ -25,6 +25,7 @@ on:
         options:
           - implement
           - repair
+          - review
       publish_branch:
         description: "Push the isolated agent branch after final tests pass"
         required: true
@@ -106,6 +107,8 @@ jobs:
           set -euo pipefail
           if [ "$MODE" = "repair" ]; then
             INTENT="Diagnose the existing failure first. Make the smallest correct repair. Preserve unrelated behavior."
+          elif [ "$MODE" = "review" ]; then
+            INTENT="Act as a senior adversarial reviewer. Inspect the repository and write findings only to AGENT_REVIEW.md. Do not modify product code, tests, workflows, configuration, or documentation other than AGENT_REVIEW.md. Rank findings by severity and include concrete file-level evidence and minimal remediation."
           else
             INTENT="Implement the requested capability with tests. Prefer the smallest coherent product change over scaffolding."
           fi
@@ -126,6 +129,26 @@ jobs:
 
           Task:
           $TASK"
+
+      - name: Enforce review-only mutation boundary
+        if: inputs.mode == 'review'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s AGENT_REVIEW.md
+          mapfile -t changed < <(
+            {
+              git diff --name-only "$BASE_REF...HEAD"
+              git diff --name-only
+              git diff --name-only --cached
+            } | sed '/^$/d' | sort -u
+          )
+          for path in "${changed[@]}"; do
+            test "$path" = "AGENT_REVIEW.md" || {
+              echo "review mode modified forbidden path: $path" >&2
+              exit 2
+            }
+          done
 
       - name: Verify first pass
         id: verify1
@@ -159,7 +182,7 @@ jobs:
           exit 0
 
       - name: repair_pass
-        if: steps.verify1.outputs.needs_repair == 'true'
+        if: steps.verify1.outputs.needs_repair == 'true' && inputs.mode != 'review'
         shell: bash
         env:
           AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
