@@ -53,3 +53,10 @@ def test_web_reader_streams_with_a_hard_body_cap():
     assert "response.body?.getReader()" in WORKER
     assert "await reader.cancel()" in WORKER
     assert "await response.text()" not in WORKER
+
+
+def test_zero_cost_status_fails_closed_until_account_guard_is_verified():
+    assert "const ACCOUNT_ZERO_COST_VERIFIED = false;" in WORKER
+    assert "hard_zero_cost: ACCOUNT_ZERO_COST_VERIFIED" in WORKER
+    assert "local_daily_cap: true" in WORKER
+    assert "account_overage_guard_verified: ACCOUNT_ZERO_COST_VERIFIED" in WORKER
