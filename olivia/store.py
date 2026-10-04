@@ -10,13 +10,34 @@ from pathlib import Path
 from typing import Any
 
 
+DEFAULT_PROJECT_ID = "default"
+
+
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
-    title TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS library_items (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    value TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    project_id TEXT REFERENCES projects(id),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
+    ON sessions(project_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,18 +143,103 @@ class Store:
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
+        self._migrate_workspace_schema()
+
+    def _migrate_workspace_schema(self) -> None:
+        with self._lock:
+            columns = {
+                str(row["name"])
+                for row in self._conn.execute("PRAGMA table_info(sessions)").fetchall()
+            }
+            if "project_id" not in columns:
+                self._conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT")
+            now = time.time()
+            self._conn.execute(
+                """INSERT OR IGNORE INTO projects(id,name,created_at,updated_at)
+                   VALUES(?,?,?,?)""",
+                (DEFAULT_PROJECT_ID, "0liviA", now, now),
+            )
+            self._conn.execute(
+                "UPDATE sessions SET project_id=? WHERE project_id IS NULL OR project_id=''",
+                (DEFAULT_PROJECT_ID,),
+            )
+
+    def project_exists(self, project_id: str) -> bool:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM projects WHERE id=? LIMIT 1", (project_id,)
+            ).fetchone()
+        return row is not None
+
+    def create_project(self, name: str) -> str:
+        clean = str(name or "").strip()[:120]
+        if not clean:
+            raise ValueError("project name is required")
+        project_id = uuid.uuid4().hex[:16]
+        now = time.time()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO projects(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+                (project_id, clean, now, now),
+            )
+        return project_id
+
+    def list_projects(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT id,name,created_at,updated_at
+                   FROM projects
+                   ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END, updated_at DESC
+                   LIMIT ?""",
+                (DEFAULT_PROJECT_ID, max(1, min(limit, 200))),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def create_library_item(self, title: str, value: str) -> str:
+        clean_title = str(title or "").strip()[:120]
+        clean_value = str(value or "").strip()[:20_000]
+        if not clean_title or not clean_value:
+            raise ValueError("library title and value are required")
+        item_id = uuid.uuid4().hex[:16]
+        now = time.time()
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO library_items(id,title,value,created_at,updated_at)
+                   VALUES(?,?,?,?,?)""",
+                (item_id, clean_title, clean_value, now, now),
+            )
+        return item_id
+
+    def list_library_items(self, limit: int = 200) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT id,title,value,created_at,updated_at
+                   FROM library_items
+                   ORDER BY updated_at DESC
+                   LIMIT ?""",
+                (max(1, min(limit, 500)),),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
 
-    def create_session(self, title: str = "") -> str:
+    def create_session(self, title: str = "", project_id: str | None = None) -> str:
         now = time.time()
         sid = uuid.uuid4().hex[:16]
+        target_project = project_id or DEFAULT_PROJECT_ID
+        if not self.project_exists(target_project):
+            raise ValueError("project not found")
         with self._lock:
             self._conn.execute(
-                "INSERT INTO sessions(id,title,created_at,updated_at) VALUES(?,?,?,?)",
-                (sid, title[:200], now, now),
+                """INSERT INTO sessions(id,title,project_id,created_at,updated_at)
+                   VALUES(?,?,?,?,?)""",
+                (sid, title[:200], target_project, now, now),
+            )
+            self._conn.execute(
+                "UPDATE projects SET updated_at=? WHERE id=?",
+                (now, target_project),
             )
         return sid
 
@@ -147,7 +253,7 @@ class Store:
     def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(
-                """SELECT id,title,created_at,updated_at
+                """SELECT id,title,project_id,created_at,updated_at
                    FROM sessions
                    ORDER BY updated_at DESC
                    LIMIT ?""",
@@ -175,6 +281,11 @@ class Store:
                 )
                 self._conn.execute(
                     "UPDATE sessions SET updated_at=? WHERE id=?",
+                    (now, session_id),
+                )
+                self._conn.execute(
+                    """UPDATE projects SET updated_at=?
+                       WHERE id=(SELECT project_id FROM sessions WHERE id=?)""",
                     (now, session_id),
                 )
                 self._conn.execute("COMMIT")
