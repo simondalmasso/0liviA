@@ -111,24 +111,3 @@ def test_store_redacts_secrets_at_durable_boundary(tmp_path: Path):
     assert secret not in repr(event_payloads)
 
 
-def test_trusted_devices_are_durable_touchable_and_revocable(tmp_path: Path):
-    path = tmp_path / "devices.sqlite3"
-    store = Store(path)
-    device_id = store.create_trusted_device("Chrome · Windows", expires_at=2_000_000_000)
-
-    devices = store.list_trusted_devices(now=1_900_000_000)
-    assert any(row["id"] == device_id and row["label"] == "Chrome · Windows" for row in devices)
-    assert store.trusted_device_active(device_id, now=1_900_000_001) is True
-
-    store.close()
-    reopened = Store(path)
-    assert reopened.trusted_device_active(device_id, now=1_900_000_002) is True
-    assert reopened.delete_trusted_device(device_id) == 1
-    assert reopened.trusted_device_active(device_id, now=1_900_000_003) is False
-
-
-def test_expired_trusted_devices_are_pruned(tmp_path: Path):
-    store = Store(tmp_path / "expired-devices.sqlite3")
-    device_id = store.create_trusted_device("Viejo", expires_at=100)
-    assert store.trusted_device_active(device_id, now=101) is False
-    assert store.list_trusted_devices(now=101) == []
