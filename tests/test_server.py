@@ -941,3 +941,34 @@ async def test_research_command_fails_closed_without_search_route(aiohttp_client
     body = await response.text()
     assert "búsqueda web no está habilitada" in body
     assert router.calls == []
+
+
+@pytest.mark.asyncio
+async def test_owner_login_throttle_separates_forwarded_clients(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "login-forwarded.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+        )
+    )
+
+    for _ in range(5):
+        response = await client.post(
+            "/api/auth/login",
+            json={"password": "wrong"},
+            headers={"X-Forwarded-For": "203.0.113.10"},
+        )
+        assert response.status == 401
+
+    owner = await client.post(
+        "/api/auth/login",
+        json={"password": "owner-passphrase"},
+        headers={"X-Forwarded-For": "203.0.113.11"},
+    )
+    assert owner.status == 200
