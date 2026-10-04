@@ -363,14 +363,16 @@ function fixedSelfAnswer(messages, env) {
     /(^| )cual es tu modelo( |$)/.test(latest)
   ) {
     const configured = providerCatalog(env).filter(p => p.available).map(p => p.model);
-    const suffix = configured.length ? ` Rutas activas: ${configured.join(" → ")}.` : "";
-    return `0liviA usa un router de modelos. El primario es DeepSeek V4.1 Flash vía NVIDIA NIM; GPT-OSS-120B y GLM-4.7-Flash quedan como fallbacks $0.${suffix}`;
+    const active = configured[0] || "sin ruta disponible";
+    const suffix = configured.length ? ` Cadena disponible: ${configured.join(" → ")}.` : "";
+    return `0liviA usa un router de modelos. Preferencia: DeepSeek V4.1 Flash vía NVIDIA NIM. Ruta activa prioritaria: ${active}. GPT-OSS-120B y GLM-4.7-Flash son fallbacks $0.${suffix}`;
   }
 
   if (
     /(^| )(quien sos|quien eres|que sos)( |$)/.test(latest)
   ) {
-    return "Soy 0liviA, tu IA personal. Mi ruta primaria es DeepSeek V4.1 Flash vía NVIDIA NIM, con failover automático a modelos $0 si el primario no responde.";
+    const active = providerCatalog(env).find(p => p.available)?.model || "sin ruta disponible";
+    return `Soy 0liviA, tu IA personal. Mi ruta activa prioritaria es ${active}; prefiero DeepSeek V4.1 Flash vía NVIDIA NIM y hago failover automático antes de mostrar salida.`;
   }
 
   return null;
