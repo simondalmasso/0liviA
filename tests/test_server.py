@@ -191,3 +191,20 @@ async def test_session_listing_is_server_side(client, gateway):
     sessions = (await response.json())["sessions"]
     assert [item["id"] for item in sessions] == [second]
     assert first != second
+
+
+@pytest.mark.asyncio
+async def test_live_voice_is_fullscreen_and_chat_stays_available(client):
+    response = await client.get("/")
+    html = await response.text()
+    assert 'id="voiceLive"' in html
+    assert 'position:fixed;inset:0' in html
+    assert 'class="orb"' in html
+    assert '#69e7ff' in html
+    assert '#ff66d1' in html
+    assert 'id="openVoice"' in html
+    assert 'id="text"' in html
+    assert 'id="send"' in html
+    assert 'navigator.mediaDevices.getUserMedia' in html
+    assert 'localStorage' not in html
+    assert 'sessionStorage' not in html
