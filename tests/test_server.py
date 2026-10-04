@@ -9,6 +9,7 @@ from olivia.config import Settings
 from olivia.server import create_app, default_es_ar_validator
 from olivia.security import make_password_verifier
 from olivia.store import Store
+from olivia.web import WebDocument
 
 
 class FakeCodingWorker:
@@ -41,16 +42,34 @@ class FakeCodingWorker:
         }
 
 
+class FakeWebReader:
+    def __init__(self, text="UNIQUE_WEB_PAGE_FACT_77"):
+        self.text = text
+        self.urls = []
+
+    async def read(self, url):
+        self.urls.append(url)
+        return WebDocument(
+            url=url,
+            title="Demo",
+            text=self.text,
+            content_type="text/html",
+            status=200,
+        )
+
+
 class FakeRouter:
     def __init__(self, parts=("hola", " mundo"), *, wait=False):
         self.providers = []
         self.parts = parts
+        self.calls = []
         self.wait = wait
         self.cancelled = False
 
     async def stream(self, messages) -> AsyncIterator[object]:
         from olivia.router import RouteEvent
 
+        self.calls.append(messages)
         yield RouteEvent(type="route", provider="fake")
         for part in self.parts:
             if self.wait:
@@ -666,3 +685,34 @@ async def test_ui_uses_cloud_workspace_as_canonical_source(client):
     assert "/api/library" in html
     assert "/api/memories" in html
     assert "project_id" in html
+
+
+@pytest.mark.asyncio
+async def test_read_command_uses_ephemeral_web_context_without_persisting_page(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "read-command.sqlite3")
+    router = FakeRouter(parts=("La fuente dice 77.",))
+    agent = Agent(store, router, settings)
+    reader = FakeWebReader()
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="test-token",
+            web_reader=reader,
+        )
+    )
+    session_id = store.create_session("read")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/read https://example.com resumí la fuente"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    body = await response.text()
+    assert "La fuente dice 77." in body
+    assert reader.urls == ["https://example.com"]
+    assert "UNIQUE_WEB_PAGE_FACT_77" in repr(router.calls[-1])
+    assert "UNIQUE_WEB_PAGE_FACT_77" not in repr(store.recent_messages(session_id))
+    assert "/read https://example.com resumí la fuente" in repr(store.recent_messages(session_id))
