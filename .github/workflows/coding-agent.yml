@@ -32,7 +32,7 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: olivia-coding-${{ github.run_id }}
@@ -41,6 +41,8 @@ concurrency:
 jobs:
   code:
     runs-on: ubuntu-latest
+    outputs:
+      base_sha: ${{ steps.base.outputs.sha }}
     timeout-minutes: 35
     env:
       AIDER_OPENAI_API_BASE: "https://integrate.api.nvidia.com/v1"
@@ -67,11 +69,14 @@ jobs:
           persist-credentials: false
 
       - name: Validate dispatch ref
+        id: base
         shell: bash
         run: |
           set -euo pipefail
           git check-ref-format --allow-onelevel "$BASE_REF"
-          test -n "$(git rev-parse --verify HEAD^{commit})"
+          base_sha="$(git rev-parse --verify HEAD^{commit})"
+          test -n "$base_sha"
+          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         with:
@@ -83,7 +88,6 @@ jobs:
           set -euo pipefail
           BRANCH="agent/coding-${GITHUB_RUN_ID}"
           git switch -c "$BRANCH"
-          echo "AGENT_BRANCH=$BRANCH" >> "$GITHUB_ENV"
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]' 'aider-chat==0.86.2'
 
@@ -219,20 +223,64 @@ jobs:
           git log --oneline --decorate -8
           git diff --stat "$BASE_REF...HEAD" || true
 
-      - name: Push isolated result
+      - name: Package verified change series
         if: ${{ inputs.publish_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git format-patch --binary --stdout "$BASE_REF..HEAD" > /tmp/agent-series.patch
+
+      - name: Upload verified change series
+        if: ${{ inputs.publish_branch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: olivia-agent-${{ github.run_id }}
+          path: /tmp/agent-series.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: code
+    if: ${{ inputs.publish_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      BASE_SHA: ${{ needs.code.outputs.base_sha }}
+
+    steps:
+      - name: Checkout immutable verified base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.code.outputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download verified change series
+        uses: actions/download-artifact@v4
+        with:
+          name: olivia-agent-${{ github.run_id }}
+          path: /tmp/olivia-agent
+
+      - name: Publish isolated verified branch
         shell: bash
         env:
           GH_PUSH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if git diff --quiet "$BASE_REF...HEAD"; then
+          patch=/tmp/olivia-agent/agent-series.patch
+          if [ ! -s "$patch" ]; then
             echo "No agent changes to publish."
             exit 0
           fi
-          auth="$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 -w0)"
+          git config user.name "0liviA coding worker"
+          git config user.email "0livia-agent@users.noreply.github.com"
           git config --local core.hooksPath /dev/null
+          git am --3way "$patch"
+          BRANCH="agent/coding-${GITHUB_RUN_ID}"
+          auth="$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 -w0)"
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
-            push origin "HEAD:refs/heads/$AGENT_BRANCH"
+            push origin "HEAD:refs/heads/$BRANCH"
           unset auth GH_PUSH_TOKEN
-          echo "PUBLISHED_BRANCH=$AGENT_BRANCH"
+          echo "PUBLISHED_BRANCH=$BRANCH"
