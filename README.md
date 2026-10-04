@@ -1,6 +1,6 @@
 # 0liviA 🌠
 
-0liviA is an experimental, cloud-first personal AI workspace for long-running software work, research and natural conversation.
+0liviA is a **personal super-AI**: one persistent cloud intelligence for its owner, combining conversation, coding, repository control, research, tools, memory, autonomous execution and live voice. It is not a generic SaaS workspace, a team product, or a thin chatbot wrapper.
 
 The target is deliberately hard: **always available, browser-first, persistent, fast, model-agnostic and $0 to operate within free-tier limits**. The user's PC must not be required for normal operation.
 
@@ -55,7 +55,7 @@ Give that single file to any zero-context LLM/coding agent with GitHub access. I
 
 ## Repository map
 
-- `SUPER_ORDER_END_TO_END.md` — canonical zero-context council + end-to-end build order.
+- `SUPER_ORDER_END_TO_END.md` — canonical zero-context council + end-to-end build order for building the personal super-AI.
 - `AGENTS.md` — invariant operating contract for any coding/research agent.
 - `docs/COUNCIL_HANDOFF.md` — compact zero-context handoff for independent LLM council review.
 - `docs/RESEARCH.md` — verified facts, candidates, caveats and open questions.
