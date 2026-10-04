@@ -126,7 +126,8 @@ class Gateway:
             configured += 1
             spec = getattr(provider, "spec", None)
             env_name = getattr(spec, "api_key_env", "")
-            if not env_name or not os.getenv(env_name):
+            cost_mode = getattr(spec, "cost_mode", "free_unverified")
+            if cost_mode != "local" and (not env_name or not os.getenv(env_name)):
                 continue
             state = health_metrics.get(provider.name, {})
             cooldown = float(state.get("cooldown_remaining_s", 0.0))
