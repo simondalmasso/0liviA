@@ -174,3 +174,33 @@ async def test_model_identity_never_invents_provider_when_none_configured(tmp_pa
     assert router.calls == []
     assert "Soy 0liviA" in answer
     assert "no tiene un modelo de inferencia configurado" in answer
+
+
+@pytest.mark.asyncio
+async def test_model_context_is_bounded_and_keeps_recent_turns(tmp_path):
+    store = Store(tmp_path / "context-budget.sqlite3")
+    sid = store.create_session()
+    router = CaptureRouter()
+    settings = Settings(data_dir=tmp_path, max_history=100, max_context_chars=16_000)
+    agent = Agent(store, router, settings)
+
+    for idx in range(20):
+        store.append_message(sid, "user", f"OLD_{idx}_" + ("x" * 1800))
+        store.append_message(sid, "assistant", f"ANSWER_{idx}_" + ("y" * 1800))
+
+    _ = [
+        event
+        async for event in agent.stream_turn(
+            sid,
+            "CURRENT_QUESTION_" + ("z" * 1000),
+            ephemeral_context="WEB_CONTEXT_" + ("w" * 20_000),
+        )
+    ]
+
+    outbound = router.calls[-1]
+    total = sum(len(message["content"]) for message in outbound)
+    blob = repr(outbound)
+    assert total <= settings.max_context_chars
+    assert "CURRENT_QUESTION_" in blob
+    assert "OLD_0_" not in blob
+    assert "WEB_CONTEXT_" in blob
