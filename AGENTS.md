@@ -46,3 +46,18 @@ Aim for a one-button browser conversation with:
 - no Cloudflare dependency in the per-turn media/intelligence path.
 
 Measure actual time-to-first-transcript, LLM first token, time-to-first-audio, interruption cancellation latency, CPU/RAM and session stability.
+
+
+## Local-device boundary
+
+- Normal operation must not read from or write to the owner's PC filesystem.
+- The browser is a thin client: UI, microphone capture and playback only. No File System Access API, local shell, localhost agent, Desktop Commander, browser extension or local background service is part of 0liviA runtime.
+- Durable writes go only to Oracle runtime storage, GitHub, or explicitly configured remote storage.
+- Browser storage may keep only a non-sensitive session identifier and UI preferences; it is not a source of truth.
+
+## Language contract
+
+- Default user-facing language is Spanish (Argentina, es-AR) unless the user explicitly asks for another language.
+- Providers do not control locale. The kernel owns it.
+- Before releasing/TTS-speaking a new answer, buffer a small initial segment and run a lightweight language gate. If the segment is not compatible with the requested locale, cancel that provider turn and retry before exposing it.
+- Never splice two providers into one visible answer. Failover is allowed only before the first validated visible segment.
