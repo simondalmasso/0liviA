@@ -211,7 +211,16 @@ HOST="${PUBLIC_IP}.nip.io"
 cat > /etc/caddy/Caddyfile <<EOF
 ${HOST} {
   encode zstd gzip
-  reverse_proxy 127.0.0.1:8080
+  reverse_proxy 127.0.0.1:8080 {
+    flush_interval -1
+  }
+  header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy no-referrer
+    Permissions-Policy "camera=(), geolocation=(), payment=(), usb=()"
+  }
 }
 EOF
 systemctl enable --now caddy
