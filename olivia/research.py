@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 import aiohttp
 
@@ -15,6 +15,13 @@ MAX_RESPONSE_BYTES = 256 * 1024
 
 class SearchUnavailable(RuntimeError):
     pass
+
+
+class WebSearch(Protocol):
+    @property
+    def configured(self) -> bool: ...
+
+    async def search(self, query: str, *, limit: int = 5) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
