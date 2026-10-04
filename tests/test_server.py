@@ -218,6 +218,16 @@ async def test_live_voice_is_fullscreen_and_chat_stays_available(client):
 
 
 @pytest.mark.asyncio
+async def test_sidebar_surfaces_and_web_read_status_are_truthful(client):
+    response = await client.get("/")
+    html = await response.text()
+    for side in ("projects", "library", "memory", "config"):
+        assert f'data-side="{side}"' in html
+    assert "Todavía no conectada" not in html
+    assert "URLs públicas · solo lectura" in html
+
+
+@pytest.mark.asyncio
 async def test_projects_and_chats_exist_without_visual_clutter(client):
     response = await client.get("/")
     html = await response.text()
