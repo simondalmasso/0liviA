@@ -323,25 +323,16 @@ class Gateway:
             return _json({"error": "limit must be an integer"}, 400)
         return _json({"session_id": session_id, "messages": self.agent.store.recent_messages(session_id, limit)})
 
-    async def create_code_job(self, request: web.Request) -> web.Response:
-        denied = await self._require_auth(request)
-        if denied:
-            return denied
+    async def _dispatch_code_job(
+        self,
+        *,
+        task: str,
+        base_ref: str,
+        mode: str,
+        publish_branch: bool,
+    ) -> dict[str, Any]:
         if self.coding_worker is None or not self.coding_worker.configured:
-            return _json({"error": "coding_worker_unavailable"}, 503)
-
-        payload = await self._read_json(request)
-        task = payload.get("task")
-        base_ref = payload.get("base_ref", "arch/gpt-synthesis-v1")
-        mode = payload.get("mode", "implement")
-        publish_branch = payload.get("publish_branch", False)
-        if (
-            not isinstance(task, str)
-            or not isinstance(base_ref, str)
-            or not isinstance(mode, str)
-            or not isinstance(publish_branch, bool)
-        ):
-            return _json({"error": "invalid coding job payload"}, 400)
+            raise CodingWorkerError("coding_worker_unavailable")
 
         request_data = CodingJobRequest(
             task=task,
@@ -349,10 +340,7 @@ class Gateway:
             mode=mode,
             publish_branch=publish_branch,
         )
-        try:
-            self.coding_worker.validate_request(request_data)
-        except ValueError as exc:
-            return _json({"error": str(exc)}, 400)
+        self.coding_worker.validate_request(request_data)
 
         job_id = self.agent.store.create_job("code", repo=self.coding_worker.repo)
         self.agent.store.checkpoint_job(job_id, "dispatching", {
@@ -369,7 +357,7 @@ class Gateway:
                 "publish_branch": publish_branch,
                 "error": str(exc)[:500],
             })
-            return _json({"error": "coding_dispatch_failed", "job_id": job_id}, 502)
+            raise
 
         checkpoint = {
             "base_ref": base_ref,
@@ -378,32 +366,214 @@ class Gateway:
             **remote,
         }
         self.agent.store.checkpoint_job(job_id, "dispatched", checkpoint)
-        return _json({"job_id": job_id, "status": "dispatched", **remote}, 202)
+        return {
+            "job_id": job_id,
+            "status": "dispatched",
+            "mode": mode,
+            **remote,
+        }
+
+    async def _refresh_code_job(self, job_id: str) -> dict[str, Any] | None:
+        job = self.agent.store.get_job(job_id)
+        if job is None:
+            return None
+        if job.get("kind") != "code":
+            return job
+        if self.coding_worker is None or not self.coding_worker.configured:
+            return job
+        try:
+            remote = await self.coding_worker.status(job_id)
+        except CodingWorkerError:
+            remote = None
+        if remote:
+            status = str(remote.get("remote_status") or job["status"])
+            conclusion = remote.get("remote_conclusion")
+            if status == "completed":
+                status = "succeeded" if conclusion == "success" else "failed"
+            checkpoint = {**job.get("checkpoint", {}), **remote}
+            self.agent.store.checkpoint_job(job_id, status, checkpoint)
+            job = self.agent.store.get_job(job_id) or job
+        return job
+
+    async def create_code_job(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+
+        payload = await self._read_json(request)
+        task = payload.get("task")
+        base_ref = payload.get("base_ref", "arch/gpt-synthesis-v1")
+        mode = payload.get("mode", "implement")
+        publish_branch = payload.get("publish_branch", False)
+        if (
+            not isinstance(task, str)
+            or not isinstance(base_ref, str)
+            or not isinstance(mode, str)
+            or not isinstance(publish_branch, bool)
+        ):
+            return _json({"error": "invalid coding job payload"}, 400)
+
+        try:
+            result = await self._dispatch_code_job(
+                task=task,
+                base_ref=base_ref,
+                mode=mode,
+                publish_branch=publish_branch,
+            )
+        except ValueError as exc:
+            return _json({"error": str(exc)}, 400)
+        except CodingWorkerError as exc:
+            if str(exc) == "coding_worker_unavailable":
+                return _json({"error": "coding_worker_unavailable"}, 503)
+            return _json({"error": "coding_dispatch_failed"}, 502)
+        return _json(result, 202)
 
     async def get_job(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
         if denied:
             return denied
-        job_id = request.match_info["job_id"]
-        job = self.agent.store.get_job(job_id)
+        job = await self._refresh_code_job(request.match_info["job_id"])
         if job is None:
             return _json({"error": "job not found"}, 404)
-
-        if job.get("kind") == "code" and self.coding_worker is not None and self.coding_worker.configured:
-            try:
-                remote = await self.coding_worker.status(job_id)
-            except CodingWorkerError:
-                remote = None
-            if remote:
-                status = str(remote.get("remote_status") or job["status"])
-                conclusion = remote.get("remote_conclusion")
-                if status == "completed":
-                    status = "succeeded" if conclusion == "success" else "failed"
-                checkpoint = {**job.get("checkpoint", {}), **remote}
-                self.agent.store.checkpoint_job(job_id, status, checkpoint)
-                job = self.agent.store.get_job(job_id) or job
-
         return _json({"job": job})
+
+    @staticmethod
+    def _parse_chat_command(text: str) -> tuple[str, str] | None:
+        command, separator, argument = text.partition(" ")
+        command = command.lower()
+        if command in {"/code", "/repair"}:
+            if not separator or not argument.strip():
+                return command, ""
+            return command, argument.strip()
+        if command == "/job":
+            if not separator or not argument.strip():
+                return command, ""
+            return command, argument.strip()
+        return None
+
+    async def _stream_command(
+        self,
+        response: web.StreamResponse,
+        session_id: str,
+        text: str,
+        turn_id: str,
+        command: tuple[str, str],
+    ) -> None:
+        name, argument = command
+        safe_user = redact_secrets(text.strip())
+        self.agent.store.append_message(session_id, "user", safe_user)
+
+        if name in {"/code", "/repair"}:
+            mode = "repair" if name == "/repair" else "implement"
+            if not argument:
+                assistant = f"Usá {name} seguido de una tarea concreta."
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="coding-worker"
+                )
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+            try:
+                result = await self._dispatch_code_job(
+                    task=redact_secrets(argument),
+                    base_ref="arch/gpt-synthesis-v1",
+                    mode=mode,
+                    publish_branch=True,
+                )
+            except (ValueError, CodingWorkerError) as exc:
+                assistant = (
+                    "El coding worker no está disponible ahora."
+                    if str(exc) == "coding_worker_unavailable"
+                    else "No pude despachar el job de código."
+                )
+                self.agent.store.append_message(
+                    session_id,
+                    "assistant",
+                    assistant,
+                    provider="coding-worker",
+                    status="complete",
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "coding_job_unavailable",
+                    "retryable": True,
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+
+            assistant = (
+                f"Job {result['job_id']} despachado en modo {mode} a una rama aislada; "
+                "se publica sólo si pasa la verificación y nunca se mergea automáticamente."
+            )
+            self.agent.store.append_message(
+                session_id,
+                "assistant",
+                assistant,
+                provider="coding-worker",
+                status="complete",
+            )
+            await self._write_event(response, {
+                "type": "job",
+                "job_id": result["job_id"],
+                "status": result["status"],
+                "mode": mode,
+                "repo": result.get("repo"),
+                "workflow": result.get("workflow"),
+                "turn_id": turn_id,
+            })
+            await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+            await self._write_event(response, {"type": "done", "turn_id": turn_id})
+            await response.write_eof()
+            return
+
+        if name == "/job":
+            if not argument:
+                assistant = "Usá /job seguido del ID del job."
+                self.agent.store.append_message(session_id, "assistant", assistant, provider="coding-worker")
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+            job_id = argument.strip()
+            if not re.fullmatch(r"[0-9a-f]{16}", job_id):
+                assistant = "Ese ID de job no es válido."
+                self.agent.store.append_message(session_id, "assistant", assistant, provider="coding-worker")
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+            job = await self._refresh_code_job(job_id)
+            if job is None:
+                assistant = f"No existe el job {job_id}."
+                self.agent.store.append_message(session_id, "assistant", assistant, provider="coding-worker")
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+            status = str(job.get("status") or "unknown")
+            checkpoint = job.get("checkpoint") or {}
+            remote_url = checkpoint.get("remote_url")
+            assistant = f"Job {job_id}: {status}."
+            if remote_url:
+                assistant += f" {remote_url}"
+            self.agent.store.append_message(
+                session_id, "assistant", assistant, provider="coding-worker", status="complete"
+            )
+            await self._write_event(response, {
+                "type": "job",
+                "job_id": job_id,
+                "status": status,
+                "checkpoint": checkpoint,
+                "turn_id": turn_id,
+            })
+            await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+            await self._write_event(response, {"type": "done", "turn_id": turn_id})
+            await response.write_eof()
+            return
 
     async def chat(self, request: web.Request) -> web.StreamResponse:
         denied = await self._require_auth(request)
@@ -432,7 +602,14 @@ class Gateway:
                 "X-Turn-ID": turn_id,
             })
             await response.prepare(request)
-            task = asyncio.create_task(self._stream_turn(response, session_id, text.strip(), turn_id))
+            clean_text = text.strip()
+            command = self._parse_chat_command(clean_text)
+            if command is None:
+                task = asyncio.create_task(self._stream_turn(response, session_id, clean_text, turn_id))
+            else:
+                task = asyncio.create_task(
+                    self._stream_command(response, session_id, clean_text, turn_id, command)
+                )
             self._turns[session_id] = ActiveTurn(turn_id, task)
 
         try:
