@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -67,3 +68,50 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert 'git commit -m "agent: persist verified coding result"' in workflow
     assert 'push origin "HEAD:refs/heads/$BRANCH"' in workflow
     assert "pull-requests: write" not in workflow
+
+
+@pytest.mark.asyncio
+async def test_coding_worker_fetches_review_report_from_isolated_run_branch(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        status = 200
+
+        async def json(self):
+            raw = b"# Senior review\n\nP1: bounded finding."
+            return {
+                "encoding": "base64",
+                "content": base64.b64encode(raw).decode("ascii"),
+                "size": len(raw),
+            }
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    class FakeSession:
+        def get(self, url, *, params, headers):
+            calls.append((url, params, headers))
+            return FakeResponse()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA",
+        session_factory=lambda **_: FakeSession(),
+    )
+    report = await worker.review_report(123)
+
+    assert report == "# Senior review\n\nP1: bounded finding."
+    assert len(calls) == 1
+    url, params, headers = calls[0]
+    assert url.endswith("/contents/AGENT_REVIEW.md")
+    assert params == {"ref": "agent/coding-123"}
+    assert headers["authorization"] == "Bearer test-token"
