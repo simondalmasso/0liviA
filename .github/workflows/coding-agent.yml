@@ -1,8 +1,13 @@
 name: 0liviA Coding Worker
+run-name: "0liviA code ${{ inputs.olivia_job_id }}"
 
 on:
   workflow_dispatch:
     inputs:
+      olivia_job_id:
+        description: "0liviA durable job identifier"
+        required: true
+        type: string
       task:
         description: "Engineering task for the coding agent"
         required: true
