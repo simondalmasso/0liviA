@@ -10,6 +10,36 @@ from olivia.server import create_app, default_es_ar_validator
 from olivia.store import Store
 
 
+class FakeCodingWorker:
+    repo = "simondalmasso/0liviA"
+    configured = True
+
+    def __init__(self):
+        self.dispatched = []
+
+    @staticmethod
+    def validate_request(request):
+        if not request.task.strip():
+            raise ValueError("task must not be empty")
+
+    async def dispatch(self, job_id, request):
+        self.dispatched.append((job_id, request))
+        return {
+            "repo": self.repo,
+            "workflow": "coding-agent.yml",
+            "remote_status": "dispatched",
+        }
+
+    async def status(self, job_id):
+        return {
+            "remote_run_id": 123,
+            "remote_status": "completed",
+            "remote_conclusion": "success",
+            "remote_url": "https://github.com/example/run/123",
+            "remote_head_sha": "abc123",
+        }
+
+
 class FakeRouter:
     def __init__(self, parts=("hola", " mundo"), *, wait=False):
         self.providers = []
@@ -265,3 +295,59 @@ async def test_reference_inspired_violet_blue_cyan_visual_system(client):
     assert ".composer{" in html
     assert "#voiceLive{" in html
     assert ".drawer{" in html
+
+
+@pytest.mark.asyncio
+async def test_coding_job_dispatch_is_authenticated_durable_and_refreshable(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "coding.sqlite3")
+    router = FakeRouter()
+    agent = Agent(store, router, settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+
+    assert (await client.post("/api/jobs/code", json={"task": "fix tests"})).status == 401
+
+    response = await client.post(
+        "/api/jobs/code",
+        json={
+            "task": "Fix the failing tests without changing unrelated behavior.",
+            "base_ref": "arch/gpt-synthesis-v1",
+            "publish_branch": False,
+        },
+        headers=auth(),
+    )
+    assert response.status == 202
+    body = await response.json()
+    job_id = body["job_id"]
+    assert body["status"] == "dispatched"
+    stored = store.get_job(job_id)
+    assert stored["kind"] == "code"
+    assert stored["status"] == "dispatched"
+    assert stored["checkpoint"]["base_ref"] == "arch/gpt-synthesis-v1"
+    assert worker.dispatched[0][0] == job_id
+
+    refreshed = await client.get(f"/api/jobs/{job_id}", headers=auth())
+    assert refreshed.status == 200
+    job = (await refreshed.json())["job"]
+    assert job["status"] == "succeeded"
+    assert job["checkpoint"]["remote_run_id"] == 123
+
+
+@pytest.mark.asyncio
+async def test_coding_job_fails_closed_without_worker(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "no-worker.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=None)
+    )
+    response = await client.post(
+        "/api/jobs/code",
+        json={"task": "do work"},
+        headers=auth(),
+    )
+    assert response.status == 503
+    assert (await response.json())["error"] == "coding_worker_unavailable"
