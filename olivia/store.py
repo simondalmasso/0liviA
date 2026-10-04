@@ -102,16 +102,6 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at REAL NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS provider_state (
-    provider TEXT PRIMARY KEY,
-    failures INTEGER NOT NULL DEFAULT 0,
-    cooldown_until REAL NOT NULL DEFAULT 0,
-    day TEXT NOT NULL DEFAULT '',
-    daily_requests INTEGER NOT NULL DEFAULT 0,
-    last_ttft_ms REAL,
-    last_error TEXT,
-    updated_at REAL NOT NULL
-);
 """
 
 
@@ -345,62 +335,3 @@ class Store:
         out = dict(row)
         out["checkpoint"] = json.loads(out.pop("checkpoint_json"))
         return out
-
-    def provider_state(self, provider: str) -> dict[str, Any]:
-        today = time.strftime("%Y-%m-%d", time.gmtime())
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM provider_state WHERE provider=?",
-                (provider,),
-            ).fetchone()
-            if row is None:
-                self._conn.execute(
-                    """INSERT INTO provider_state(provider,day,updated_at)
-                       VALUES(?,?,?)""",
-                    (provider, today, time.time()),
-                )
-                row = self._conn.execute(
-                    "SELECT * FROM provider_state WHERE provider=?",
-                    (provider,),
-                ).fetchone()
-            state = dict(row)
-            if state["day"] != today:
-                self._conn.execute(
-                    """UPDATE provider_state
-                       SET day=?,daily_requests=0,updated_at=?
-                       WHERE provider=?""",
-                    (today, time.time(), provider),
-                )
-                state["day"] = today
-                state["daily_requests"] = 0
-        return state
-
-    def provider_attempt(self, provider: str) -> None:
-        self.provider_state(provider)
-        with self._lock:
-            self._conn.execute(
-                """UPDATE provider_state
-                   SET daily_requests=daily_requests+1,updated_at=?
-                   WHERE provider=?""",
-                (time.time(), provider),
-            )
-
-    def provider_success(self, provider: str, ttft_ms: float) -> None:
-        self.provider_state(provider)
-        with self._lock:
-            self._conn.execute(
-                """UPDATE provider_state
-                   SET failures=0,cooldown_until=0,last_ttft_ms=?,last_error=NULL,updated_at=?
-                   WHERE provider=?""",
-                (float(ttft_ms), time.time(), provider),
-            )
-
-    def provider_failure(self, provider: str, error: str, cooldown_until: float) -> None:
-        self.provider_state(provider)
-        with self._lock:
-            self._conn.execute(
-                """UPDATE provider_state
-                   SET failures=failures+1,cooldown_until=?,last_error=?,updated_at=?
-                   WHERE provider=?""",
-                (float(cooldown_until), error[:1000], time.time(), provider),
-            )
