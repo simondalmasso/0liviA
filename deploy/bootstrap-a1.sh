@@ -32,8 +32,14 @@ fi
 
 arch="$(uname -m)"
 case "${arch}" in
-  aarch64|arm64) llama_asset="llama-${LLAMA_BUILD}-bin-ubuntu-arm64.tar.gz" ;;
-  x86_64|amd64) llama_asset="llama-${LLAMA_BUILD}-bin-ubuntu-x64.tar.gz" ;;
+  aarch64|arm64)
+    llama_asset="llama-${LLAMA_BUILD}-bin-ubuntu-arm64.tar.gz"
+    llama_sha256="9f454c895ab49d4173cfb3995a39e4f8fe21b364787db8e1ca2778ee7f39aa36"
+    ;;
+  x86_64|amd64)
+    llama_asset="llama-${LLAMA_BUILD}-bin-ubuntu-x64.tar.gz"
+    llama_sha256="43bfc230e612d20efd483be7d1ce98ff5f7a0ec6e82a7ec959586b3313ee239f"
+    ;;
   *) echo "unsupported architecture: ${arch}" >&2; exit 2 ;;
 esac
 
@@ -50,13 +56,15 @@ fi
 case "${MODEL_PROFILE}" in
   a1)
     MODEL_NAME="Qwen3-1.7B-Q4_K_M.gguf"
-    MODEL_URL="https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf"
+    MODEL_URL="https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/9193700074c255639d2e18a086707686a88279a7/Qwen3-1.7B-Q4_K_M.gguf"
+    MODEL_SHA256="b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897"
     LLAMA_CTX=4096
     LLAMA_THREADS="$(( cpu_count > 2 ? 2 : cpu_count ))"
     ;;
   micro)
     MODEL_NAME="Qwen3-0.6B-Q4_K_M.gguf"
-    MODEL_URL="https://huggingface.co/lmstudio-community/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf"
+    MODEL_URL="https://huggingface.co/lmstudio-community/Qwen3-0.6B-GGUF/resolve/3334d820ab76652cf6e242d7c6302b10f0951f23/Qwen3-0.6B-Q4_K_M.gguf"
+    MODEL_SHA256="cd47557a67d7e8f2891d98b5e1dbf2988544569fdf4f1bdb30e92b71aa61b548"
     LLAMA_CTX=1024
     LLAMA_THREADS=1
     ;;
@@ -115,6 +123,7 @@ install -o root -g root -m 0644   "${APP_ROOT}/current/deploy/llama-local.servic
 
 # llama.cpp prebuilt is ~tens of MB, not a multi-GB runtime.
 curl -fL --retry 3 --retry-delay 2   "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_BUILD}/${llama_asset}"   -o "${tmp}/llama.tar.gz"
+printf '%s  %s\n' "${llama_sha256}" "${tmp}/llama.tar.gz" | sha256sum -c -
 rm -rf "${LLAMA_ROOT:?}/"*
 tar -xzf "${tmp}/llama.tar.gz" -C "${LLAMA_ROOT}" --strip-components=1
 test -x "${LLAMA_ROOT}/llama-server"
@@ -123,8 +132,10 @@ MODEL_PATH="${MODEL_ROOT}/${MODEL_NAME}"
 if [[ ! -s "${MODEL_PATH}" ]]; then
   curl -fL --retry 3 --retry-delay 3 "${MODEL_URL}" -o "${MODEL_PATH}.part"
   test "$(stat -c %s "${MODEL_PATH}.part")" -gt 100000000
+  printf '%s  %s\n' "${MODEL_SHA256}" "${MODEL_PATH}.part" | sha256sum -c -
   mv "${MODEL_PATH}.part" "${MODEL_PATH}"
 fi
+printf '%s  %s\n' "${MODEL_SHA256}" "${MODEL_PATH}" | sha256sum -c -
 chown olivia:olivia "${MODEL_PATH}"
 chmod 0600 "${MODEL_PATH}"
 
@@ -206,17 +217,23 @@ EOF
 systemctl enable --now caddy
 systemctl restart caddy
 
+printf '%s\n' "OWNER_PASSWORD=${OWNER_PASSWORD}" > /root/0livia-owner-password
+chmod 0600 /root/0livia-owner-password
+
 cat > "${STATE_ROOT}/bootstrap-info" <<EOF
 URL=https://${HOST}
-OWNER_PASSWORD=${OWNER_PASSWORD}
+OWNER_PASSWORD_FILE=/root/0livia-owner-password
 MODEL_PROFILE=${MODEL_PROFILE}
 MODEL=${MODEL_NAME}
+MODEL_SHA256=${MODEL_SHA256}
 RUNTIME=llama.cpp-${LLAMA_BUILD}
+RUNTIME_SHA256=${llama_sha256}
 COST_MODE=local
 SOURCE_REF=${REF}
 EOF
 chown root:root "${STATE_ROOT}/bootstrap-info"
 chmod 0600 "${STATE_ROOT}/bootstrap-info"
+unset OWNER_PASSWORD OWNER_VERIFIER TOKEN
 
 for _ in $(seq 1 90); do
   if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
