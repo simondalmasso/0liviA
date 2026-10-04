@@ -26,8 +26,9 @@
   --ease:cubic-bezier(.22,.8,.24,1);
 }
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif}
-body{overflow:hidden}
+html,body{margin:0;width:100%;height:100%;max-width:100%;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif}
+html{overflow:hidden}
+body{overflow:hidden;overscroll-behavior:none;touch-action:manipulation}
 button,input{font:inherit}
 button{border:0;color:inherit;background:transparent;cursor:pointer}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -162,17 +163,63 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
 .voice-controls .end{background:#d82749;color:#fff}
 @media(min-width:721px){#projectsBtn{display:none}.msg-actions{opacity:0}.msg:hover .msg-actions,.msg:focus-within .msg-actions{opacity:1}}
 @media(max-width:720px){
-  .shell{grid-template-columns:52px minmax(0,1fr)}
-  .rail{padding-left:6px;padding-right:6px}
-  .rail-logo,.rail-btn{width:38px;height:38px}
-  .drawer{left:52px;width:min(86vw,310px)}
-  .topbar{height:56px;padding-left:10px;padding-right:10px}
-  .messages{padding:18px 12px 132px}
-  .msg-body{max-width:90%}
+  .shell{height:100dvh;grid-template-columns:50px minmax(0,1fr);overflow:hidden}
+  .rail{height:100dvh;gap:4px;padding:max(8px,env(safe-area-inset-top)) 4px max(8px,env(safe-area-inset-bottom))}
+  .rail-logo,.rail-btn{width:42px;height:42px;border-radius:13px}
+  .rail-logo{margin-bottom:0}
+  .app{height:100dvh;min-width:0;overflow:hidden}
+  .drawer{left:50px;width:min(calc(100vw - 50px),330px);height:100dvh;padding:max(10px,env(safe-area-inset-top)) 9px max(12px,env(safe-area-inset-bottom));overflow:hidden}
+  .drawer-head{padding-bottom:8px}
+  .side-tabs{grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px}
+  .side-tab{min-height:42px;padding:8px 9px}
+  .side-body{overscroll-behavior:contain;padding-bottom:8px}
+  .topbar{height:54px;gap:7px;padding:max(7px,env(safe-area-inset-top)) 9px 5px}
+  .topbar .icon{width:38px;height:38px}
+  .brand{font-size:13px}
+  .chat-title{max-width:32vw;font-size:11px}
+  .messages{padding:16px 10px calc(116px + env(safe-area-inset-bottom));overscroll-behavior:contain}
+  .msg{margin-bottom:18px}
+  .msg-body{max-width:94%}
   .msg-actions{opacity:.72}
-  .voice-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,58svh) minmax(0,1fr);padding:0 8px}
-  .voice-chat{padding:2px 16px 10px}
-  .orb-wrap{width:min(92vw,520px)}
+  .composer-wrap{padding:8px 8px max(8px,env(safe-area-inset-bottom))}
+  .composer{width:100%;max-width:none;min-height:52px;padding:4px 5px 4px 14px;border-radius:24px}
+  .composer input{font-size:16px;padding:10px 0}
+  .send{width:42px;height:42px}
+  .slash-palette{width:calc(100vw - 68px);max-height:45dvh;overflow:auto;border-radius:15px}
+  .auth-gate{align-items:start;overflow-y:auto;overscroll-behavior:contain;padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))}
+  .auth-card{width:100%;max-width:380px;margin:auto 0;padding:18px;border-radius:22px;max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto}
+  .auth-card input[type="email"],.auth-card input[type="password"]{font-size:16px;min-height:48px}
+  .auth-submit{min-height:48px}
+  .voice-top{height:54px;padding:max(8px,env(safe-area-inset-top)) 10px 5px}
+  .voice-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,52dvh) minmax(0,1fr);gap:2px;padding:0 6px 6px}
+  .voice-stage::before{width:min(66vw,300px)}
+  .voice-chat{padding:0 12px 8px;overscroll-behavior:contain}
+  .orb-wrap{width:min(84vw,390px)}
+  .voice-state{bottom:5%}
+  .voice-controls{gap:14px;padding:6px 12px max(12px,env(safe-area-inset-bottom))}
+  .voice-controls .icon{width:54px;height:54px}
+}
+@media(max-width:430px){
+  .shell{grid-template-columns:48px minmax(0,1fr)}
+  .rail{padding-left:3px;padding-right:3px}
+  .rail-logo,.rail-btn{width:42px;height:42px}
+  .drawer{left:48px;width:calc(100vw - 48px);max-width:none}
+  .side-tabs{grid-template-columns:1fr 1fr}
+  .side-tab{font-size:12px}
+  .side-tab svg{width:16px;height:16px}
+  .messages{padding-left:9px;padding-right:9px}
+  .user .bubble{padding:9px 11px}
+  .assistant .bubble{line-height:1.56}
+  .chat-title{display:none}
+  .voice-grid{grid-template-rows:minmax(0,48dvh) minmax(0,1fr)}
+  .orb-wrap{width:min(88vw,340px)}
+}
+@media(max-height:720px) and (max-width:720px){
+  .rail{gap:2px}
+  .rail-logo,.rail-btn{width:38px;height:38px}
+  .voice-grid{grid-template-rows:minmax(0,44dvh) minmax(0,1fr)}
+  .auth-card .auth-mark{margin-bottom:10px}
+  .auth-card p{margin-bottom:12px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
