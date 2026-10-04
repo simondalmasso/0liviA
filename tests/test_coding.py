@@ -60,5 +60,5 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert 'if ! git diff --quiet || ! git diff --cached --quiet; then' in workflow
     assert 'git add -A' in workflow
     assert 'git commit -m "agent: persist verified coding result"' in workflow
-    assert 'push origin "HEAD:refs/heads/$AGENT_BRANCH"' in workflow
+    assert 'push origin "HEAD:refs/heads/$BRANCH"' in workflow
     assert "pull-requests: write" not in workflow
