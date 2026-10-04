@@ -4,6 +4,8 @@ import json
 import struct
 from typing import Any
 
+from aiohttp import WSMsgType, web
+
 from ..contracts import AudioFrame, VoiceEvent, VoiceEventType
 
 _HEADER = struct.Struct(">I")
@@ -11,16 +13,7 @@ _MAX_HEADER = 16 * 1024
 
 
 class WireCodec:
-    """Wire format for direct browser <-> Oracle WSS.
-
-    Binary audio:
-      uint32 big-endian JSON-header length
-      JSON header {turn_id, seq, sample_rate, channels}
-      raw PCM signed-16 little-endian payload
-
-    Text frames carry VoiceEvent JSON. Keeping the codec independent from
-    aiohttp makes it reusable by a future SmallWebRTC/StreamCore adapter.
-    """
+    """Direct Browser <-> Oracle WSS wire format."""
 
     @staticmethod
     def encode_audio(frame: AudioFrame) -> bytes:
@@ -30,6 +23,7 @@ class WireCodec:
                 "seq": frame.seq,
                 "sample_rate": frame.sample_rate,
                 "channels": frame.channels,
+                "client_ts_ms": frame.client_ts_ms,
             },
             separators=(",", ":"),
         ).encode("utf-8")
@@ -56,6 +50,9 @@ class WireCodec:
             seq=int(meta["seq"]),
             sample_rate=int(meta.get("sample_rate", 16_000)),
             channels=int(meta.get("channels", 1)),
+            client_ts_ms=(
+                None if meta.get("client_ts_ms") is None else float(meta["client_ts_ms"])
+            ),
             pcm_s16le=payload[end:],
         )
 
@@ -89,3 +86,37 @@ class WireCodec:
             detail=None if raw.get("detail") is None else str(raw["detail"]),
             meta=dict(raw.get("meta") or {}),
         )
+
+
+class AiohttpWebSocketTransport:
+    """Concrete direct-WSS media transport; no speech/model dependency."""
+
+    def __init__(
+        self,
+        ws: web.WebSocketResponse,
+        *,
+        max_audio_frame_bytes: int = 64 * 1024,
+    ):
+        self.ws = ws
+        self.max_audio_frame_bytes = max_audio_frame_bytes
+
+    async def recv(self):
+        async for message in self.ws:
+            if message.type == WSMsgType.TEXT:
+                yield WireCodec.decode_event(str(message.data))
+            elif message.type == WSMsgType.BINARY:
+                payload = bytes(message.data)
+                if len(payload) > self.max_audio_frame_bytes + _MAX_HEADER + _HEADER.size:
+                    raise ValueError("audio frame too large")
+                yield WireCodec.decode_audio(payload)
+            elif message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.ERROR}:
+                return
+
+    async def send_event(self, event: VoiceEvent) -> None:
+        await self.ws.send_str(WireCodec.encode_event(event))
+
+    async def send_audio(self, frame: AudioFrame) -> None:
+        await self.ws.send_bytes(WireCodec.encode_audio(frame))
+
+    async def close(self) -> None:
+        await self.ws.close()
