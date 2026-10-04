@@ -101,6 +101,17 @@ jobs:
           node --check cloudflare/worker.mjs
           pytest -q
 
+      - name: Persist verified residual changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            git config user.name "0liviA coding worker"
+            git config user.email "0livia-agent@users.noreply.github.com"
+            git add -A
+            git commit -m "agent: persist verified coding result"
+          fi
+
       - name: Summarize changes
         shell: bash
         run: |
