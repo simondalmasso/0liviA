@@ -1,0 +1,117 @@
+name: 0liviA Coding Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Engineering task for the coding agent"
+        required: true
+        type: string
+      base_ref:
+        description: "Exact branch/SHA to start from"
+        required: true
+        default: "arch/gpt-synthesis-v1"
+        type: string
+      publish_branch:
+        description: "Push the isolated agent branch after final tests pass"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: olivia-coding-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      AIDER_OPENAI_API_BASE: "https://integrate.api.nvidia.com/v1"
+      AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      AIDER_MODEL: "openai/deepseek-ai/deepseek-v4.1-flash"
+      AIDER_ANALYTICS_DISABLE: "true"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Fail closed without the development-only NIM key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AIDER_OPENAI_API_KEY"
+
+      - name: Checkout exact base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare isolated branch and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="agent/coding-${GITHUB_RUN_ID}"
+          git switch -c "$BRANCH"
+          echo "AGENT_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]' 'aider-chat==0.86.2'
+
+      - name: Verify clean baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q olivia tests
+          pytest -q
+
+      - name: Execute bounded coding task
+        shell: bash
+        env:
+          TASK: ${{ inputs.task }}
+        run: |
+          set -euo pipefail
+          aider             --model "$AIDER_MODEL"             --openai-api-base "$AIDER_OPENAI_API_BASE"             --openai-api-key "$AIDER_OPENAI_API_KEY"             --yes-always             --no-stream             --no-analytics             --no-check-update             --no-show-release-notes             --no-show-model-warnings             --test-cmd "pytest -q"             --auto-test             --message "$TASK"
+
+      - name: Final deterministic verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q olivia tests
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path("web/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected exactly one inline script, got {len(scripts)}")
+          Path("/tmp/olivia-ui.js").write_text(scripts[0], encoding="utf-8")
+          PY
+          node --check /tmp/olivia-ui.js
+          node --check cloudflare/worker.mjs
+          pytest -q
+
+      - name: Summarize changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git log --oneline --decorate -8
+          git diff --stat "${{ inputs.base_ref }}...HEAD" || true
+
+      - name: Push isolated result
+        if: ${{ inputs.publish_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet "${{ inputs.base_ref }}...HEAD"; then
+            echo "No agent changes to publish."
+            exit 0
+          fi
+          git push origin "HEAD:refs/heads/$AGENT_BRANCH"
+          echo "PUBLISHED_BRANCH=$AGENT_BRANCH"
