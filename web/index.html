@@ -125,6 +125,7 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
 .voice-top .brand{margin-right:auto}
 .voice-grid{min-height:0;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(300px,.7fr);gap:10px;padding:0 16px 10px}
 .voice-stage{position:relative;display:grid;place-items:center;min-height:0}
+.voice-stage::before{content:"";position:absolute;width:min(48vmin,380px);aspect-ratio:1;border-radius:50%;border:1px solid rgba(25,230,227,.72);box-shadow:0 0 10px rgba(25,230,227,.9),0 0 32px rgba(25,230,227,.34),inset 0 0 18px rgba(25,230,227,.08);opacity:.72;pointer-events:none}
 .voice-stage::before{content:"";position:absolute;width:min(62vmin,520px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(29,231,220,.105) 0%,rgba(29,231,220,.045) 38%,transparent 70%);filter:blur(18px);pointer-events:none}
 .orb-wrap{width:min(70vmin,620px);aspect-ratio:1;display:grid;place-items:center}
 .orb{width:100%;overflow:visible;transform:scale(var(--voice-scale,1));will-change:transform}
