@@ -44,3 +44,19 @@
 - Date: 2026-10-04
 - Status: **accepted**
 - Decision: Cloudflare may host/deploy user applications and a thin frontend if desired, but normal 0liviA chat, memory, model and voice turns do not depend on Workers, Tunnel, DO, Containers or AI Gateway.
+
+
+## ADR-0008 — Provider catalog + pre-output failover contract
+- Date: 2026-10-04
+- Status: **accepted**
+- Decision: model/provider selection is a catalog with ordered priorities, health state and explicit cost mode. Provider identity never becomes product identity.
+- Required behavior:
+  - prefer the strongest eligible route;
+  - retry/fail over only before the first validated visible segment;
+  - circuit-break unhealthy routes;
+  - respect provider quota/rate windows;
+  - never restart a turn after visible output from another provider;
+  - never cross from a verified-free route into paid/unverified capacity silently.
+- Current bridge preference: DeepSeek V4.1 Flash (NVIDIA NIM, development/evaluation only under current Developer Program terms) → GPT-OSS-120B → GLM-4.7-Flash.
+- Production gate: any provider whose free entitlement is not valid for production or whose account can auto-bill remains deployment-gated.
+- Rollback: remove/reorder a catalog entry without changing session, memory or UI contracts.
