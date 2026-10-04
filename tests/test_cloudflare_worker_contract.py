@@ -60,3 +60,27 @@ def test_zero_cost_status_fails_closed_until_account_guard_is_verified():
     assert "hard_zero_cost: ACCOUNT_ZERO_COST_VERIFIED" in WORKER
     assert "local_daily_cap: true" in WORKER
     assert "account_overage_guard_verified: ACCOUNT_ZERO_COST_VERIFIED" in WORKER
+
+
+def test_provider_catalog_prefers_deepseek_nim_and_has_zero_cost_fallbacks():
+    assert 'deepseek-ai/deepseek-v4.1-flash' in WORKER
+    assert 'https://integrate.api.nvidia.com/v1/chat/completions' in WORKER
+    assert 'NVIDIA_API_KEY' in WORKER
+    assert '@cf/zai-org/glm-4.7-flash' in WORKER
+    assert '@cf/qwen/qwen3-30b-a3b-fp8' in WORKER
+    for forbidden in ('nemotron', 'claude-sonnet', 'apmix', 'compound-mini'):
+        assert forbidden not in WORKER.lower()
+
+
+def test_provider_failover_is_precommit_and_fail_closed():
+    assert 'async function generateWithFailover' in WORKER
+    assert 'for (const provider of providerCatalog(env))' in WORKER
+    assert 'if (!provider.available) continue;' in WORKER
+    assert 'attempts.push' in WORKER
+    assert 'throw new Error("no_zero_cost_provider_available")' in WORKER
+
+
+def test_health_exposes_router_without_exposing_secrets():
+    assert 'provider_catalog:' in WORKER
+    assert 'primary_model:' in WORKER
+    assert 'NVIDIA_API_KEY:' not in WORKER
