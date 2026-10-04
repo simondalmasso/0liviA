@@ -550,7 +550,7 @@ class Gateway:
     def _parse_chat_command(text: str) -> tuple[str, str] | None:
         command, separator, argument = text.partition(" ")
         command = command.lower()
-        if command in {"/code", "/repair", "/read", "/search"}:
+        if command in {"/code", "/repair", "/review", "/read", "/search"}:
             if not separator or not argument.strip():
                 return command, ""
             return command, argument.strip()
@@ -691,8 +691,8 @@ class Gateway:
 
         self.agent.store.append_message(session_id, "user", safe_user)
 
-        if name in {"/code", "/repair"}:
-            mode = "repair" if name == "/repair" else "implement"
+        if name in {"/code", "/repair", "/review"}:
+            mode = "repair" if name == "/repair" else ("review" if name == "/review" else "implement")
             if not argument:
                 assistant = f"Usá {name} seguido de una tarea concreta."
                 self.agent.store.append_message(
@@ -735,7 +735,11 @@ class Gateway:
 
             assistant = (
                 f"Job {result['job_id']} despachado en modo {mode} a una rama aislada; "
-                "se publica sólo si pasa la verificación y nunca se mergea automáticamente."
+                + (
+                    "el reviewer sólo puede producir AGENT_REVIEW.md y nunca modifica producto."
+                    if mode == "review"
+                    else "se publica sólo si pasa la verificación y nunca se mergea automáticamente."
+                )
             )
             self.agent.store.append_message(
                 session_id,
