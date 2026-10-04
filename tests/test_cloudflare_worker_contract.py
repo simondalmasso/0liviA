@@ -85,3 +85,9 @@ def test_health_exposes_router_without_exposing_secrets():
     assert 'provider_catalog:' in WORKER
     assert 'primary_model:' in WORKER
     assert 'NVIDIA_API_KEY:' not in WORKER
+
+
+def test_nvidia_nim_is_production_entitlement_gated():
+    assert 'NVIDIA_NIM_PRODUCTION_ENTITLED === "1"' in WORKER
+    assert 'cost_mode: "entitlement_gated"' in WORKER
+    assert '"development_only"' in WORKER
