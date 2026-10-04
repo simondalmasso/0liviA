@@ -23,6 +23,13 @@ def _env_int(name: str, default: int, lo: int, hi: int) -> int:
     return int(value)
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path
@@ -42,6 +49,7 @@ class Settings:
     stream_idle_timeout_s: float = 0.0     # 0 disables inter-token watchdog
     visible_prefix_max_chars: int = 256    # whitespace-only prefix budget
     quota_utc_offset_h: int = 0            # daily quota day boundary
+    hard_zero_cost: bool = True             # fail closed against paid/unverified routes
 
     @property
     def db_path(self) -> Path:
@@ -71,4 +79,5 @@ class Settings:
             stream_idle_timeout_s=_env_float("OLIVIA_STREAM_IDLE_TIMEOUT_S", 0.0, 0.0, 600.0),
             visible_prefix_max_chars=_env_int("OLIVIA_VISIBLE_PREFIX_MAX", 256, 1, 65536),
             quota_utc_offset_h=_env_int("OLIVIA_QUOTA_UTC_OFFSET_H", 0, -12, 14),
+            hard_zero_cost=_env_bool("OLIVIA_HARD_ZERO_COST", True),
         )
