@@ -654,3 +654,15 @@ async def test_job_command_refreshes_existing_coding_job(aiohttp_client, tmp_pat
     ]
     assert any(event.get("type") == "job" and event.get("status") == "succeeded" for event in events)
     assert any(event.get("type") == "delta" and "succeeded" in event.get("text", "") for event in events)
+
+
+@pytest.mark.asyncio
+async def test_ui_uses_cloud_workspace_as_canonical_source(client):
+    html = await (await client.get("/")).text()
+    assert "syncCanonicalWorkspace" in html
+    assert "migrateLocalWorkspace" in html
+    assert "/api/workspace" in html
+    assert "/api/projects" in html
+    assert "/api/library" in html
+    assert "/api/memories" in html
+    assert "project_id" in html
