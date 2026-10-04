@@ -61,6 +61,7 @@ linear-gradient(180deg,#050617 0%,#080a25 52%,#0a0d31 100%)}
 .user .bubble{padding:10px 13px;border-radius:18px 18px 5px 18px;background:linear-gradient(145deg,rgba(155,77,255,.78),rgba(70,72,211,.9));color:#fff;box-shadow:0 10px 30px rgba(21,16,69,.32),inset 0 0 0 1px rgba(255,255,255,.08)}
 .assistant .bubble{padding:2px 0;color:#f0efff;line-height:1.62}
 .pending .bubble{opacity:.58}
+.partial .bubble{opacity:.82}
 .pending-mark{width:5px;height:5px;border-radius:50%;background:var(--cyan);margin:10px 7px 0 0;box-shadow:0 0 10px rgba(25,230,227,.65)}
 .msg-actions{display:flex;gap:6px;margin-top:6px;opacity:.38;transition:opacity .14s var(--ease)}
 .msg:hover .msg-actions,.msg:focus-within .msg-actions{opacity:1}
@@ -414,7 +415,7 @@ function renderMessagesInto(root,chat){
   }
   for(const m of chat.messages){
     const row=document.createElement('div');
-    row.className='msg '+m.role+(m.status==='queued'?' pending':'');
+    row.className='msg '+m.role+(m.status==='queued'?' pending':m.status==='partial'?' partial':'');
     if(m.status==='queued'&&m.role==='user'){
       const mark=document.createElement('span');
       mark.className='pending-mark';
@@ -617,11 +618,13 @@ async function sendRemote(chat,userMessage,speak){
     if(!r.ok)throw new Error(await r.text()||'core no disponible');
     if(!(r.headers.get('content-type')||'').toLowerCase().includes('text/event-stream'))throw new Error('respuesta inválida');
     const reader=r.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer='',answer='';
+    let buffer='',answer='',streamError=null,sawDone=false;
     const consume=line=>{
       if(!line.startsWith('data: '))return;
-      const raw=line.slice(6).trim();if(!raw||raw==='[DONE]')return;
+      const raw=line.slice(6).trim();if(!raw)return;
+      if(raw==='[DONE]'){sawDone=true;return}
       let ev;try{ev=JSON.parse(raw)}catch(e){return}
+      if(ev&&ev.error){streamError=ev;return}
       const piece=streamText(ev);if(!piece)return;
       answer+=piece;
       if(!assistant){assistant={id:uid('m'),role:'assistant',text:'',status:'synced',ts:now()};chat.messages.push(assistant)}
@@ -633,6 +636,14 @@ async function sendRemote(chat,userMessage,speak){
       for(const line of lines)consume(line);
     }
     if(buffer)consume(buffer);
+    if(answer.trim()&&(streamError||!sawDone)){
+      userMessage.status='synced';
+      if(assistant)assistant.status='partial';
+      setCoreState('locked');await saveState();renderMessages();
+      if(assistant&&speak)await speakEsAr(assistant.text);
+      return true;
+    }
+    if(streamError||!sawDone)throw new Error(streamError?.error||'stream interrumpido');
     if(!answer.trim())throw new Error('respuesta vacía');
     userMessage.status='synced';setCoreState('online');await saveState();renderMessages();
     if(assistant&&speak)await speakEsAr(assistant.text);
