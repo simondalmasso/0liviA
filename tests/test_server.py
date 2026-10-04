@@ -7,6 +7,7 @@ import pytest
 from olivia.agent import Agent
 from olivia.config import Settings
 from olivia.server import create_app, default_es_ar_validator
+from olivia.security import make_password_verifier
 from olivia.store import Store
 
 
@@ -362,3 +363,65 @@ async def test_ui_preserves_partial_stream_without_requeue(client):
     assert "assistant.status='partial'" in html
     assert "userMessage.status='synced'" in html
     assert "if(streamError||!sawDone)throw new Error" in html
+
+
+@pytest.mark.asyncio
+async def test_owner_login_sets_http_only_cookie_and_unlocks_api(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "auth.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+        )
+    )
+
+    wrong = await client.post("/api/auth/login", json={"password": "wrong"})
+    assert wrong.status == 401
+
+    login = await client.post("/api/auth/login", json={"password": "owner-passphrase"})
+    assert login.status == 200
+    cookie = login.cookies["olivia_owner"]
+    assert cookie["httponly"] is True
+    assert cookie["secure"] is True
+    assert cookie["samesite"].lower() == "strict"
+
+    response = await client.get(
+        "/api/sessions",
+        headers={"Cookie": f"olivia_owner={cookie.value}"},
+    )
+    assert response.status == 200
+
+    health = await client.get("/healthz")
+    body = await health.json()
+    assert body["api_mode"] == "canonical"
+    assert body["owner_auth_configured"] is True
+
+
+@pytest.mark.asyncio
+async def test_owner_logout_expires_cookie(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "logout.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+        )
+    )
+    login = await client.post("/api/auth/login", json={"password": "owner-passphrase"})
+    cookie = login.cookies["olivia_owner"]
+    logout = await client.post(
+        "/api/auth/logout",
+        headers={"Cookie": f"olivia_owner={cookie.value}"},
+    )
+    assert logout.status == 200
+    cleared = logout.cookies["olivia_owner"]
+    assert cleared["max-age"] == "0"
