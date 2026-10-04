@@ -138,6 +138,17 @@ class Gateway:
             "providers_available": available,
         })
 
+    async def list_sessions(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        limit_raw = request.query.get("limit", "20")
+        try:
+            limit = max(1, min(int(limit_raw), 100))
+        except ValueError:
+            return _json({"error": "limit must be an integer"}, 400)
+        return _json({"sessions": self.agent.store.list_sessions(limit)})
+
     async def create_session(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
         if denied:
@@ -313,6 +324,7 @@ def create_app(
     app.router.add_get("/", gateway.index)
     app.router.add_get("/index.html", gateway.index)
     app.router.add_get("/healthz", gateway.healthz)
+    app.router.add_get("/api/sessions", gateway.list_sessions)
     app.router.add_post("/api/sessions", gateway.create_session)
     app.router.add_get("/api/sessions/{session_id}/messages", gateway.get_messages)
     app.router.add_post("/api/chat/{session_id}", gateway.chat)
