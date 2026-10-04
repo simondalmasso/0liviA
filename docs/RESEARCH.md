@@ -252,3 +252,52 @@ Measure on the actual Oracle A1 VM:
 - full stack RAM under concurrent voice + coding task.
 
 Architecture should remain provisional until these numbers exist.
+
+
+## Frontier-free provider audit — 2026-10-04
+
+### DeepSeek V4.1 Flash on NVIDIA NIM
+
+Official NVIDIA catalog evidence currently labels `deepseek-ai/deepseek-v4.1-flash` as a **Free Endpoint** and exposes the OpenAI-compatible hosted base at `https://integrate.api.nvidia.com/v1`.
+
+Important licensing/operational constraint from NVIDIA's own NIM documentation:
+- NVIDIA Developer Program access to hosted NIM endpoints is free for prototyping, research, development and testing;
+- NVIDIA explicitly defines serving real end users / non-testing activity as production;
+- production NIM use requires NVIDIA AI Enterprise licensing.
+
+0liviA therefore integrates this endpoint as a high-priority development/evaluation lane and must not silently claim it is a production-free entitlement. Production enablement needs a compatible entitlement or a different verified-free production provider.
+
+### Cloudflare fallback quality
+
+Cloudflare Workers AI currently offers `@cf/openai/gpt-oss-120b` and `@cf/zai-org/glm-4.7-flash` without the paid-billing-method requirement that applies to its newest frontier models. The Free Workers plan includes 10,000 neurons/day and fails after the free allocation; a Paid Workers account can bill above that allocation.
+
+For the temporary Cloudflare bridge, the ordered fallback is:
+1. DeepSeek V4.1 Flash via NVIDIA NIM when explicitly configured;
+2. GPT-OSS-120B on Workers AI;
+3. GLM-4.7-Flash on Workers AI.
+
+The bridge remains deployment-gated until account-wide Cloudflare billing status is verified. A per-worker request counter alone is not an account-wide no-overage guarantee.
+
+### Catalog/failover patterns retained from free routing projects
+
+Useful mechanisms observed repeatedly across `free-claude-code`, `my-free-code` and similar routers:
+- provider catalog separated from transport;
+- ordered model fallbacks;
+- health/circuit backoff;
+- quota/rate-limit awareness;
+- stable product identity independent of provider;
+- failover only before visible output;
+- no restart of the user's turn when an upstream fails before output.
+
+0liviA already implements these mechanisms in its Python router and mirrors the same pre-output failover rule in the temporary Worker bridge.
+
+### Sources rejected as production dependencies
+
+The GitHub `free-gpt-api` topic contains multiple reverse proxies that reuse consumer/session credentials or reverse-engineer private product surfaces. These violate 0liviA's explicit rule against reverse-engineered consumer-session APIs and are not eligible providers.
+
+Other reviewed projects:
+- `tw93/pake`: useful later to package the web client as a lightweight Tauri desktop shell; not a model/runtime dependency.
+- `alibaba/page-agent`: useful reference for DOM-level browser agents and accessibility, but its demo LLM is evaluation-only and it is not the server-side browser worker.
+- `JCodesMore/ai-website-cloner-template`: useful visual-reconstruction/QA methodology; not a runtime dependency.
+- `openark/orchestrator`: MySQL HA tooling; unrelated to 0liviA's agent orchestration.
+- Omarchy: useful product/agent-OS inspiration, but violates the cloud-first/no-owner-PC runtime constraint as a core dependency.
