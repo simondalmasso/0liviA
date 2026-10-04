@@ -163,4 +163,4 @@ Language is a kernel policy, not a model preference:
 - unexpected language drift causes cancellation/retry, not German/English text leaking into the session;
 - a user request for another language overrides the guard for that turn.
 
-The owner's PC is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access.
+The owner's PC is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access, and 0liviA does not persist its session state in localStorage/sessionStorage.
