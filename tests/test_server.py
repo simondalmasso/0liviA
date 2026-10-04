@@ -513,7 +513,7 @@ async def test_ui_can_use_canonical_cookie_auth_and_server_sessions(client):
     assert "/api/auth/login" in html
     assert "/api/sessions" in html
     assert "ensureRemoteSession" in html
-    assert "syncCanonicalSessions" in html
+    assert "syncCanonicalWorkspace" in html
     assert "event.type==='delta'" in html
     assert "ev?.type==='done'" in html
     assert "Authorization" not in html
@@ -679,7 +679,8 @@ async def test_job_command_refreshes_existing_coding_job(aiohttp_client, tmp_pat
 async def test_ui_uses_cloud_workspace_as_canonical_source(client):
     html = await (await client.get("/")).text()
     assert "syncCanonicalWorkspace" in html
-    assert "migrateLocalWorkspace" in html
+    assert "remoteProjectId" in html
+    assert "remoteId" in html
     assert "/api/workspace" in html
     assert "/api/projects" in html
     assert "/api/library" in html
