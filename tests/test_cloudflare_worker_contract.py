@@ -106,7 +106,7 @@ def test_worker_streams_after_precommit_failover():
 
 def test_failover_commits_only_after_visible_text():
     prepare = WORKER.index("async function prepareProviderStream")
-    visible = WORKER.index("if (isVisibleText(text))", prepare)
+    visible = WORKER.index("if (isVisibleText(event.text))", prepare)
     returned = WORKER.index("return {", visible)
     assert visible < returned
 
