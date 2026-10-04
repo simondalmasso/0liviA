@@ -765,14 +765,7 @@ async function canonicalPost(path,payload){
   if(!r.ok)throw new Error('workspace sync failed');
   return await r.json();
 }
-async function syncCanonicalWorkspace(){
-  if(backendMode!=='canonical'||!ownerAuthReady||!workspace)return false;
-
-  let snapshotResponse=await fetch('/api/workspace',{cache:'no-store',credentials:'same-origin'});
-  if(snapshotResponse.status===401){ownerAuthReady=false;showOwnerLogin();return false}
-  if(!snapshotResponse.ok)return false;
-  let remote=await snapshotResponse.json();
-
+async function migrateLocalWorkspace(remote){
   const remoteDefault=(remote.projects||[]).find(p=>p.name==='0liviA')||(remote.projects||[])[0];
   const localDefault=workspace.projects.find(p=>p.name==='0liviA')||workspace.projects[0];
   if(localDefault&&remoteDefault&&!localDefault.remoteProjectId)localDefault.remoteProjectId=remoteDefault.id;
@@ -801,7 +794,6 @@ async function syncCanonicalWorkspace(){
       }catch(e){return false}
     }
   }
-
   for(const project of workspace.projects){
     for(const chat of project.chats){
       if(!chat.remoteSessionId&&chat.messages.some(m=>(m.role==='user'||m.role==='assistant')&&String(m.text||'').trim())){
@@ -809,6 +801,17 @@ async function syncCanonicalWorkspace(){
       }
     }
   }
+  return true;
+}
+async function syncCanonicalWorkspace(){
+  if(backendMode!=='canonical'||!ownerAuthReady||!workspace)return false;
+
+  let snapshotResponse=await fetch('/api/workspace',{cache:'no-store',credentials:'same-origin'});
+  if(snapshotResponse.status===401){ownerAuthReady=false;showOwnerLogin();return false}
+  if(!snapshotResponse.ok)return false;
+  let remote=await snapshotResponse.json();
+
+  if(!(await migrateLocalWorkspace(remote)))return false;
 
   snapshotResponse=await fetch('/api/workspace',{cache:'no-store',credentials:'same-origin'});
   if(!snapshotResponse.ok)return false;
