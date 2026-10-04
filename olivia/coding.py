@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 import re
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ class GitHubActionsCodingWorker:
         workflow: str = "coding-agent.yml",
         token_env: str = "OLIVIA_GITHUB_TOKEN",
         api_base: str = "https://api.github.com",
+        session_factory=aiohttp.ClientSession,
     ):
         repo = repo.strip()
         workflow = workflow.strip()
@@ -45,6 +47,7 @@ class GitHubActionsCodingWorker:
         self.workflow = workflow
         self.token_env = token_env
         self.api_base = api_base.rstrip("/")
+        self._session_factory = session_factory
 
     @property
     def configured(self) -> bool:
@@ -93,7 +96,7 @@ class GitHubActionsCodingWorker:
             },
         }
         timeout = aiohttp.ClientTimeout(total=20)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with self._session_factory(timeout=timeout) as session:
             async with session.post(url, json=payload, headers=self._headers()) as response:
                 if response.status != 204:
                     detail = (await response.text())[:500]
@@ -106,13 +109,51 @@ class GitHubActionsCodingWorker:
             "remote_status": "dispatched",
         }
 
+    async def review_report(self, run_id: int | str) -> str | None:
+        try:
+            numeric_run_id = int(run_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("run_id must be an integer") from exc
+        if numeric_run_id <= 0:
+            raise ValueError("run_id must be positive")
+
+        branch = f"agent/coding-{numeric_run_id}"
+        url = f"{self.api_base}/repos/{self.repo}/contents/AGENT_REVIEW.md"
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with self._session_factory(timeout=timeout) as session:
+            async with session.get(
+                url,
+                params={"ref": branch},
+                headers=self._headers(),
+            ) as response:
+                if response.status == 404:
+                    return None
+                if response.status != 200:
+                    raise CodingWorkerError(
+                        f"github review report HTTP {response.status}"
+                    )
+                body = await response.json()
+
+        if str(body.get("encoding") or "").lower() != "base64":
+            raise CodingWorkerError("github review report encoding is not base64")
+        try:
+            raw = base64.b64decode(
+                str(body.get("content") or "").encode("ascii"),
+                validate=False,
+            )
+        except (ValueError, UnicodeEncodeError) as exc:
+            raise CodingWorkerError("github review report is invalid base64") from exc
+        if len(raw) > 128 * 1024:
+            raise CodingWorkerError("github review report is too large")
+        return raw.decode("utf-8", errors="replace")[:40_000]
+
     async def status(self, job_id: str) -> dict[str, Any] | None:
         url = (
             f"{self.api_base}/repos/{self.repo}/actions/workflows/"
             f"{self.workflow}/runs?event=workflow_dispatch&per_page=30"
         )
         timeout = aiohttp.ClientTimeout(total=20)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with self._session_factory(timeout=timeout) as session:
             async with session.get(url, headers=self._headers()) as response:
                 if response.status != 200:
                     detail = (await response.text())[:500]
