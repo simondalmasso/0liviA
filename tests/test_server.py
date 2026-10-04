@@ -568,3 +568,89 @@ async def test_successful_owner_login_clears_failure_counter(aiohttp_client, tmp
     assert (await client.post("/api/auth/login", json={"password": "wrong"})).status == 401
     assert (await client.post("/api/auth/login", json={"password": "owner-passphrase"})).status == 200
     assert (await client.post("/api/auth/login", json={"password": "wrong"})).status == 401
+
+
+@pytest.mark.asyncio
+async def test_code_command_dispatches_durable_isolated_job_without_chat_model(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "code-command.sqlite3")
+    router = FakeRouter(parts=("MODEL_SHOULD_NOT_RUN",))
+    agent = Agent(store, router, settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    session_id = store.create_session("coding")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/code Implementá una validación robusta."},
+        headers=auth(),
+    )
+    assert response.status == 200
+    events = [
+        json.loads(line[6:])
+        for line in (await response.text()).splitlines()
+        if line.startswith("data: ")
+    ]
+    job = next(event for event in events if event.get("type") == "job")
+    assert job["mode"] == "implement"
+    assert job["status"] == "dispatched"
+    assert any(event.get("type") == "delta" and "rama aislada" in event.get("text", "") for event in events)
+    assert worker.dispatched
+    _, request = worker.dispatched[0]
+    assert request.mode == "implement"
+    assert request.publish_branch is True
+    messages = store.recent_messages(session_id)
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    assert "MODEL_SHOULD_NOT_RUN" not in repr(messages)
+
+
+@pytest.mark.asyncio
+async def test_repair_command_uses_repair_mode(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "repair-command.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    session_id = store.create_session("repair")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/repair Arreglá únicamente el test roto."},
+        headers=auth(),
+    )
+    assert response.status == 200
+    await response.read()
+    _, request = worker.dispatched[0]
+    assert request.mode == "repair"
+    assert request.publish_branch is True
+
+
+@pytest.mark.asyncio
+async def test_job_command_refreshes_existing_coding_job(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "job-command.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    session_id = store.create_session("status")
+    job_id = store.create_job("code", repo=worker.repo)
+    store.checkpoint_job(job_id, "dispatched", {"mode": "implement"})
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": f"/job {job_id}"},
+        headers=auth(),
+    )
+    events = [
+        json.loads(line[6:])
+        for line in (await response.text()).splitlines()
+        if line.startswith("data: ")
+    ]
+    assert any(event.get("type") == "job" and event.get("status") == "succeeded" for event in events)
+    assert any(event.get("type") == "delta" and "succeeded" in event.get("text", "") for event in events)
