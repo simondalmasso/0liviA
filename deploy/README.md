@@ -13,7 +13,7 @@ Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's P
 1. Provision the A1 VM with a public IPv4 and Ubuntu ARM64.
 2. Open OCI ingress TCP 80/443 only (SSH 22 restricted to the minimum source needed for administration).
 3. Pick the exact green commit SHA you intend to release and run `sudo REF=<40-hex-SHA> ./deploy/bootstrap-a1.sh`. Mutable branches are rejected unless `ALLOW_MUTABLE_REF=1` is explicitly set for development.
-4. Read `/var/lib/0livia/bootstrap-info` as root. It contains the generated owner password and release metadata; it does **not** expose the internal gateway bearer. The file is mode `0600`.
+4. Read `/root/0livia-owner-password` as root for the generated browser-owner password. `/var/lib/0livia/bootstrap-info` contains only release/runtime metadata and the password-file location. Both are mode `0600`; neither exposes the internal gateway bearer.
 5. If adding external providers, edit `/etc/0livia/olivia.env` (0640 root:olivia) and add only routes with a verified hard-zero-cost boundary.
 6. Pick an HTTPS hostname. Preferred: a domain you control pointing DNS-only at the Oracle IP. The bootstrap can use an IP-derived DNS hostname if you deliberately accept that external DNS dependency.
 7. Keep port 8080 private. The browser authenticates with the owner password and receives only an HttpOnly/Secure/SameSite cookie; the bearer stays server/CLI-side.
@@ -54,4 +54,4 @@ The model route is tagged `cost_mode=local`, so the hard-zero-cost router accept
 
 Production installs accept an exact 40-hex Git commit SHA. `cloud-init-a1.yaml` is intentionally a template that fails closed until `REF` is supplied as an immutable SHA. Never execute a mutable branch as root in production.
 
-The remaining supply-chain gate is checksum verification for the downloaded llama.cpp archive and GGUF model. Until those hashes are pinned and verified, treat bootstrap as release-candidate infrastructure rather than production-complete.
+The bootstrap pins the llama.cpp release plus SHA-256 per architecture and pins each GGUF to an immutable Hugging Face revision plus SHA-256. Every download is verified before execution/use.
