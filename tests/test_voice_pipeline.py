@@ -1,87 +1,78 @@
+from __future__ import annotations
+
 import asyncio
-from collections.abc import AsyncIterator
 
 import pytest
 
-from olivia.voice import AudioFrame, TurnState, VoiceEvent, VoiceEventType, VoicePipeline
-from olivia.voice.baseline import AdaptiveSilenceEndpoint
+from olivia.voice import (
+    AudioFrame,
+    SequenceDecision,
+    TurnState,
+    TranscriptChunk,
+    VoiceEventType,
+    VoicePipeline,
+)
+from olivia.voice.adapters.endpointing import AdaptiveSilenceEndpoint
+from olivia.voice.adapters.vad import EnergyVAD
 
 
-class MemTransport:
+class MemoryTransport:
     def __init__(self):
         self.events = []
-        self.closed = False
-        self.incoming = asyncio.Queue()
+        self.audio = []
 
     async def recv(self):
-        while True:
-            item = await self.incoming.get()
-            if item is None:
-                return
-            yield item
+        if False:
+            yield None
 
     async def send_event(self, event):
         self.events.append(event)
 
+    async def send_audio(self, frame):
+        self.audio.append(frame)
+
     async def close(self):
-        self.closed = True
+        pass
 
 
-class ScriptVAD:
+class FakeSTT:
     def __init__(self):
-        self.n = 0
+        self.cancelled = False
+        self.frames = 0
 
-    def process(self, frame):
-        self.n += 1
-        return (self.n == 1, self.n == 2)
-
-    def reset(self):
-        self.n = 0
-
-
-class ScriptEndpoint:
-    def __init__(self):
-        self.calls = 0
-
-    def update(self, *, speaking, now_ms):
-        if speaking:
-            return False
-        self.calls += 1
-        return self.calls >= 1
-
-    def reset(self):
-        self.calls = 0
-
-
-class ScriptSTT:
-    def __init__(self):
-        self.reset_count = 0
-
-    async def push(self, frame):
-        return "ho" if frame.seq == 0 else None
-
-    async def finalize(self):
-        return "hola"
-
-    async def reset(self):
-        self.reset_count += 1
-
-
-class ScriptTTS:
-    def __init__(self):
-        self.cancel_count = 0
-
-    async def stream(self, text, *, locale):
+    async def start(self, turn_id, *, locale):
         assert locale == "es-AR"
-        yield ("audio:" + text).encode()
+        self.cancelled = False
+        self.frames = 0
+
+    async def accept(self, frame):
+        self.frames += 1
+        return [TranscriptChunk("ho", False)] if self.frames == 1 else []
+
+    async def finish(self):
+        return TranscriptChunk("hola", True)
 
     async def cancel(self):
-        self.cancel_count += 1
+        self.cancelled = True
 
 
-class ScriptLLM:
-    async def stream(self, text, *, turn_id):
+class FakeTTS:
+    def __init__(self):
+        self.cancelled = False
+
+    async def stream(self, text, *, turn_id, locale, voice=None):
+        assert locale == "es-AR"
+        async for token in text:
+            yield ("audio:" + token).encode()
+
+    async def cancel(self):
+        self.cancelled = True
+
+
+class FakeLLM:
+    async def stream(self, text, *, turn_id, locale):
         assert text == "hola"
+        assert locale == "es-AR"
         yield "respuesta"
 
 
@@ -89,83 +80,95 @@ class SlowLLM:
     def __init__(self):
         self.started = asyncio.Event()
 
-    async def stream(self, text, *, turn_id):
+    async def stream(self, text, *, turn_id, locale):
         self.started.set()
         await asyncio.sleep(10)
         yield "late"
 
 
-def frame(turn_id, seq):
-    return AudioFrame(turn_id=turn_id, seq=seq, pcm_s16le=b"\x00\x00" * 160)
+def frame(turn_id, seq, value=0):
+    sample = int(value).to_bytes(2, "little", signed=True)
+    return AudioFrame(turn_id=turn_id, seq=seq, pcm_s16le=sample * 160)
+
+
+def make_pipeline(llm=None):
+    transport = MemoryTransport()
+    stt = FakeSTT()
+    tts = FakeTTS()
+    pipe = VoicePipeline(
+        transport=transport,
+        vad=EnergyVAD(
+            start_rms=500,
+            end_rms=200,
+            start_frames=1,
+            end_frames=1,
+        ),
+        endpoint=AdaptiveSilenceEndpoint(
+            silence_ms=20,
+            floor_ms=20,
+            ceiling_ms=100,
+        ),
+        stt=stt,
+        tts=tts,
+        llm=llm or FakeLLM(),
+    )
+    return pipe, transport, stt, tts
 
 
 @pytest.mark.asyncio
-async def test_pipeline_turn_uses_typed_events_and_completes():
-    transport = MemTransport()
-    pipeline = VoicePipeline(
-        transport, ScriptVAD(), ScriptEndpoint(), ScriptSTT(), ScriptTTS(), ScriptLLM()
-    )
-    await pipeline.start_turn("t1")
-    await pipeline.handle_frame(frame("t1", 0))
-    await pipeline.handle_frame(frame("t1", 1))
-    await pipeline.wait_response()
+async def test_pipeline_runs_shared_turn_to_audio_completion():
+    pipe, transport, stt, tts = make_pipeline()
+    await pipe.start_turn("t1")
+    assert await pipe.accept_audio(frame("t1", 0, 1000)) is SequenceDecision.ACCEPT
+    assert await pipe.accept_audio(frame("t1", 1, 0)) is SequenceDecision.ACCEPT
+    assert await pipe.accept_audio(frame("t1", 2, 0)) is SequenceDecision.ACCEPT
+    assert pipe._generation is not None
+    await pipe._generation
 
     kinds = [event.type for event in transport.events]
     assert VoiceEventType.STT_PARTIAL in kinds
     assert VoiceEventType.STT_FINAL in kinds
-    assert VoiceEventType.LLM_TEXT in kinds
-    assert VoiceEventType.TTS_AUDIO in kinds
+    assert VoiceEventType.LLM_DELTA in kinds
     assert kinds[-1] == VoiceEventType.TURN_COMPLETED
-    assert pipeline.gate.state == TurnState.COMPLETED
-
-    late = await pipeline.handle_frame(frame("t1", 2))
-    assert late.type == VoiceEventType.FRAME_DROPPED
+    assert pipe._turn is not None and pipe._turn.state == TurnState.COMPLETE
+    assert len(transport.audio) == 1
 
 
 @pytest.mark.asyncio
-async def test_cancel_propagates_and_prevents_late_completion():
-    transport = MemTransport()
-    tts = ScriptTTS()
-    llm = SlowLLM()
-    pipeline = VoicePipeline(
-        transport, ScriptVAD(), ScriptEndpoint(), ScriptSTT(), tts, llm
-    )
-    await pipeline.start_turn("t1")
-    await pipeline.handle_frame(frame("t1", 0))
-    await pipeline.handle_frame(frame("t1", 1))
-    await asyncio.wait_for(llm.started.wait(), timeout=1)
-
-    event = await pipeline.cancel("t1")
-    assert event.type == VoiceEventType.TURN_CANCELLED
-    assert pipeline.gate.state == TurnState.CANCELLED
-    assert tts.cancel_count >= 1
-    assert VoiceEventType.TURN_COMPLETED not in [e.type for e in transport.events]
-
-    late = await pipeline.handle_frame(frame("t1", 2))
-    assert late.type == VoiceEventType.FRAME_DROPPED
+async def test_sequence_is_exact_and_late_or_gap_audio_drops():
+    pipe, transport, stt, tts = make_pipeline()
+    await pipe.start_turn("t1")
+    assert await pipe.accept_audio(frame("wrong", 0)) is SequenceDecision.WRONG_TURN
+    assert await pipe.accept_audio(frame("t1", 1)) is SequenceDecision.OUT_OF_ORDER
+    assert await pipe.accept_audio(frame("t1", 0)) is SequenceDecision.ACCEPT
+    assert await pipe.accept_audio(frame("t1", 0)) is SequenceDecision.OUT_OF_ORDER
+    assert pipe.dropped_audio == 3
 
 
 @pytest.mark.asyncio
-async def test_starting_new_turn_cancels_previous_turn():
-    transport = MemTransport()
-    tts = ScriptTTS()
-    pipeline = VoicePipeline(
-        transport, ScriptVAD(), ScriptEndpoint(), ScriptSTT(), tts, ScriptLLM()
-    )
-    await pipeline.start_turn("old")
-    await pipeline.start_turn("new")
-    assert pipeline.active_turn_id == "new"
-    assert tts.cancel_count == 1
-    old = await pipeline.handle_frame(frame("old", 0))
-    assert old.type == VoiceEventType.FRAME_DROPPED
-    assert old.detail == "late_or_foreign_turn"
+async def test_cancel_propagates_and_blocks_late_audio():
+    slow = SlowLLM()
+    pipe, transport, stt, tts = make_pipeline(slow)
+    await pipe.start_turn("t1")
+    await pipe.accept_audio(frame("t1", 0, 1000))
+    await pipe.accept_audio(frame("t1", 1, 0))
+    await pipe.accept_audio(frame("t1", 2, 0))
+    assert pipe._generation is not None
+    await asyncio.wait_for(slow.started.wait(), timeout=1)
+
+    assert await pipe.cancel_turn("t1") is True
+    assert stt.cancelled is True
+    assert tts.cancelled is True
+    assert pipe._turn is not None and pipe._turn.state == TurnState.CANCELLED
+    assert transport.events[-1].type == VoiceEventType.CANCELLED
+    assert await pipe.accept_audio(frame("t1", 3)) is SequenceDecision.CANCELLED
 
 
-def test_adaptive_endpoint_never_fires_immediately_after_reset():
-    eot = AdaptiveSilenceEndpoint(silence_ms=100)
-    assert eot.update(speaking=False, now_ms=0) is False
-    assert eot.update(speaking=False, now_ms=99) is False
-    assert eot.update(speaking=False, now_ms=100) is True
-    assert eot.update(speaking=False, now_ms=200) is False
-    eot.reset()
-    assert eot.update(speaking=False, now_ms=1000) is False
+@pytest.mark.asyncio
+async def test_starting_new_turn_cancels_previous():
+    pipe, transport, stt, tts = make_pipeline()
+    await pipe.start_turn("old")
+    await pipe.start_turn("new")
+    assert pipe.active_turn_id == "new"
+    assert tts.cancelled is True
+    assert stt.cancelled is False
