@@ -14,7 +14,7 @@ write_files:
       
       REPO_URL="${REPO_URL:-https://github.com/simondalmasso/0liviA.git}"
       REF="${REF:-arch/gpt-synthesis-v1}"
-      APP_ROOT="${APP_ROOT:-/opt/0liviA}"
+      APP_ROOT="${APP_ROOT:-/opt/0livia}"
       STATE_ROOT="${STATE_ROOT:-/var/lib/olivia}"
       ETC_ROOT="${ETC_ROOT:-/etc/olivia}"
       LLAMA_ROOT="${LLAMA_ROOT:-/opt/llama}"
