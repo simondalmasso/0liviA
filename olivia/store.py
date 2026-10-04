@@ -385,11 +385,21 @@ class Store:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def delete_memory(self, scope: str, key: str) -> int:
+        """Physically delete every persisted version of a memory key."""
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM memories WHERE scope=? AND key=?",
+                (scope, redact_secrets(str(key))),
+            )
+        return int(cur.rowcount)
+
     def deactivate_memory(self, scope: str, key: str) -> int:
+        """Legacy soft-delete helper kept for migration compatibility."""
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE memories SET is_active=0 WHERE scope=? AND key=? AND is_active=1",
-                (scope, key),
+                (scope, redact_secrets(str(key))),
             )
         return int(cur.rowcount)
 
