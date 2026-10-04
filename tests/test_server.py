@@ -74,12 +74,11 @@ async def test_static_ui_is_served_without_local_capabilities(client):
     assert response.status == 200
     html = await response.text()
     assert '<html lang="es-AR">' in html
-    assert "sessionStorage.setItem(key,sessionId)" in html
+    assert "sessionStorage" not in html
     assert "localStorage" not in html
     for forbidden in ("showOpenFilePicker", "showSaveFilePicker", "Desktop Commander", "child_process", "localhost"):
         assert forbidden not in html
-    assert "sessionStorage.setItem(key,sessionId)" in html
-    assert "sessionStorage.setItem(key,token)" not in html
+    assert "sessionStorage" not in html
 
 
 @pytest.mark.asyncio
@@ -179,3 +178,16 @@ async def test_ui_uses_buffered_sse_parser_and_never_persists_token(client):
     assert "sseBuffer=lines.pop()" in html
     assert "sessionStorage.setItem(key,token)" not in html
     assert "localStorage" not in html
+
+
+@pytest.mark.asyncio
+async def test_session_listing_is_server_side(client, gateway):
+    _, store, _ = gateway
+    first = store.create_session("first")
+    await asyncio.sleep(0.01)
+    second = store.create_session("second")
+    response = await client.get("/api/sessions?limit=1", headers=auth())
+    assert response.status == 200
+    sessions = (await response.json())["sessions"]
+    assert [item["id"] for item in sessions] == [second]
+    assert first != second
