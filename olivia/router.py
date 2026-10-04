@@ -132,7 +132,7 @@ class ProviderSpec:
             name=str(raw["name"]),
             base_url=str(raw["base_url"]).rstrip("/"),
             model=str(raw["model"]),
-            api_key_env=str(raw["api_key_env"]),
+            api_key_env=str(raw.get("api_key_env", "")),
             priority=int(raw.get("priority", 100)),
             daily_limit=int(raw.get("daily_limit", 0)),
             cost_mode=cost_mode,
@@ -148,16 +148,15 @@ class OpenAICompatibleProvider:
         self.cost_mode = spec.cost_mode
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
-        api_key = os.getenv(self.spec.api_key_env)
-        if not api_key:
+        api_key = os.getenv(self.spec.api_key_env) if self.spec.api_key_env else ""
+        if self.spec.cost_mode != "local" and not api_key:
             raise ProviderConfigError(f"{self.name}: missing {self.spec.api_key_env}")
 
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=90)
         payload = {"model": self.spec.model, "messages": messages, "stream": True}
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
