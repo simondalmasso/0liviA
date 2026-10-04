@@ -78,6 +78,15 @@ linear-gradient(180deg,#050506 0%,#08070c 48%,#090811 100%)}
 .send{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,var(--magenta),var(--violet));color:#fff;box-shadow:0 8px 24px rgba(119,63,255,.3);flex:0 0 auto;transition:transform .13s var(--ease),filter .15s var(--ease)}
 .send:hover{filter:brightness(1.06)}
 .send.stop{background:#2b1618;color:#ff8998}
+.auth-gate{position:fixed;inset:0;z-index:140;display:none;place-items:center;padding:20px;background:rgba(2,2,4,.78);backdrop-filter:blur(18px)}
+.auth-gate.open{display:grid}
+.auth-card{width:min(92vw,360px);padding:22px;border-radius:26px;background:linear-gradient(160deg,rgba(24,18,29,.98),rgba(8,8,11,.99));box-shadow:0 34px 90px rgba(0,0,0,.58),inset 0 0 0 1px rgba(255,255,255,.1)}
+.auth-card .auth-mark{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;margin-bottom:18px;background:linear-gradient(145deg,var(--magenta),var(--violet));font-weight:800}
+.auth-card strong{display:block;font-size:22px;line-height:1.15;margin-bottom:6px}
+.auth-card p{margin:0 0 18px;color:var(--muted);font-size:13px}
+.auth-card input{width:100%;border:0;outline:0;border-radius:15px;padding:13px 14px;background:#0b0a0d;color:var(--ink);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.auth-submit{width:100%;margin-top:10px;padding:12px 14px;border-radius:15px;background:linear-gradient(145deg,var(--magenta),var(--violet));color:#fff;font-weight:650}
+.auth-error{min-height:18px;margin-top:9px;color:#ff8ba1;font-size:12px}
 .drawer-backdrop{position:fixed;inset:0;z-index:40;background:rgba(2,3,18,.58);backdrop-filter:blur(5px);display:none}
 .drawer-backdrop.open{display:block}
 .drawer{position:fixed;z-index:50;inset:0 auto 0 56px;width:min(86vw,322px);background:linear-gradient(180deg,rgba(24,12,30,.99) 0%,rgba(18,13,28,.995) 48%,rgba(7,7,10,.998) 100%);transform:translateX(calc(-100% - 10px));transition:transform .22s var(--ease);padding:max(14px,env(safe-area-inset-top)) 10px max(16px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto auto 1fr;box-shadow:24px 0 70px rgba(2,3,18,.62),inset -1px 0 rgba(255,255,255,.06);backdrop-filter:blur(22px)}
@@ -259,6 +268,17 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
   </div>
 </aside>
 
+<section id="ownerLogin" class="auth-gate" aria-hidden="true">
+  <form id="ownerLoginForm" class="auth-card">
+    <div class="auth-mark">0</div>
+    <strong>Desbloquear 0liviA</strong>
+    <p>Tu sesión queda en una cookie segura del navegador.</p>
+    <input id="ownerPassword" type="password" autocomplete="current-password" placeholder="Contraseña" aria-label="Contraseña">
+    <button class="auth-submit" type="submit">Entrar</button>
+    <div id="ownerLoginError" class="auth-error" role="status"></div>
+  </form>
+</section>
+
 <section id="voiceLive" aria-hidden="true">
   <div class="voice-top">
     <div class="brand">0liviA</div>
@@ -295,6 +315,8 @@ const STATE_KEY='workspace';
 let workspace=null;
 let coreOnline=false;
 let coreHealth=null;
+let backendMode='bridge';
+let ownerAuthReady=false;
 let controller=null;
 let syncing=false;
 let activeSide='projects';
@@ -317,6 +339,10 @@ const voiceState=$('#voiceState');
 const voiceRingPath=$('#voiceRingPath');
 const voiceRingFill=$('#voiceRingFill');
 const voiceOrb=$('.orb');
+const ownerLogin=$('#ownerLogin');
+const ownerLoginForm=$('#ownerLoginForm');
+const ownerPassword=$('#ownerPassword');
+const ownerLoginError=$('#ownerLoginError');
 
 function uid(prefix){return prefix+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)}
 function now(){return Date.now()}
@@ -375,24 +401,61 @@ function setCoreState(mode){
   coreDot.className='core-dot'+(mode==='online'?' online':mode==='locked'?' locked':'');
   coreDot.title=mode==='online'?'Core online':mode==='locked'?'Core limitado':'Core pendiente';
 }
+async function canonicalAuthCheck(){
+  if(backendMode!=='canonical')return true;
+  try{
+    const r=await fetch('/api/sessions?limit=1',{cache:'no-store',credentials:'same-origin'});
+    if(r.status===401){ownerAuthReady=false;showOwnerLogin();return false}
+    if(!r.ok)throw new Error('auth probe failed');
+    ownerAuthReady=true;hideOwnerLogin();return true;
+  }catch(e){ownerAuthReady=false;return false}
+}
+function showOwnerLogin(){
+  ownerLogin.classList.add('open');
+  ownerLogin.setAttribute('aria-hidden','false');
+  setTimeout(()=>ownerPassword.focus(),0);
+}
+function hideOwnerLogin(){
+  ownerLogin.classList.remove('open');
+  ownerLogin.setAttribute('aria-hidden','true');
+  ownerLoginError.textContent='';
+  ownerPassword.value='';
+}
 async function probeCore(){
   try{
-    const r=await fetch('/healthz',{cache:'no-store'});
-    const type=(r.headers.get('content-type')||'').toLowerCase();
-    if(!r.ok||!type.includes('application/json'))throw new Error('offline');
+    const r=await fetch('/healthz',{cache:'no-store',credentials:'same-origin'});
+    if(!r.ok)throw new Error('offline');
     const body=await r.json();
     if(body.process_alive!==true)throw new Error('offline');
     coreHealth=body;
-    setCoreState(body.provider_ready?'online':'locked');
+    backendMode=body.api_mode==='canonical'?'canonical':'bridge';
+    const authOk=await canonicalAuthCheck();
+    setCoreState(body.provider_ready&&authOk?'online':body.provider_ready?'locked':'locked');
     if(workspace)renderConfig();
-    return body.provider_ready===true;
+    return body.provider_ready===true&&authOk;
   }catch(e){
-    coreHealth=null;
+    coreHealth=null;ownerAuthReady=false;backendMode='bridge';
     setCoreState('offline');
     if(workspace)renderConfig();
     return false;
   }
 }
+ownerLoginForm.onsubmit=async e=>{
+  e.preventDefault();
+  const password=ownerPassword.value;
+  if(!password)return;
+  ownerLoginError.textContent='';
+  try{
+    const r=await fetch('/api/auth/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body:JSON.stringify({password})
+    });
+    if(!r.ok){ownerLoginError.textContent=r.status===401?'Contraseña incorrecta':'No se pudo iniciar sesión';return}
+    ownerAuthReady=true;hideOwnerLogin();await probeCore();syncQueued();
+  }catch(e){ownerLoginError.textContent='Core no disponible'}
+};
 
 async function copyText(value,button){
   try{
@@ -477,7 +540,7 @@ function projectButton(project){
   row.append(name,add);
   row.onclick=async e=>{
     if(e.target.closest('.mini')){
-      const chat={id:uid('c'),title:'Nuevo chat',messages:[]};
+      const chat={id:uid('c'),title:'Nuevo chat',messages:[],remoteSessionId:null};
       project.chats.unshift(chat);
       workspace.selectedProjectId=project.id;
       workspace.selectedChatId=chat.id;
@@ -543,6 +606,7 @@ function renderConfig(){
     ['Modelo activo',active],
     ['Preferido',preferred],
     ['Ruta',route],
+    ['Backend',backendMode==='canonical'?'Core durable':'Bridge temporal'],
     ['Idioma','es-AR'],
     ['Modo','Fail-closed · sin fallback pago'],
     ['Navegación','URLs públicas · solo lectura']
@@ -575,7 +639,7 @@ backdrop.onclick=closeDrawer;
 $$('[data-side]').forEach(b=>b.onclick=()=>activateSide(b.dataset.side));
 $('#railNewChat').onclick=async()=>{
   const p=selectedProject();
-  const chat={id:uid('c'),title:'Nuevo chat',messages:[]};
+  const chat={id:uid('c'),title:'Nuevo chat',messages:[],remoteSessionId:null};
   p.chats.unshift(chat);workspace.selectedChatId=chat.id;
   await saveState();renderAll();textInput.focus();
 };
@@ -583,7 +647,7 @@ $('#newProject').onclick=async()=>{
   const raw=prompt('Nombre del proyecto');
   const name=(raw||'').trim();
   if(!name)return;
-  const chat={id:uid('c'),title:'Nuevo chat',messages:[]};
+  const chat={id:uid('c'),title:'Nuevo chat',messages:[],remoteSessionId:null};
   const p={id:uid('p'),name:name.slice(0,60),chats:[chat]};
   workspace.projects.unshift(p);workspace.selectedProjectId=p.id;workspace.selectedChatId=chat.id;
   await saveState();renderAll();closeDrawer();
@@ -606,6 +670,7 @@ function aiHistory(chat){
 }
 function streamText(event){
   if(!event||typeof event!=='object')return '';
+  if(event.type==='delta'&&typeof event.text==='string')return event.text;
   if(typeof event.response==='string')return event.response;
   const choice=event.choices&&event.choices[0];
   if(typeof choice?.delta?.content==='string')return choice.delta.content;
@@ -613,15 +678,45 @@ function streamText(event){
   if(typeof event.result?.response==='string')return event.result.response;
   return '';
 }
+async function ensureRemoteSession(chat,excludeMessageId=null){
+  if(backendMode!=='canonical')return null;
+  if(chat.remoteSessionId)return chat.remoteSessionId;
+  const messages=chat.messages
+    .filter(m=>m.id!==excludeMessageId&&m.status!=='queued'&&(m.role==='user'||m.role==='assistant')&&String(m.text||'').trim())
+    .slice(-12)
+    .map(m=>({role:m.role,content:String(m.text)}));
+  const r=await fetch('/api/sessions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    credentials:'same-origin',
+    body:JSON.stringify({title:chat.title||'',messages})
+  });
+  if(r.status===401){ownerAuthReady=false;showOwnerLogin();throw new Error('auth requerida')}
+  if(!r.ok)throw new Error('no se pudo crear la sesión remota');
+  const body=await r.json();
+  chat.remoteSessionId=body.id;
+  await saveState();
+  return chat.remoteSessionId;
+}
+
 async function sendRemote(chat,userMessage,speak){
   controller=new AbortController();setSendMode(true);let assistant=null;
   try{
-    const r=await fetch('/api/chat',{
+    let endpoint='/api/chat';
+    let payload={messages:aiHistory(chat)};
+    if(backendMode==='canonical'){
+      await ensureRemoteSession(chat,userMessage.id);
+      endpoint=`/api/chat/${chat.remoteSessionId}`;
+      payload={text:userMessage.text};
+    }
+    const r=await fetch(endpoint,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:aiHistory(chat)}),
+      credentials:'same-origin',
+      body:JSON.stringify(payload),
       signal:controller.signal
     });
+    if(r.status===401&&backendMode==='canonical'){ownerAuthReady=false;showOwnerLogin();throw new Error('auth requerida')}
     if(r.status===429){setCoreState('locked');throw new Error('límite $0 alcanzado')}
     if(!r.ok)throw new Error(await r.text()||'core no disponible');
     if(!(r.headers.get('content-type')||'').toLowerCase().includes('text/event-stream'))throw new Error('respuesta inválida');
@@ -632,6 +727,7 @@ async function sendRemote(chat,userMessage,speak){
       const raw=line.slice(6).trim();if(!raw)return;
       if(raw==='[DONE]'){sawDone=true;return}
       let ev;try{ev=JSON.parse(raw)}catch(e){return}
+      if(ev?.type==='done'){sawDone=true;return}
       if(ev&&ev.error){streamError=ev;return}
       const piece=streamText(ev);if(!piece)return;
       answer+=piece;
