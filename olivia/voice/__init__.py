@@ -1,8 +1,8 @@
 """Realtime voice contracts for 0liviA.
 
-The package deliberately contains no heavyweight speech-model dependency.
-Adapters for Silero, Moonshine, Pocket TTS, Piper and Kokoro are deployment
-choices that must pass Oracle A1 + es-AR benchmarks before becoming defaults.
+This package is deliberately dependency-light. It keeps both the core pipeline
+contract and the transport/speech adapter contract stable while engines remain
+benchmark-gated on Oracle A1.
 """
 
 from .contracts import (
@@ -11,11 +11,24 @@ from .contracts import (
     SequenceDecision,
     TranscriptChunk,
     TurnState,
+    VoiceEndpointing,
     VoiceEvent,
     VoiceEventType,
+    VoiceSTT,
+    VoiceTTS,
+    VoiceTransport,
+    VoiceVAD,
 )
-from .locale import ES_AR, LocalePolicy, VoiceCandidate
+from .locale import (
+    DEFAULT_LOCALE,
+    ES_AR,
+    LocalePolicy,
+    VoiceCandidate,
+    VoiceProfile,
+    is_argentine_spanish,
+)
 from .pipeline import VoicePipeline
+from .state import VoiceTurnGate
 
 __all__ = [
     "AdapterTarget",
@@ -23,10 +36,19 @@ __all__ = [
     "SequenceDecision",
     "TranscriptChunk",
     "TurnState",
+    "VoiceEndpointing",
     "VoiceEvent",
     "VoiceEventType",
+    "VoiceSTT",
+    "VoiceTTS",
+    "VoiceTransport",
+    "VoiceVAD",
+    "DEFAULT_LOCALE",
     "ES_AR",
     "LocalePolicy",
     "VoiceCandidate",
+    "VoiceProfile",
+    "is_argentine_spanish",
     "VoicePipeline",
+    "VoiceTurnGate",
 ]
