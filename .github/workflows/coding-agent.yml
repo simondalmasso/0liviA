@@ -18,7 +18,7 @@ on:
         default: "arch/gpt-synthesis-v1"
         type: string
       mode:
-        description: "Engineering mode"
+        description: "Bounded coding mode"
         required: true
         default: "implement"
         type: choice
@@ -94,58 +94,46 @@ jobs:
           python -m compileall -q olivia tests
           pytest -q
 
-      - name: Build senior engineering brief
+      - name: Execute bounded coding task
         shell: bash
         env:
           TASK: ${{ inputs.task }}
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import os
-          from pathlib import Path
+          if [ "$MODE" = "repair" ]; then
+            INTENT="Diagnose the existing failure first. Make the smallest correct repair. Preserve unrelated behavior."
+          else
+            INTENT="Implement the requested capability with tests. Prefer the smallest coherent product change over scaffolding."
+          fi
+          aider \
+            --model "$AIDER_MODEL" \
+            --openai-api-base "$AIDER_OPENAI_API_BASE" \
+            --openai-api-key "$AIDER_OPENAI_API_KEY" \
+            --yes-always \
+            --no-stream \
+            --no-analytics \
+            --no-check-update \
+            --no-show-release-notes \
+            --no-show-model-warnings \
+            --read AGENTS.md \
+            --read docs/ARCHITECTURE.md \
+            --read docs/DECISIONS.md \
+            --test-cmd "pytest -q" \
+            --auto-test \
+            --message "$INTENT
 
-          mode = os.environ["MODE"]
-          task = os.environ["TASK"].strip()
-          mode_rule = (
-              "Reproduce the failure first when feasible, identify root cause, then make the smallest repair."
-              if mode == "repair"
-              else "Implement the requested behavior with the smallest coherent production-quality diff."
-          )
-          brief = f"""You are the bounded 0liviA senior coding worker.
+          Task:
+          $TASK"
 
-MODE: {mode}
-TASK:
-{task}
-
-MANDATORY ENGINEERING CONTRACT:
-- Read and obey AGENTS.md, README.md, docs/ARCHITECTURE.md, docs/DECISIONS.md and docs/SECURITY_AUDIT.md.
-- {mode_rule}
-- Inspect existing code/tests before editing. Preserve unrelated user work.
-- Do not deploy, rotate credentials, alter provider billing, or weaken security/cost guards.
-- Never put secrets in code, logs, tests or prompts.
-- Prefer root-cause fixes over symptom patches.
-- Add or update regression tests for changed behavior.
-- Do not skip, delete or weaken failing tests merely to obtain green CI.
-- Keep public APIs/backward compatibility unless the task explicitly requires a migration.
-- Keep the diff focused; remove dead code introduced or made obsolete by your change.
-- Finish only after the repository's deterministic verification passes.
-"""
-          Path("/tmp/agent-brief.txt").write_text(brief, encoding="utf-8")
-          PY
-
-      - name: Execute senior coding pass
-        shell: bash
-        run: |
-          set -euo pipefail
-          aider             --model "$AIDER_MODEL"             --openai-api-base "$AIDER_OPENAI_API_BASE"             --openai-api-key "$AIDER_OPENAI_API_KEY"             --yes-always             --no-stream             --no-analytics             --no-check-update             --no-show-release-notes             --no-show-model-warnings             --read AGENTS.md             --read README.md             --read docs/ARCHITECTURE.md             --read docs/DECISIONS.md             --read docs/SECURITY_AUDIT.md             --test-cmd "pytest -q"             --auto-test             --message "$(cat /tmp/agent-brief.txt)"
-
-      - name: Verify pass and collect repair evidence
+      - name: Verify first pass
+        id: verify1
         shell: bash
         run: |
           set +e
-          {
-            python -m compileall -q olivia tests
-            python - <<'PY'
+          python -m compileall -q olivia tests > /tmp/verify-first.log 2>&1
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            python - <<'PY' >> /tmp/verify-first.log 2>&1
           from pathlib import Path
           import re
           html = Path("web/index.html").read_text(encoding="utf-8")
@@ -154,50 +142,45 @@ MANDATORY ENGINEERING CONTRACT:
               raise SystemExit(f"expected exactly one inline script, got {len(scripts)}")
           Path("/tmp/olivia-ui.js").write_text(scripts[0], encoding="utf-8")
           PY
-            node --check /tmp/olivia-ui.js
-            node --check cloudflare/worker.mjs
-            pytest -q
-          } > /tmp/verify-pass-1.log 2>&1
-          status=$?
-          set -e
-          if [ "$status" -eq 0 ]; then
-            echo "REPAIR_PASS=false" >> "$GITHUB_ENV"
-          else
-            echo "REPAIR_PASS=true" >> "$GITHUB_ENV"
-            echo "repair_pass required after deterministic verification failure"
-            tail -n 220 /tmp/verify-pass-1.log
+            rc=$?
           fi
+          if [ "$rc" -eq 0 ]; then node --check /tmp/olivia-ui.js >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          if [ "$rc" -eq 0 ]; then node --check cloudflare/worker.mjs >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          if [ "$rc" -eq 0 ]; then pytest -q >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          cat /tmp/verify-first.log
+          if [ "$rc" -eq 0 ]; then
+            echo "needs_repair=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_repair=true" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
 
-      - name: Build bounded repair brief
-        if: env.REPAIR_PASS == 'true'
-        shell: bash
-        env:
-          TASK: ${{ inputs.task }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          failure = Path("/tmp/verify-pass-1.log").read_text(encoding="utf-8", errors="replace")[-12000:]
-          brief = f"""This is repair_pass 2 of {os.environ['MAX_AGENT_PASSES']}. No further model pass exists.
-
-Original task:
-{os.environ['TASK']}
-
-The deterministic verification failed after the first pass. Diagnose the actual failure below, make the minimum root-cause correction, preserve unrelated work, and do not weaken tests/security/cost guards.
-
-VERIFICATION FAILURE:
-{failure}
-"""
-          Path("/tmp/agent-repair.txt").write_text(brief, encoding="utf-8")
-          PY
-
-      - name: Execute bounded repair pass
-        if: env.REPAIR_PASS == 'true'
+      - name: repair_pass
+        if: steps.verify1.outputs.needs_repair == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          aider             --model "$AIDER_MODEL"             --openai-api-base "$AIDER_OPENAI_API_BASE"             --openai-api-key "$AIDER_OPENAI_API_KEY"             --yes-always             --no-stream             --no-analytics             --no-check-update             --no-show-release-notes             --no-show-model-warnings             --read AGENTS.md             --read docs/SECURITY_AUDIT.md             --test-cmd "pytest -q"             --auto-test             --message "$(cat /tmp/agent-repair.txt)"
+          test "$MAX_AGENT_PASSES" = "2"
+          tail -c 12000 /tmp/verify-first.log > /tmp/verify-tail.log
+          aider \
+            --model "$AIDER_MODEL" \
+            --openai-api-base "$AIDER_OPENAI_API_BASE" \
+            --openai-api-key "$AIDER_OPENAI_API_KEY" \
+            --yes-always \
+            --no-stream \
+            --no-analytics \
+            --no-check-update \
+            --no-show-release-notes \
+            --no-show-model-warnings \
+            --read AGENTS.md \
+            --read docs/ARCHITECTURE.md \
+            --read docs/DECISIONS.md \
+            --test-cmd "pytest -q" \
+            --auto-test \
+            --message "The first bounded pass failed deterministic verification. Diagnose the failures below, repair only what is necessary, and do not broaden scope.
+
+          Verification output:
+          $(cat /tmp/verify-tail.log)"
 
       - name: Final deterministic verification
         shell: bash
@@ -249,6 +232,7 @@ VERIFICATION FAILURE:
           fi
           auth="$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 -w0)"
           git config --local core.hooksPath /dev/null
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth"             push origin "HEAD:refs/heads/$AGENT_BRANCH"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+            push origin "HEAD:refs/heads/$AGENT_BRANCH"
           unset auth GH_PUSH_TOKEN
           echo "PUBLISHED_BRANCH=$AGENT_BRANCH"
