@@ -1240,3 +1240,18 @@ async def test_ui_supports_first_run_register_login_and_device_management(client
     assert "device_name" in html
     assert "/api/auth/devices" in html
     assert "Dispositivos recordados" in html
+
+
+@pytest.mark.asyncio
+async def test_sidebar_has_chats_projects_config_and_session_surfaces(client):
+    html = await (await client.get("/")).text()
+    for side in ("chats", "projects", "library", "memory", "config", "session"):
+        assert f'data-side="{side}"' in html
+        assert f'id="side{side[0].upper() + side[1:]}"' in html
+    assert "Chats" in html
+    assert "Proyectos" in html
+    assert "Config" in html
+    assert "Sesión" in html
+    assert "/api/auth/session" in html
+    assert "/api/auth/logout" in html
+    assert "Dispositivos recordados" in html
