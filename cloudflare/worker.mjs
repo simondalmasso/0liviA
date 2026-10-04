@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 const MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
 const MAX_CALLS_PER_UTC_DAY = 80;
+const ACCOUNT_ZERO_COST_VERIFIED = false;
 const MAX_CONTEXT_BYTES = 7000;
 const MAX_OUTPUT_TOKENS = 384;
 const MAX_URLS_PER_TURN = 2;
@@ -340,7 +341,7 @@ async function chat(request, env) {
   if (!guard.ok) {
     return json({
       error: "zero_cost_daily_cap",
-      message: "Límite diario $0 alcanzado.",
+      message: "Límite diario local alcanzado.",
     }, 429);
   }
 
@@ -396,7 +397,9 @@ export default {
       return json({
         process_alive: true,
         provider_ready: true,
-        hard_zero_cost: true,
+        hard_zero_cost: ACCOUNT_ZERO_COST_VERIFIED,
+        local_daily_cap: true,
+        account_overage_guard_verified: ACCOUNT_ZERO_COST_VERIFIED,
         model: MODEL,
         max_calls_per_utc_day: MAX_CALLS_PER_UTC_DAY,
         max_context_bytes: MAX_CONTEXT_BYTES,
