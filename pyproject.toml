@@ -18,8 +18,8 @@ dev = [
   "pytest-aiohttp>=1.0,<2",
 ]
 
-[tool.setuptools]
-packages = ["olivia"]
+[tool.setuptools.packages.find]
+include = ["olivia*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
