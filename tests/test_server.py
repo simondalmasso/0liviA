@@ -41,6 +41,10 @@ class FakeCodingWorker:
             "remote_head_sha": "abc123",
         }
 
+    async def review_report(self, run_id):
+        assert run_id == 123
+        return "# Informe senior\n\nP1: corregir el borde.\n\nToken accidental: ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+
 
 class FakeWebSearch:
     configured = True
@@ -788,3 +792,37 @@ async def test_review_command_dispatches_read_only_review_job(aiohttp_client, tm
     _, request = worker.dispatched[0]
     assert request.mode == "review"
     assert request.publish_branch is True
+
+
+@pytest.mark.asyncio
+async def test_review_job_status_recovers_redacted_durable_report(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "review-report.sqlite3")
+    agent = Agent(store, FakeRouter(parts=("MODEL_SHOULD_NOT_RUN",)), settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    session_id = store.create_session("review-report")
+    job_id = store.create_job("code", repo=worker.repo)
+    store.checkpoint_job(
+        job_id,
+        "dispatched",
+        {"mode": "review", "publish_branch": True},
+    )
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": f"/job {job_id}"},
+        headers=auth(),
+    )
+    body = await response.text()
+    assert "Informe senior" in body
+    assert "P1: corregir el borde." in body
+    assert "ghp_1234567890abcdefghijklmnopqrstuvwxyz" not in body
+
+    stored = store.get_job(job_id)
+    report = stored["checkpoint"]["review_report"]
+    assert "Informe senior" in report
+    assert "[REDACTED_SECRET]" in report
+    assert "ghp_1234567890abcdefghijklmnopqrstuvwxyz" not in report
