@@ -21,6 +21,9 @@ from .store import Store
 
 _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
 
+ZERO_COST_ALLOWED_MODES = frozenset({"local", "free_hard_cap"})
+_PROVIDER_COST_MODES = ZERO_COST_ALLOWED_MODES | frozenset({"free_unverified", "paid"})
+
 
 def is_visible_segment(text: str | None) -> bool:
     if not text:
@@ -116,9 +119,15 @@ class ProviderSpec:
     api_key_env: str
     priority: int = 100
     daily_limit: int = 0
+    cost_mode: str = "free_unverified"
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ProviderSpec":
+        cost_mode = str(raw.get("cost_mode", "free_unverified")).strip().lower()
+        if cost_mode not in _PROVIDER_COST_MODES:
+            raise ProviderConfigError(
+                f"invalid cost_mode for {raw.get('name', 'provider')}: {cost_mode}"
+            )
         return cls(
             name=str(raw["name"]),
             base_url=str(raw["base_url"]).rstrip("/"),
@@ -126,6 +135,7 @@ class ProviderSpec:
             api_key_env=str(raw["api_key_env"]),
             priority=int(raw.get("priority", 100)),
             daily_limit=int(raw.get("daily_limit", 0)),
+            cost_mode=cost_mode,
         )
 
 
@@ -135,6 +145,7 @@ class OpenAICompatibleProvider:
         self.name = spec.name
         self.priority = spec.priority
         self.daily_limit = spec.daily_limit
+        self.cost_mode = spec.cost_mode
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         api_key = os.getenv(self.spec.api_key_env)
@@ -214,6 +225,7 @@ class ProviderPool:
         self.telemetry: deque[dict[str, Any]] = deque(maxlen=400)
         self.duplicates: list[str] = []
         self._turns = 0
+        self.zero_cost_blocked: list[dict[str, str]] = []
 
         ordered: list[StreamProvider] = []
         seen: set[str] = set()
@@ -232,11 +244,24 @@ class ProviderPool:
 
     @classmethod
     def from_settings(cls, settings: Settings, store: Store) -> "ProviderPool":
-        providers: list[StreamProvider] = [
-            OpenAICompatibleProvider(ProviderSpec.from_dict(raw))
-            for raw in settings.providers
-        ]
-        return cls(providers, store, settings)
+        providers: list[StreamProvider] = []
+        blocked: list[dict[str, str]] = []
+        for raw in settings.providers:
+            spec = ProviderSpec.from_dict(raw)
+            if settings.hard_zero_cost and spec.cost_mode not in ZERO_COST_ALLOWED_MODES:
+                blocked.append({"provider": spec.name, "cost_mode": spec.cost_mode})
+                continue
+            providers.append(OpenAICompatibleProvider(spec))
+        pool = cls(providers, store, settings)
+        pool.zero_cost_blocked = blocked
+        for item in blocked:
+            pool.emit(
+                "cost.blocked",
+                provider=item["provider"],
+                cost_mode=item["cost_mode"],
+                detail="provider disabled by hard-zero-cost policy",
+            )
+        return pool
 
     @property
     def health(self) -> ProviderHealth:
@@ -302,6 +327,8 @@ class ProviderPool:
             "events": dict(Counter(r["kind"] for r in self.telemetry)),
             "providers": self._health.metrics(),
             "duplicates_dropped": sorted(set(self.duplicates)),
+            "hard_zero_cost": bool(self.settings.hard_zero_cost),
+            "cost_blocked": list(self.zero_cost_blocked),
         }
 
     async def stream(
