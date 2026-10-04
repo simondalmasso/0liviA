@@ -1106,3 +1106,100 @@ async def test_owner_auth_is_unavailable_without_owner_email(aiohttp_client, tmp
         json={"email": "owner@example.com", "password": "owner-passphrase"},
     )
     assert response.status == 503
+
+
+@pytest.mark.asyncio
+async def test_remembered_device_is_listed_and_revocable(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "remember-device.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": True,
+            "device_name": "Chrome · Windows",
+        },
+    )
+    assert login.status == 200
+    body = await login.json()
+    device_id = body["device_id"]
+    assert device_id
+    assert client.app["gateway"]._owner_cookie_valid(
+        login.cookies["olivia_owner"].value
+    ) is True
+
+    listed = await client.get("/api/auth/devices", headers=auth())
+    assert listed.status == 200
+    devices = (await listed.json())["devices"]
+    assert any(item["id"] == device_id and item["label"] == "Chrome · Windows" for item in devices)
+
+    revoked = await client.delete(f"/api/auth/devices/{device_id}", headers=auth())
+    assert revoked.status == 200
+    assert (await revoked.json())["revoked"] is True
+    assert client.app["gateway"]._owner_cookie_valid(
+        login.cookies["olivia_owner"].value
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_session_login_does_not_create_trusted_device(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "session-device.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": False,
+            "device_name": "Este navegador",
+        },
+    )
+    assert login.status == 200
+    assert (await login.json())["device_id"] is None
+    listed = await client.get("/api/auth/devices", headers=auth())
+    assert (await listed.json())["devices"] == []
+
+
+@pytest.mark.asyncio
+async def test_health_does_not_disclose_owner_email(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "health-owner.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="private@example.com",
+        )
+    )
+    body = await (await client.get("/healthz")).json()
+    assert body["owner_auth_configured"] is True
+    assert "private@example.com" not in repr(body)
