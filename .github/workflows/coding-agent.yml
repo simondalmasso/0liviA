@@ -1,0 +1,310 @@
+name: 0liviA Coding Worker
+run-name: "0liviA code ${{ inputs.olivia_job_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      olivia_job_id:
+        description: "0liviA durable job identifier"
+        required: true
+        type: string
+      task:
+        description: "Engineering task for the coding agent"
+        required: true
+        type: string
+      base_ref:
+        description: "Exact branch/SHA to start from"
+        required: true
+        default: "arch/gpt-synthesis-v1"
+        type: string
+      mode:
+        description: "Bounded coding mode"
+        required: true
+        default: "implement"
+        type: choice
+        options:
+          - implement
+          - repair
+          - review
+      publish_branch:
+        description: "Push the isolated agent branch after final tests pass"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: olivia-coding-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      AIDER_OPENAI_API_BASE: "https://integrate.api.nvidia.com/v1"
+      AIDER_MODEL: "openai/deepseek-ai/deepseek-v4.1-flash"
+      AIDER_ANALYTICS_DISABLE: "true"
+      PYTHONUNBUFFERED: "1"
+      BASE_REF: ${{ inputs.base_ref }}
+      MODE: ${{ inputs.mode }}
+      MAX_AGENT_PASSES: "2"
+
+    steps:
+      - name: Fail closed without the development-only NIM key
+        shell: bash
+        env:
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$AIDER_OPENAI_API_KEY"
+
+      - name: Checkout exact base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate dispatch ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          git check-ref-format --allow-onelevel "$BASE_REF"
+          test -n "$(git rev-parse --verify HEAD^{commit})"
+          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
+          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare isolated branch and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="agent/coding-${GITHUB_RUN_ID}"
+          git switch -c "$BRANCH"
+          echo "AGENT_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]' 'aider-chat==0.86.2'
+
+      - name: Verify clean baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q olivia tests
+          pytest -q
+
+      - name: Execute bounded coding task
+        shell: bash
+        env:
+          TASK: ${{ inputs.task }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "repair" ]; then
+            INTENT="Diagnose the existing failure first. Make the smallest correct repair. Preserve unrelated behavior."
+          elif [ "$MODE" = "review" ]; then
+            INTENT="Act as a senior adversarial reviewer. Inspect the repository and write findings only to AGENT_REVIEW.md. Do not modify product code, tests, workflows, configuration, or documentation other than AGENT_REVIEW.md. Rank findings by severity and include concrete file-level evidence and minimal remediation."
+          else
+            INTENT="Implement the requested capability with tests. Prefer the smallest coherent product change over scaffolding."
+          fi
+          aider \
+            --model "$AIDER_MODEL" \
+            --openai-api-base "$AIDER_OPENAI_API_BASE" \
+            --openai-api-key "$AIDER_OPENAI_API_KEY" \
+            --yes-always \
+            --no-stream \
+            --no-analytics \
+            --no-check-update \
+            --no-show-release-notes \
+            --no-show-model-warnings \
+            --read AGENTS.md \
+            --read docs/ARCHITECTURE.md \
+            --read docs/DECISIONS.md \
+            --message "$INTENT
+
+          Task:
+          $TASK"
+
+      - name: Enforce review-only mutation boundary
+        if: inputs.mode == 'review'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s AGENT_REVIEW.md
+          mapfile -t changed < <(
+            {
+              git diff --name-only "$BASE_REF...HEAD"
+              git diff --name-only
+              git diff --name-only --cached
+            } | sed '/^$/d' | sort -u
+          )
+          for path in "${changed[@]}"; do
+            test "$path" = "AGENT_REVIEW.md" || {
+              echo "review mode modified forbidden path: $path" >&2
+              exit 2
+            }
+          done
+
+      - name: Verify first pass
+        id: verify1
+        shell: bash
+        run: |
+          set +e
+          : > /tmp/verify-first.log
+          python -m compileall -q olivia tests >> /tmp/verify-first.log 2>&1
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            python - <<'PY' >> /tmp/verify-first.log 2>&1
+          from pathlib import Path
+          import re
+          html = Path("web/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected exactly one inline script, got {len(scripts)}")
+          Path("/tmp/olivia-ui.js").write_text(scripts[0], encoding="utf-8")
+          PY
+            rc=$?
+          fi
+          if [ "$rc" -eq 0 ]; then node --check /tmp/olivia-ui.js >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          if [ "$rc" -eq 0 ]; then node --check cloudflare/worker.mjs >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          if [ "$rc" -eq 0 ]; then pytest -q >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          cat /tmp/verify-first.log
+          if [ "$rc" -eq 0 ]; then
+            echo "needs_repair=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_repair=true" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
+      - name: repair_pass
+        if: steps.verify1.outputs.needs_repair == 'true' && inputs.mode != 'review'
+        shell: bash
+        env:
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          set -euo pipefail
+          test "$MAX_AGENT_PASSES" = "2"
+          tail -c 12000 /tmp/verify-first.log > /tmp/verify-tail.log
+          aider \
+            --model "$AIDER_MODEL" \
+            --openai-api-base "$AIDER_OPENAI_API_BASE" \
+            --openai-api-key "$AIDER_OPENAI_API_KEY" \
+            --yes-always \
+            --no-stream \
+            --no-analytics \
+            --no-check-update \
+            --no-show-release-notes \
+            --no-show-model-warnings \
+            --read AGENTS.md \
+            --read docs/ARCHITECTURE.md \
+            --read docs/DECISIONS.md \
+            --message "The first bounded pass failed deterministic verification. Diagnose the failures below, repair only what is necessary, and do not broaden scope.
+
+          Verification output:
+          $(cat /tmp/verify-tail.log)"
+
+      - name: Final deterministic verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q olivia tests
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path("web/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected exactly one inline script, got {len(scripts)}")
+          Path("/tmp/olivia-ui.js").write_text(scripts[0], encoding="utf-8")
+          PY
+          node --check /tmp/olivia-ui.js
+          node --check cloudflare/worker.mjs
+          pytest -q
+
+      - name: Persist verified residual changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            git config user.name "0liviA coding worker"
+            git config user.email "0livia-agent@users.noreply.github.com"
+            git add -A
+            git commit -m "agent: persist verified coding result"
+          fi
+
+      - name: Summarize changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git log --oneline --decorate -8
+          git diff --stat "$BASE_REF...HEAD" || true
+
+      - name: Export verified agent series
+        if: ${{ inputs.publish_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git format-patch --stdout "$BASE_REF...HEAD" > agent-series.patch
+          test -s agent-series.patch
+
+      - name: Upload verified agent series
+        if: ${{ inputs.publish_branch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-agent-series
+          path: agent-series.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: code
+    if: ${{ inputs.publish_branch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      BASE_REF: ${{ inputs.base_ref }}
+
+    steps:
+      - name: Checkout exact base without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate publish base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git check-ref-format --allow-onelevel "$BASE_REF"
+          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
+          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
+
+      - name: Download verified agent series
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-agent-series
+
+      - name: Apply and publish isolated branch
+        shell: bash
+        env:
+          GH_PUSH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BRANCH="agent/coding-${GITHUB_RUN_ID}"
+          git switch -c "$BRANCH"
+          git config user.name "0liviA coding worker"
+          git config user.email "0livia-agent@users.noreply.github.com"
+          git am agent-series.patch
+          auth="$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+            push origin "HEAD:refs/heads/$BRANCH"
+          unset auth GH_PUSH_TOKEN
+          echo "PUBLISHED_BRANCH=$BRANCH"
