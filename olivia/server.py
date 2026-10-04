@@ -1,0 +1,318 @@
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import os
+import re
+import secrets
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
+
+from aiohttp import web
+
+from .agent import Agent
+from .config import Settings
+from .router import ProviderPool
+from .store import Store
+
+MAX_BODY_BYTES = 64 * 1024
+MAX_MESSAGE_CHARS = 12_000
+MAX_TITLE_CHARS = 200
+LOCALE_BUFFER_CHARS = 32
+
+LocaleValidator = Callable[[str], bool]
+
+
+def default_es_ar_validator(text: str) -> bool:
+    """Conservative, replaceable first-segment guard; not a language model."""
+    normalized = f" {re.sub(r'[^a-záéíóúüñ ]', ' ', text.lower())} "
+    english_markers = (" the ", " you ", " your ", " are ", " and ", " this ", " that ", "hello ")
+    spanish_markers = (" el ", " la ", " los ", " las ", " que ", " de ", " una ", " para ", " vos ", " hola ")
+    if any(marker in normalized for marker in english_markers) and not any(
+        marker in normalized for marker in spanish_markers
+    ):
+        return False
+    return True
+
+
+def _json(payload: dict[str, Any], status: int = 200) -> web.Response:
+    return web.json_response(payload, status=status, dumps=lambda value: json.dumps(value, ensure_ascii=False))
+
+
+@dataclass
+class ActiveTurn:
+    turn_id: str
+    task: asyncio.Task[None]
+
+
+class Gateway:
+    def __init__(
+        self,
+        agent: Agent,
+        settings: Settings,
+        *,
+        auth_token: str | None = None,
+        locale_validator: LocaleValidator = default_es_ar_validator,
+        locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
+        static_root: Path | None = None,
+    ):
+        self.agent = agent
+        self.settings = settings
+        self.auth_token = auth_token if auth_token is not None else os.getenv("OLIVIA_GATEWAY_TOKEN", "")
+        self.locale_validator = locale_validator
+        self.locale_buffer_chars = max(1, locale_buffer_chars)
+        self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
+        self._turns: dict[str, ActiveTurn] = {}
+        self._turns_lock = asyncio.Lock()
+
+    def _authorized(self, request: web.Request) -> bool:
+        if not self.auth_token:
+            return False
+        supplied = request.headers.get("Authorization", "")
+        scheme, _, value = supplied.partition(" ")
+        return scheme.lower() == "bearer" and secrets.compare_digest(value, self.auth_token)
+
+    async def _require_auth(self, request: web.Request) -> web.Response | None:
+        if self._authorized(request):
+            return None
+        return _json({"error": "unauthorized"}, status=401)
+
+    async def _read_json(self, request: web.Request) -> dict[str, Any]:
+        content_length = request.headers.get("Content-Length")
+        if content_length is not None:
+            try:
+                if int(content_length) > MAX_BODY_BYTES:
+                    raise web.HTTPRequestEntityTooLarge(max_size=MAX_BODY_BYTES, actual_size=int(content_length))
+            except ValueError as exc:
+                raise web.HTTPBadRequest(text="invalid Content-Length") from exc
+        raw = await request.content.read(MAX_BODY_BYTES + 1)
+        if len(raw) > MAX_BODY_BYTES:
+            raise web.HTTPRequestEntityTooLarge(max_size=MAX_BODY_BYTES, actual_size=len(raw))
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise web.HTTPBadRequest(text="body must be valid JSON") from exc
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="body must be a JSON object")
+        return payload
+
+    async def index(self, request: web.Request) -> web.StreamResponse:
+        index_path = (self.static_root / "index.html").resolve()
+        if self.static_root not in index_path.parents or not index_path.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(index_path, headers={"Cache-Control": "no-cache"})
+
+    async def healthz(self, request: web.Request) -> web.Response:
+        providers = list(self.agent.router.providers)
+        configured = 0
+        available = 0
+        for provider in providers:
+            configured += 1
+            spec = getattr(provider, "spec", None)
+            env_name = getattr(spec, "api_key_env", "")
+            if env_name and os.getenv(env_name):
+                state = self.agent.store.provider_state(provider.name)
+                if float(state["cooldown_until"]) <= time.time() and (
+                    not provider.daily_limit or int(state["daily_requests"]) < provider.daily_limit
+                ):
+                    available += 1
+        return _json({
+            "process_alive": True,
+            "provider_configured": bool(configured),
+            "provider_ready": bool(available),
+            "providers_configured": configured,
+            "providers_available": available,
+        })
+
+    async def create_session(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        payload = await self._read_json(request)
+        title = payload.get("title", "")
+        if not isinstance(title, str) or len(title) > MAX_TITLE_CHARS:
+            return _json({"error": "title must be a string of at most 200 characters"}, 400)
+        session_id = self.agent.store.create_session(title)
+        return _json({"id": session_id, "title": title}, 201)
+
+    async def get_messages(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        session_id = request.match_info["session_id"]
+        if not self.agent.store.session_exists(session_id):
+            return _json({"error": "session not found"}, 404)
+        limit_raw = request.query.get("limit", "100")
+        try:
+            limit = max(1, min(int(limit_raw), 200))
+        except ValueError:
+            return _json({"error": "limit must be an integer"}, 400)
+        return _json({"session_id": session_id, "messages": self.agent.store.recent_messages(session_id, limit)})
+
+    async def chat(self, request: web.Request) -> web.StreamResponse:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        session_id = request.match_info["session_id"]
+        if not self.agent.store.session_exists(session_id):
+            return _json({"error": "session not found"}, 404)
+        payload = await self._read_json(request)
+        text = payload.get("text")
+        if not isinstance(text, str) or not text.strip() or len(text) > MAX_MESSAGE_CHARS:
+            return _json({"error": "text must be a non-empty string of at most 12000 characters"}, 400)
+
+        async with self._turns_lock:
+            active = self._turns.get(session_id)
+            if active and not active.task.done():
+                return _json({"error": "turn already active", "session_id": session_id}, 409)
+            turn_id = str(payload.get("turn_id") or secrets.token_urlsafe(16))
+            if len(turn_id) > 128:
+                return _json({"error": "turn_id is too long"}, 400)
+            response = web.StreamResponse(status=200, headers={
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-cache, no-store",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+                "X-Turn-ID": turn_id,
+            })
+            await response.prepare(request)
+            task = asyncio.create_task(self._stream_turn(response, session_id, text.strip(), turn_id))
+            self._turns[session_id] = ActiveTurn(turn_id, task)
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            raise
+        finally:
+            async with self._turns_lock:
+                current = self._turns.get(session_id)
+                if current and current.task is task:
+                    self._turns.pop(session_id, None)
+        return response
+
+    async def cancel(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        session_id = request.match_info["session_id"]
+        if not self.agent.store.session_exists(session_id):
+            return _json({"error": "session not found"}, 404)
+        payload = await self._read_json(request)
+        turn_id = payload.get("turn_id")
+        if not isinstance(turn_id, str) or not turn_id:
+            return _json({"error": "turn_id is required"}, 400)
+        async with self._turns_lock:
+            active = self._turns.get(session_id)
+            if active is None or active.task.done():
+                return _json({"error": "no active turn"}, 404)
+            if not secrets.compare_digest(active.turn_id, turn_id):
+                return _json({"error": "turn_id does not match active session turn"}, 409)
+            task = active.task
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        return _json({"cancelled": True, "session_id": session_id, "turn_id": turn_id}, 202)
+
+    async def _write_event(self, response: web.StreamResponse, event: dict[str, Any]) -> None:
+        await response.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
+
+    async def _stream_turn(self, response: web.StreamResponse, session_id: str, text: str, turn_id: str) -> None:
+        events = self.agent.stream_turn(session_id, text)
+        pending: list[dict[str, Any]] = []
+        first_text = ""
+        validated = False
+        try:
+            async for event in events:
+                if not validated:
+                    pending.append(event)
+                    if event.get("type") == "delta":
+                        first_text += str(event.get("text") or "")
+                    if first_text and (
+                        len(first_text) >= self.locale_buffer_chars or event.get("type") == "done"
+                    ):
+                        if not self.locale_validator(first_text):
+                            await events.aclose()
+                            await self._write_event(response, {
+                                "type": "error",
+                                "code": "locale_mismatch",
+                                "retryable": True,
+                                "turn_id": turn_id,
+                            })
+                            await response.write_eof()
+                            return
+                        validated = True
+                        for buffered in pending:
+                            await self._write_event(response, buffered)
+                        pending.clear()
+                elif event.get("type") != "done" or validated:
+                    await self._write_event(response, event)
+            if not validated:
+                if not self.locale_validator(first_text):
+                    await events.aclose()
+                    await self._write_event(response, {
+                        "type": "error", "code": "locale_mismatch", "retryable": True, "turn_id": turn_id,
+                    })
+                    await response.write_eof()
+                    return
+                for buffered in pending:
+                    await self._write_event(response, buffered)
+            await response.write_eof()
+        except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError):
+            # Handler/cancel task cancellation propagates into Agent.stream_turn and its provider.
+            with contextlib.suppress(Exception):
+                await events.aclose()
+            raise
+        except (web.HTTPException, OSError):
+            raise
+        except Exception:
+            with contextlib.suppress(ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
+                await self._write_event(response, {"type": "error", "error": "gateway stream failed"})
+                await response.write_eof()
+
+
+def create_app(
+    agent: Agent | None = None,
+    settings: Settings | None = None,
+    *,
+    auth_token: str | None = None,
+    locale_validator: LocaleValidator = default_es_ar_validator,
+    locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
+    static_root: Path | None = None,
+) -> web.Application:
+    settings = settings or Settings.from_env()
+    if agent is None:
+        store = Store(settings.db_path)
+        agent = Agent(store, ProviderPool.from_settings(settings, store), settings)
+    gateway = Gateway(
+        agent,
+        settings,
+        auth_token=auth_token,
+        locale_validator=locale_validator,
+        locale_buffer_chars=locale_buffer_chars,
+        static_root=static_root,
+    )
+    app = web.Application(client_max_size=MAX_BODY_BYTES)
+    app["gateway"] = gateway
+    app.router.add_get("/", gateway.index)
+    app.router.add_get("/index.html", gateway.index)
+    app.router.add_get("/healthz", gateway.healthz)
+    app.router.add_post("/api/sessions", gateway.create_session)
+    app.router.add_get("/api/sessions/{session_id}/messages", gateway.get_messages)
+    app.router.add_post("/api/chat/{session_id}", gateway.chat)
+    app.router.add_post("/api/chat/{session_id}/cancel", gateway.cancel)
+    return app
+
+
+def main() -> None:
+    settings = Settings.from_env()
+    web.run_app(create_app(settings=settings), host=settings.bind, port=settings.port)
+
+
+if __name__ == "__main__":
+    main()

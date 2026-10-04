@@ -147,6 +147,13 @@ class Store:
             )
         return sid
 
+    def session_exists(self, session_id: str) -> bool:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM sessions WHERE id=? LIMIT 1", (session_id,)
+            ).fetchone()
+        return row is not None
+
     def append_message(
         self,
         session_id: str,
