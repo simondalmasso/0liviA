@@ -69,3 +69,20 @@ def test_bootstrap_verifies_llama_and_model_sha256_before_use():
     assert "43bfc230e612d20efd483be7d1ce98ff5f7a0ec6e82a7ec959586b3313ee239f" in bootstrap
     assert "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897" in bootstrap
     assert "cd47557a67d7e8f2891d98b5e1dbf2988544569fdf4f1bdb30e92b71aa61b548" in bootstrap
+
+
+def test_product_docs_track_cloud_workspace_and_agent_tools():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    decisions = (ROOT / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
+
+    assert "durable multi-device Projects/Library/Memory migration out of browser cache" not in readme
+    assert "Move these surfaces behind authenticated server APIs" not in plan
+    assert "Playwright is the default browser worker" not in architecture
+    assert "OpenCode-compatible worker, one worktree per job" not in decisions
+
+    assert "Projects/Chats/Library/Memory durable server-side" in readme
+    assert "/read" in plan and "/search" in plan
+    assert "AGENT_REVIEW.md" in architecture
+    assert "contents: read" in decisions
