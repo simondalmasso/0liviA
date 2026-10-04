@@ -109,7 +109,6 @@ button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8
   <div id="log" aria-live="polite"></div>
 
   <div class="row">
-    <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Token de acceso">
     <button id="new" type="button">Nueva sesión</button>
   </div>
 
@@ -174,7 +173,6 @@ const status=document.querySelector('#status');
 const text=document.querySelector('#text');
 const sendButton=document.querySelector('#send');
 const cancelButton=document.querySelector('#cancel');
-const tokenInput=document.querySelector('#token');
 const voiceLive=document.querySelector('#voiceLive');
 const voiceStatus=document.querySelector('#voiceStatus');
 const voiceTranscript=document.querySelector('#voiceTranscript');
@@ -183,14 +181,35 @@ const voiceRingPath=document.querySelector('#voiceRingPath');
 const voiceRingFill=document.querySelector('#voiceRingFill');
 const voiceOrb=document.querySelector('.orb');
 
-const headers=()=>({'Content-Type':'application/json','Authorization':'Bearer '+token});
+const headers=()=>({'Content-Type':'application/json'});
 const normalizeLocale=value=>(value||'').trim().toLowerCase().replaceAll('_','-');
 
 async function api(url,options={}){
   options.headers={...headers(),...(options.headers||{})};
   const r=await fetch(url,options);
+  const type=(r.headers.get('content-type')||'').toLowerCase();
   if(!r.ok)throw new Error(await r.text());
+  if(url.startsWith('/api/')||url==='/healthz'){
+    if(!type.includes('application/json')&&!type.includes('text/event-stream')){
+      throw new Error('core cloud todavía no conectado');
+    }
+  }
   return r;
+}
+
+async function probeCore(){
+  try{
+    const r=await fetch('/healthz',{cache:'no-store'});
+    const type=(r.headers.get('content-type')||'').toLowerCase();
+    if(!r.ok||!type.includes('application/json'))throw new Error('offline');
+    const body=await r.json();
+    if(body.process_alive!==true)throw new Error('offline');
+    status.textContent=body.provider_ready?'core online':'core online · modelo pendiente';
+    return true;
+  }catch(e){
+    status.textContent='UI online · core pendiente';
+    return false;
+  }
 }
 
 function syncVoiceTranscript(){
@@ -206,6 +225,7 @@ function show(role,value){
 }
 
 async function resume(){
+  if(!(await probeCore()))return;
   try{
     if(!sessionId){
       const list=await api('/api/sessions?limit=1');
@@ -219,7 +239,7 @@ async function resume(){
     d.messages.forEach(m=>show(m.role==='user'?'vos':'0liviA',m.content));
     status.textContent='sesión '+sessionId;
   }catch(e){
-    status.textContent='token requerido';
+    status.textContent='UI online · core pendiente';
   }
 }
 
@@ -241,7 +261,7 @@ async function ensureSession(){
     await create();
     return true;
   }catch(e){
-    status.textContent='creá una sesión con un token válido';
+    status.textContent='core cloud todavía no conectado';
     return false;
   }
 }
@@ -343,14 +363,8 @@ async function sendChat(raw,{speak=false}={}){
   }
 }
 
-tokenInput.addEventListener('input',e=>{
-  token=e.target.value;
-  sessionId=null;
-  resume();
-});
-
 document.querySelector('#new').onclick=async()=>{
-  try{await create()}catch(e){status.textContent='no autorizado'}
+  try{await create()}catch(e){status.textContent='core cloud todavía no conectado'}
 };
 
 cancelButton.onclick=cancelActiveTurn;
@@ -721,6 +735,7 @@ document.querySelector('#voiceMain').onclick=async()=>{
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&voiceLive.classList.contains('active'))closeVoice();
 });
+probeCore();
 </script>
 </body>
 </html>
