@@ -19,7 +19,7 @@ from .agent import Agent
 from .config import Settings
 from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWorker, coding_worker_from_env
 from .router import ProviderPool
-from .security import verify_password
+from .security import redact_secrets, verify_password
 from .store import Store
 
 MAX_BODY_BYTES = 64 * 1024
@@ -234,10 +234,36 @@ class Gateway:
             return denied
         payload = await self._read_json(request)
         title = payload.get("title", "")
+        raw_messages = payload.get("messages", [])
         if not isinstance(title, str) or len(title) > MAX_TITLE_CHARS:
             return _json({"error": "title must be a string of at most 200 characters"}, 400)
-        session_id = self.agent.store.create_session(title)
-        return _json({"id": session_id, "title": title}, 201)
+        if not isinstance(raw_messages, list) or len(raw_messages) > 24:
+            return _json({"error": "messages must be an array of at most 24 items"}, 400)
+
+        imported: list[tuple[str, str]] = []
+        for item in raw_messages:
+            if not isinstance(item, dict):
+                return _json({"error": "invalid imported message"}, 400)
+            role = item.get("role")
+            content = item.get("content")
+            if role not in {"user", "assistant"} or not isinstance(content, str):
+                return _json({"error": "invalid imported message"}, 400)
+            content = content.strip()
+            if not content or len(content) > MAX_MESSAGE_CHARS:
+                return _json({"error": "invalid imported message content"}, 400)
+            imported.append((role, redact_secrets(content)))
+
+        safe_title = redact_secrets(title.strip())
+        session_id = self.agent.store.create_session(safe_title)
+        for role, content in imported:
+            self.agent.store.append_message(
+                session_id,
+                role,
+                content,
+                provider="import" if role == "assistant" else None,
+                status="complete",
+            )
+        return _json({"id": session_id, "title": safe_title, "imported": len(imported)}, 201)
 
     async def get_messages(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
