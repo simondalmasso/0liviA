@@ -39,6 +39,7 @@ Provider routing must remain catalog-driven and fail closed:
 Implemented:
 - `/read`: SSRF-safe public URL reader, redirect/IP/body bounded, injected only as ephemeral untrusted context.
 - `/search`: replaceable search contract, disabled by default, refuses routes without explicit zero-cost verification.
+- `/research`: bounded search+read orchestration (max 3 results) using the same fail-closed search gate and SSRF-safe reader; external content remains ephemeral.
 
 Still gated:
 - JS-heavy browsing;
