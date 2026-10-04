@@ -57,9 +57,12 @@ Coding is a worker, not the control plane.
 Current implemented design:
 - coding is dispatched as a durable job from the Python core;
 - GitHub Actions executes the burst worker away from the internet-facing gateway;
-- each run works on an isolated agent branch and starts from an explicit ref;
+- each run starts from an explicit validated ref and works on an isolated agent branch;
 - Aider is the current bounded coding harness, with DeepSeek V4.1 Flash available only in development/evaluation when the required NIM entitlement/key is present;
-- deterministic compile/test/JS/Worker checks run after the agent;
+- `implement` and `repair` allow at most two bounded agent passes and finish with deterministic compile/test/JS/Worker checks;
+- `review` is mutation-constrained: it may only produce `AGENT_REVIEW.md`; touching product code/config/tests/workflows fails the job;
+- the agent-execution job has read-only repository permission and does not persist checkout credentials;
+- an optional second job receives only a verified patch artifact and is the only job with repository write permission;
 - publication is optional and never merges automatically;
 - gateway credentials never grant arbitrary shell execution.
 
@@ -76,11 +79,22 @@ The harness is replaceable. OpenCode/other coding agents remain challengers, not
 
 It is **not** the source of truth for Projects, Library, Memory or jobs. Its current account-level zero-cost status is unverified, so provider readiness fails closed unless entitlement is explicitly proven. This bridge may be removed without changing the canonical Python state formats.
 
-The browser shell currently keeps temporary workspace state in IndexedDB to preserve usability while the bridge exists. That state is cache only and must migrate to server-side storage before multi-device/durable persistence can be called complete.
+When the canonical Python Core is active, Projects, Chats, Library and Memory are server-side SQLite state and the browser reconciles them through authenticated workspace/session APIs. IndexedDB remains only a disposable cache and one-shot migration layer. In temporary bridge mode, workspace state remains local-only and must not be presented as durable multi-device state.
 
 ## Research/browser
 
-Playwright is the default browser worker and starts on demand. Research results are untrusted input and must not become instructions merely because a page says so.
+Implemented in the canonical core:
+- `/read` uses an SSRF-safe server-side URL reader with DNS/IP revalidation, redirect bounds, MIME/body limits and no browser credentials;
+- fetched page content is injected only as ephemeral **untrusted** model context and is not persisted to SQLite;
+- `/search` is a replaceable adapter contract, disabled by default and fail-closed unless the exact provider route is explicitly configured and verified zero-cost.
+
+Not implemented yet:
+- JS-heavy rendering;
+- authenticated browsing;
+- browser automation;
+- autonomous multi-page navigation.
+
+A Playwright-class isolated browser worker is the candidate for those capabilities, but it is not yet the runtime default. Research results never become instructions merely because a page says so.
 
 ## Voice transport
 
