@@ -526,11 +526,13 @@ function renderMemory(){
 }
 function renderConfig(){
   const el=$('#configList');el.textContent='';
-  const primary=coreHealth?.primary_model||'Router automático';
+  const preferred=coreHealth?.primary_model||'Router automático';
   const available=(coreHealth?.provider_catalog||[]).filter(p=>p.available).map(p=>p.model);
+  const active=available[0]||preferred;
   const route=available.length?available.join(' → '):'Se resuelve al conectar el core';
   const cards=[
-    ['Modelo',primary],
+    ['Modelo activo',active],
+    ['Preferido',preferred],
     ['Ruta',route],
     ['Idioma','es-AR'],
     ['Modo','Fail-closed · sin fallback pago'],
