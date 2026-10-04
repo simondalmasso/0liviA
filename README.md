@@ -1,4 +1,4 @@
-# 0liviA 🌠
+# 0liviA 🎲
 
 **0liviA is a cloud-first personal AI for one owner.** It combines conversation, coding, repositories, research, tools, durable memory, resumable jobs and live voice behind replaceable providers. It is not a generic SaaS workspace and not a wrapper around one model.
 
