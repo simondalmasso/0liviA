@@ -60,3 +60,17 @@
 - Current bridge preference: DeepSeek V4.1 Flash (NVIDIA NIM, development/evaluation only under current Developer Program terms) → GPT-OSS-120B → GLM-4.7-Flash.
 - Production gate: any provider whose free entitlement is not valid for production or whose account can auto-bill remains deployment-gated.
 - Rollback: remove/reorder a catalog entry without changing session, memory or UI contracts.
+
+
+## ADR-0009 — Research and voice challengers stay adapter-gated
+- Date: 2026-10-04
+- Status: **accepted**
+- Web research:
+  - direct `/read` uses the canonical server-side SSRF-safe reader and injects page text only as ephemeral untrusted context;
+  - `/search` is a replaceable adapter contract and is disabled unless a route is explicitly configured and verified zero-cost;
+  - Cloudflare Web Search API is an eligible adapter, not a default dependency. Its provider search calls are billable unless the owner supplies a separately verified zero-cost BYOK route, so the core must never consume AI Gateway credits implicitly.
+- Live voice:
+  - LiveKit Agents is a benchmark challenger for WebRTC transport, turn detection, handoffs and voice-agent orchestration;
+  - it is not the canonical voice runtime until target-host benchmarks prove it beats direct WSS/Pipecat on latency, es-AR quality, stability and recurring cost;
+  - adopting LiveKit must not move durable state or model/provider policy out of the 0liviA Core.
+- Rollback: either adapter can be removed without changing sessions, memory, projects or provider routing.
