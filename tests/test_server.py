@@ -351,3 +351,14 @@ async def test_coding_job_fails_closed_without_worker(aiohttp_client, tmp_path):
     )
     assert response.status == 503
     assert (await response.json())["error"] == "coding_worker_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_ui_preserves_partial_stream_without_requeue(client):
+    response = await client.get("/")
+    html = await response.text()
+    assert "let buffer='',answer='',streamError=null,sawDone=false;" in html
+    assert "if(raw==='[DONE]'){sawDone=true;return}" in html
+    assert "assistant.status='partial'" in html
+    assert "userMessage.status='synced'" in html
+    assert "if(streamError||!sawDone)throw new Error" in html
