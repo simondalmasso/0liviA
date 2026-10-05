@@ -4,13 +4,13 @@
 
 `main` is the canonical source of integration truth for 0liviA.
 
-Branch new work from main. Pull requests that change product code, tests, workflows,
+Branch new work from `main`. Pull requests that change product code, tests, workflows,
 deployment material or architecture documentation target `main`.
 
 ## Compatibility mirror
 
 `arch/gpt-synthesis-v1` is a compatibility mirror retained for historical links and
-older automation. Do not base new work on arch/gpt-synthesis-v1.
+older automation. Do not base new work on `arch/gpt-synthesis-v1`.
 
 The mirror must not become a second product line. If it diverges, reconcile it to the
 exact canonical `main` tree and preserve both histories with an ordinary merge commit.
