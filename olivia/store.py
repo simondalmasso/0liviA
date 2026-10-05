@@ -487,20 +487,26 @@ class Store:
         *,
         include_inactive: bool = False,
     ) -> list[dict[str, Any]]:
-        where = "scope=?"
-        args: list[Any] = [scope]
-        if not include_inactive:
-            where += " AND is_active=1"
-        args.append(max(1, min(limit, 500)))
+        bounded_limit = max(1, min(limit, 500))
         with self._lock:
-            rows = self._conn.execute(
-                f"""SELECT id,scope,key,value,source,confidence,is_active,created_at
-                    FROM memories
-                    WHERE {where}
-                    ORDER BY id DESC
-                    LIMIT ?""",
-                tuple(args),
-            ).fetchall()
+            if include_inactive:
+                rows = self._conn.execute(
+                    """SELECT id,scope,key,value,source,confidence,is_active,created_at
+                       FROM memories
+                       WHERE scope=?
+                       ORDER BY id DESC
+                       LIMIT ?""",
+                    (scope, bounded_limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """SELECT id,scope,key,value,source,confidence,is_active,created_at
+                       FROM memories
+                       WHERE scope=? AND is_active=1
+                       ORDER BY id DESC
+                       LIMIT ?""",
+                    (scope, bounded_limit),
+                ).fetchall()
         return [dict(r) for r in rows]
 
     def delete_memory(self, scope: str, key: str) -> int:
@@ -575,21 +581,25 @@ class Store:
         return int(cur.lastrowid)
 
     def recent_events(self, *, prefix: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
-        where = ""
-        args: list[Any] = []
-        if prefix:
-            where = "WHERE type LIKE ?"
-            args.append(f"{prefix}%")
-        args.append(max(1, min(int(limit), 500)))
+        bounded_limit = max(1, min(int(limit), 500))
         with self._lock:
-            rows = self._conn.execute(
-                f"""SELECT id,session_id,job_id,type,payload_json,created_at
-                    FROM events
-                    {where}
-                    ORDER BY id DESC
-                    LIMIT ?""",
-                tuple(args),
-            ).fetchall()
+            if prefix:
+                rows = self._conn.execute(
+                    """SELECT id,session_id,job_id,type,payload_json,created_at
+                       FROM events
+                       WHERE type LIKE ?
+                       ORDER BY id DESC
+                       LIMIT ?""",
+                    (f"{prefix}%", bounded_limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """SELECT id,session_id,job_id,type,payload_json,created_at
+                       FROM events
+                       ORDER BY id DESC
+                       LIMIT ?""",
+                    (bounded_limit,),
+                ).fetchall()
         out: list[dict[str, Any]] = []
         for row in rows:
             item = dict(row)
