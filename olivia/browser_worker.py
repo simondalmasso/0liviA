@@ -47,7 +47,7 @@ class BrowserJobRequest:
 
 
 class GitHubActionsBrowserWorker:
-    """Dispatches bounded JS-browser jobs to a public GitHub Actions runner."""
+    """Dispatches bounded JS-browser jobs through a private GitHub Actions repository."""
 
     def __init__(
         self,
@@ -124,8 +124,21 @@ class GitHubActionsBrowserWorker:
             },
         }
         timeout = aiohttp.ClientTimeout(total=20)
+        headers = self._headers()
         async with self._session_factory(timeout=timeout) as session:
-            async with session.post(url, json=payload, headers=self._headers()) as response:
+            repo_url = f"{self.api_base}/repos/{self.repo}"
+            async with session.get(repo_url, headers=headers) as repo_response:
+                if repo_response.status != 200:
+                    detail = (await repo_response.text())[:500]
+                    raise BrowserWorkerError(
+                        f"github browser repo check HTTP {repo_response.status}: {detail}"
+                    )
+                repo_body = await repo_response.json()
+                if not isinstance(repo_body, dict) or repo_body.get("private") is not True:
+                    raise BrowserWorkerError(
+                        "browser worker repository must be private"
+                    )
+            async with session.post(url, json=payload, headers=headers) as response:
                 if response.status != 204:
                     detail = (await response.text())[:500]
                     raise BrowserWorkerError(
