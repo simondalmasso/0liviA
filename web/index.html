@@ -1615,6 +1615,8 @@ async function startCanonicalVoice(){
   if(!canonicalVoiceAvailable())return false;
   const chat=selectedChat();
   if(!chat)return false;
+  voicePlaybackContext ||= new (window.AudioContext||window.webkitAudioContext)();
+  if(voicePlaybackContext.state==='suspended')voicePlaybackContext.resume().catch(()=>{});
   await ensureRemoteSession(chat,null);
   if(!voiceStream){
     voiceStream=await navigator.mediaDevices.getUserMedia({
