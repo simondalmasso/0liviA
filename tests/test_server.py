@@ -1586,3 +1586,13 @@ async def test_sensitive_api_surface_fails_closed_without_auth(client, method, p
     response = await getattr(client, method)(path)
     assert response.status == 401
     assert (await response.json())["error"] == "unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_agent_job_events_render_as_compact_chat_state(client):
+    html = await (await client.get("/")).text()
+    assert "job-pill" in html
+    assert "ev?.type==='job'" in html
+    assert "assistant.job=pendingJob" in html
+    assert "extractJobMeta" in html
+    assert "chooseJobStatus" in html
