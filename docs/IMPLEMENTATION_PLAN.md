@@ -17,7 +17,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Replaceable `/search` adapter contract, disabled unless an exact route is configured and zero-cost verified.
 - Capability-aware provider catalog (`chat/research/vision/code/review`) with backwards-compatible chat defaults; research tools prefer a research-capable route and safely fall back to chat when none is configured.
 - Isolated GitHub Actions coding worker with durable job IDs, exact base refs, `implement/repair/review` modes and deterministic post-agent verification.
-- Isolated JS browser burst worker with `/browse`, JavaScript rendering, read-only GET/HEAD enforcement, public-network egress guards, bounded artifacts, and no external-page persistence into model/chat context.
+- Isolated JS browser burst worker with `/browse`, JavaScript rendering, read-only GET/HEAD enforcement, public-network egress guards and bounded artifacts; `/inspect <job_id>` explicitly analyzes a finished render as ephemeral untrusted research context without persisting page text into chat/memory.
 - Review mode may only create/update `AGENT_REVIEW.md`; any product mutation fails the job.
 - Authenticated `/api/voice/ws` direct-WSS endpoint plus voice contracts/pipeline/sequence/cancel tests and benchmark recorder. The endpoint fails 503 until an approved speech backend factory is configured.
 - Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
