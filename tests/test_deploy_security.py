@@ -79,3 +79,14 @@ def test_chatgpt_plan_installer_requires_provider_health_confirmation():
 def test_bootstrap_exports_exact_build_sha():
     bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
     assert "OLIVIA_BUILD_SHA=${REF}" in bootstrap
+
+
+def test_local_recovery_llama_env_heredoc_terminates_at_column_zero():
+    block = BOOTSTRAP.split('cat > "${ETC_ROOT}/llama.env" <<EOF', 1)[1].split(
+        'chown root:olivia "${ETC_ROOT}/llama.env"', 1
+    )[0]
+    assert "\nLLAMA_MODEL_PATH=${MODEL_PATH}\n" in block
+    assert "\nLLAMA_CTX=${LLAMA_CTX}\n" in block
+    assert "\nLLAMA_THREADS=${LLAMA_THREADS}\n" in block
+    assert "\nEOF\n" in block
+    assert "\n  EOF\n" not in block
