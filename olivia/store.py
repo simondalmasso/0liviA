@@ -187,9 +187,9 @@ class Store:
         self._conn.executescript(_SCHEMA)
         os.chmod(self.path, 0o600)
         self._migrate_workspace_schema()
+        self._ensure_workspace_invariants()
         if current_version < SCHEMA_VERSION:
             self._conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
-        self._ensure_workspace_invariants()
 
     def _migrate_workspace_schema(self) -> None:
         with self._lock:
