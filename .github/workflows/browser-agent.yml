@@ -70,21 +70,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -e . 'playwright>=1.55,<2'
+          python -m pip install -e . 'playwright==1.55.0'
           google-chrome --version
 
       - name: Add network egress guardrails
         shell: bash
         run: |
           set -euo pipefail
-          sudo iptables -I OUTPUT -d 10.0.0.0/8 -j REJECT
-          sudo iptables -I OUTPUT -d 172.16.0.0/12 -j REJECT
-          sudo iptables -I OUTPUT -d 192.168.0.0/16 -j REJECT
-          sudo iptables -I OUTPUT -d 169.254.0.0/16 -j REJECT
-          sudo iptables -I OUTPUT -d 100.64.0.0/10 -j REJECT
+          sudo iptables -N OLIVIA_BROWSER 2>/dev/null || sudo iptables -F OLIVIA_BROWSER
+          sudo iptables -C OUTPUT -j OLIVIA_BROWSER 2>/dev/null || sudo iptables -I OUTPUT 1 -j OLIVIA_BROWSER
+          DNS4="$(awk '/^nameserver / && $2 ~ /^[0-9.]+$/ {print $2; exit}' /etc/resolv.conf || true)"
+          if [ -n "$DNS4" ]; then
+            sudo iptables -A OLIVIA_BROWSER -d "$DNS4" -p udp --dport 53 -j ACCEPT
+            sudo iptables -A OLIVIA_BROWSER -d "$DNS4" -p tcp --dport 53 -j ACCEPT
+          fi
+          for cidr in             0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8             169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.0.2.0/24             192.168.0.0/16 198.18.0.0/15 198.51.100.0/24 203.0.113.0/24             224.0.0.0/4 240.0.0.0/4
+          do
+            sudo iptables -A OLIVIA_BROWSER -d "$cidr" -j REJECT
+          done
           if command -v ip6tables >/dev/null 2>&1; then
-            sudo ip6tables -I OUTPUT -d fc00::/7 -j REJECT || true
-            sudo ip6tables -I OUTPUT -d fe80::/10 -j REJECT || true
+            sudo ip6tables -N OLIVIA_BROWSER6 2>/dev/null || sudo ip6tables -F OLIVIA_BROWSER6
+            sudo ip6tables -C OUTPUT -j OLIVIA_BROWSER6 2>/dev/null || sudo ip6tables -I OUTPUT 1 -j OLIVIA_BROWSER6
+            DNS6="$(awk '/^nameserver / && $2 ~ /:/ {print $2; exit}' /etc/resolv.conf || true)"
+            if [ -n "$DNS6" ]; then
+              sudo ip6tables -A OLIVIA_BROWSER6 -d "$DNS6" -p udp --dport 53 -j ACCEPT || true
+              sudo ip6tables -A OLIVIA_BROWSER6 -d "$DNS6" -p tcp --dport 53 -j ACCEPT || true
+            fi
+            for cidr in ::/128 ::1/128 fc00::/7 fe80::/10 2001:db8::/32 ff00::/8
+            do
+              sudo ip6tables -A OLIVIA_BROWSER6 -d "$cidr" -j REJECT || true
+            done
           fi
 
       - name: Render public page with JavaScript
