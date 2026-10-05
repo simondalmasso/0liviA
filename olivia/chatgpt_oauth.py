@@ -256,6 +256,7 @@ def build_profile(
     scope = token_response.get("scope")
     token_type = str(token_response.get("token_type") or "")
     expires_in = token_response.get("expires_in")
+    earliest_refresh_at = token_response.get("earliest_refresh_at")
     granted = set(scope.split()) if isinstance(scope, str) else set()
     required_scopes = {
         "offline_access",
@@ -281,6 +282,12 @@ def build_profile(
         raise ChatGPTOAuthError("invalid OpenAI token lifetime") from exc
     if lifetime <= 0:
         raise ChatGPTOAuthError("invalid OpenAI token lifetime")
+    try:
+        refresh_floor = int(earliest_refresh_at or 0)
+    except (TypeError, ValueError) as exc:
+        raise ChatGPTOAuthError("invalid OpenAI earliest refresh time") from exc
+    if refresh_floor < 0:
+        raise ChatGPTOAuthError("invalid OpenAI earliest refresh time")
     email = claims.get("email") if isinstance(claims.get("email"), str) else ""
     return {
         "issuer": ISSUER,
@@ -293,6 +300,7 @@ def build_profile(
         "refresh_token": refresh,
         "token_type": "Bearer",
         "expires_at": int(time.time()) + lifetime,
+        "earliest_refresh_at": refresh_floor,
         "scope": scope,
         "scopes": scope.split(),
         "saved_at": int(time.time()),
