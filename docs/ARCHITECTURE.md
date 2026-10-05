@@ -100,15 +100,19 @@ Existing deployments may seed a legacy owner from environment variables once; ne
 Implemented in the canonical core:
 - `/read` uses an SSRF-safe server-side URL reader with DNS/IP revalidation, redirect bounds, MIME/body limits and no browser credentials;
 - fetched page content is injected only as ephemeral **untrusted** model context and is not persisted to SQLite;
-- `/search` is a replaceable adapter contract, disabled by default and fail-closed unless the exact provider route is explicitly configured and verified zero-cost.
+- `/search` is a replaceable adapter contract, disabled by default and fail-closed unless the exact provider route is explicitly configured and verified zero-cost;
+- `/research` composes bounded search + safe reads while keeping external content ephemeral;
+- `/browse` dispatches a JavaScript-capable Playwright job to an isolated GitHub Actions public-repo runner. The runner accepts only public HTTP(S), enforces GET/HEAD-only requests, blocks reserved/private network egress, disables downloads/service workers, bounds requests/text/artifacts, and returns the result through a durable job artifact.
 
-Not implemented yet:
-- JS-heavy rendering;
+The Core never embeds a privileged browser. Browser result text is shown from the job result and is not persisted into chat/model context automatically.
+
+Still gated:
 - authenticated browsing;
-- browser automation;
-- autonomous multi-page navigation.
+- owner-approved click/write automation;
+- autonomous multi-page agents;
+- production smoke of the isolated browser workflow.
 
-A Playwright-class isolated browser worker is the candidate for those capabilities, but it is not yet the runtime default. Research results never become instructions merely because a page says so.
+Research/browser content remains **data**, never instructions merely because a page says so.
 
 ## Voice transport
 
