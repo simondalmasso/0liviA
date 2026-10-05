@@ -1269,3 +1269,40 @@ async def test_mobile_layout_is_hardened_for_360_to_430px(client):
     assert ".auth-gate{align-items:start;overflow-y:auto" in html
     assert ".voice-grid{grid-template-columns:1fr" in html
     assert "overscroll-behavior:none" in html
+
+
+@pytest.mark.asyncio
+async def test_registration_setup_token_protects_first_owner_claim(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "protected-register.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            registration_token="setup-secret",
+        )
+    )
+
+    denied = await client.post(
+        "/api/auth/register",
+        json={"email": "owner@example.com", "password": "una-password-segura"},
+    )
+    assert denied.status == 403
+
+    created = await client.post(
+        "/api/auth/register",
+        json={"email": "owner@example.com", "password": "una-password-segura"},
+        headers={"X-Olivia-Setup-Token": "setup-secret"},
+    )
+    assert created.status == 200
+    assert store.get_owner_account()["email"] == "owner@example.com"
+
+
+@pytest.mark.asyncio
+async def test_ui_consumes_setup_fragment_without_persisting_it(client):
+    html = await (await client.get("/")).text()
+    assert "location.hash.startsWith('#setup=')" in html
+    assert "X-Olivia-Setup-Token" in html
+    assert "history.replaceState(null,'',location.pathname+location.search)" in html
