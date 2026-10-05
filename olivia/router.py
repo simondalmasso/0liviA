@@ -24,6 +24,7 @@ _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
 
 ZERO_COST_ALLOWED_MODES = frozenset({"local", "free_hard_cap", "plan_included"})
 _PROVIDER_COST_MODES = ZERO_COST_ALLOWED_MODES | frozenset({"free_unverified", "paid"})
+_PROVIDER_CAPABILITIES = frozenset({"chat", "code", "review", "research", "vision"})
 
 
 def is_visible_segment(text: str | None) -> bool:
@@ -124,6 +125,7 @@ class ProviderSpec:
     kind: str = "openai_compatible"
     profile_path: str = ""
     no_credit_overage_verified: bool = False
+    capabilities: tuple[str, ...] = ("chat",)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ProviderSpec":
@@ -149,6 +151,24 @@ class ProviderSpec:
             raise ProviderConfigError(
                 "chatgpt_plan provider must use https://api.openai.com/v1"
             )
+        raw_capabilities = raw.get("capabilities", ("chat",))
+        if isinstance(raw_capabilities, str):
+            parts = [part.strip().lower() for part in raw_capabilities.split(",")]
+        elif isinstance(raw_capabilities, (list, tuple, set)):
+            parts = [str(part).strip().lower() for part in raw_capabilities]
+        else:
+            raise ProviderConfigError(
+                f"invalid capabilities for {raw.get('name', 'provider')}"
+            )
+        capabilities = tuple(dict.fromkeys(part for part in parts if part))
+        if not capabilities:
+            capabilities = ("chat",)
+        unknown = sorted(set(capabilities) - _PROVIDER_CAPABILITIES)
+        if unknown:
+            raise ProviderConfigError(
+                f"invalid capabilities for {raw.get('name', 'provider')}: "
+                + ",".join(unknown)
+            )
         return cls(
             name=str(raw["name"]),
             base_url=base_url,
@@ -162,6 +182,7 @@ class ProviderSpec:
             no_credit_overage_verified=bool(
                 raw.get("no_credit_overage_verified", False)
             ),
+            capabilities=capabilities,
         )
 
 
@@ -172,6 +193,7 @@ class OpenAICompatibleProvider:
         self.priority = spec.priority
         self.daily_limit = spec.daily_limit
         self.cost_mode = spec.cost_mode
+        self.capabilities = spec.capabilities
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         api_key = os.getenv(self.spec.api_key_env) if self.spec.api_key_env else ""
@@ -263,6 +285,7 @@ class ChatGPTPlanProvider:
         self.priority = spec.priority
         self.daily_limit = spec.daily_limit
         self.cost_mode = spec.cost_mode
+        self.capabilities = spec.capabilities
         self.profile_path = Path(spec.profile_path).expanduser()
         self._session_factory = session_factory
         self._clock = clock or time.time
@@ -615,6 +638,32 @@ class ProviderPool:
         self.telemetry.clear()
         return out
 
+    def catalog(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for provider in self.providers:
+            spec = getattr(provider, "spec", None)
+            rows.append({
+                "name": provider.name,
+                "model": str(getattr(spec, "model", "") or ""),
+                "priority": int(getattr(provider, "priority", 100)),
+                "daily_limit": int(getattr(provider, "daily_limit", 0)),
+                "cost_mode": str(getattr(provider, "cost_mode", "free_unverified")),
+                "capabilities": list(
+                    getattr(provider, "capabilities", ("chat",))
+                ),
+            })
+        return rows
+
+    def providers_for(self, capability: str) -> list[StreamProvider]:
+        normalized = str(capability or "chat").strip().lower()
+        if normalized not in _PROVIDER_CAPABILITIES:
+            raise ProviderConfigError(f"invalid routing capability: {normalized}")
+        return [
+            provider
+            for provider in self.providers
+            if normalized in set(getattr(provider, "capabilities", ("chat",)))
+        ]
+
     def metrics(self) -> dict[str, Any]:
         return {
             "turns": self._turns,
@@ -630,7 +679,10 @@ class ProviderPool:
         messages: list[dict[str, str]],
         *,
         session_id: str | None = None,
+        capability: str = "chat",
     ) -> AsyncIterator[RouteEvent]:
+        normalized_capability = str(capability or "chat").strip().lower()
+        selected_providers = self.providers_for(normalized_capability)
         turn_id = uuid.uuid4().hex[:8]
         errors: list[str] = []
         attempted: set[str] = set()
@@ -641,10 +693,11 @@ class ProviderPool:
             "turn.start",
             turn=turn_id,
             session_id=session_id,
-            providers=[p.name for p in self.providers],
+            providers=[p.name for p in selected_providers],
+            capability=normalized_capability,
         )
 
-        for provider in self.providers:
+        for provider in selected_providers:
             if attempts >= max_attempts:
                 self.emit(
                     "attempts.capped",
@@ -790,7 +843,11 @@ class ProviderPool:
             )
             return
 
-        detail = "; ".join(errors) if errors else "no configured/available providers"
+        detail = (
+            "; ".join(errors)
+            if errors
+            else f"no configured/available providers for capability {normalized_capability}"
+        )
         self.emit(
             "turn.failed",
             turn=turn_id,
