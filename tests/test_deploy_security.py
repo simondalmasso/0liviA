@@ -74,3 +74,8 @@ def test_chatgpt_plan_installer_requires_provider_health_confirmation():
     assert '"provider_catalog"' in CHATGPT_INSTALLER
     assert '"chatgpt-plan"' in CHATGPT_INSTALLER
     assert "installed ChatGPT plan provider is not ready" in CHATGPT_INSTALLER
+
+
+def test_bootstrap_exports_exact_build_sha():
+    bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
+    assert "OLIVIA_BUILD_SHA=${REF}" in bootstrap
