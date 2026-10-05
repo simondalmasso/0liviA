@@ -109,5 +109,6 @@ Every meaningful mutation must preserve:
 2. Add a JS-capable browser worker only with real process/network isolation and a zero-cost runtime path; do not embed a privileged Playwright browser inside the Core.
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
 4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/encrypted-backup/restore/latency/resource gates.
-5. Verify production entitlement/cost for the preferred model/coding routes and account-level MFA/2FA.
-6. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
+5. Evaluate the Intern Discovery GPU burst lane: read the A100 point/hour estimate without creating resources; prefer official Muse BF16 if cloud-disk expansion reaches >=70 GB, otherwise benchmark the 22.2 GB INT4 challenger. Implement an adapter only after capturing the real inference-service request/response schema without its credential.
+6. Verify production entitlement/cost for the preferred model/coding routes and account-level MFA/2FA.
+7. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
