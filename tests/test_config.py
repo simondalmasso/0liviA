@@ -81,9 +81,9 @@ def test_from_env_rejects_non_list_providers(monkeypatch):
     with pytest.raises(ValueError):
         Settings.from_env()
 
-def test_hard_zero_cost_can_only_be_disabled_explicitly(monkeypatch):
+def test_runtime_env_cannot_disable_hard_zero_cost(monkeypatch):
     monkeypatch.setenv("OLIVIA_HARD_ZERO_COST", "0")
-    assert Settings.from_env().hard_zero_cost is False
+    assert Settings.from_env().hard_zero_cost is True
 
 
 def test_deploy_paths_use_single_canonical_zero_livia_root():
