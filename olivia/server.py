@@ -1612,7 +1612,9 @@ def create_app(
             coding_worker = None
     if browser_worker is None:
         try:
-            browser_worker = browser_worker_from_env()
+            browser_worker = browser_worker_from_env(
+                hard_zero_cost=settings.hard_zero_cost
+            )
         except (BrowserWorkerError, ValueError):
             browser_worker = None
     if web_search is None:
