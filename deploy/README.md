@@ -13,10 +13,10 @@ Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's P
 1. Provision the A1 VM with a public IPv4 and Ubuntu ARM64.
 2. Open OCI ingress TCP 80/443 only (SSH 22 restricted to the minimum source needed for administration).
 3. Pick the exact green commit SHA you intend to release and run `sudo REF=<40-hex-SHA> ./deploy/bootstrap-a1.sh`. Mutable branches are rejected unless `ALLOW_MUTABLE_REF=1` is explicitly set for development.
-4. Read `/root/0livia-owner-password` as root for the generated browser-owner password. `/var/lib/0livia/bootstrap-info` contains only release/runtime metadata and the password-file location. Both are mode `0600`; neither exposes the internal gateway bearer.
-5. If adding external providers, edit `/etc/0livia/olivia.env` (0640 root:olivia) and add only routes with a verified hard-zero-cost boundary.
-6. Pick an HTTPS hostname. Preferred: a domain you control pointing DNS-only at the Oracle IP. The bootstrap can use an IP-derived DNS hostname if you deliberately accept that external DNS dependency.
-7. Keep port 8080 private. The browser authenticates with the owner password and receives only an HttpOnly/Secure/SameSite cookie; the bearer stays server/CLI-side.
+4. Read `/var/lib/0livia/bootstrap-info` as root and open its one-time `SETUP_URL`. The setup token lives in the URL fragment and is removed from the browser address bar immediately.
+5. Choose **Registrate**, create the owner email/password, and optionally enable **Recordarme**. Registration closes after the first owner.
+6. If adding external providers, edit `/etc/0livia/olivia.env` (0640 root:olivia) and configure only accounts/routes owned by that deployment.
+7. Pick an HTTPS hostname you control and keep port 8080 private. Browser auth uses Secure/HttpOnly/SameSite cookies; provider credentials remain server-side.
 8. Run the CLI smoke with the server-side bearer obtained directly from `/etc/0livia/olivia.env`, never through a browser URL or UI.
 
 ## Provider policy
