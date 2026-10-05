@@ -405,6 +405,11 @@ let backendMode='bridge';
 let ownerAuthReady=false;
 let trustedDevices=[];
 let ownerSessionEmail='';
+let setupToken='';
+if(location.hash.startsWith('#setup=')){
+  try{setupToken=decodeURIComponent(location.hash.slice(7))}catch(e){setupToken=''}
+  history.replaceState(null,'',location.pathname+location.search);
+}
 let controller=null;
 let syncing=false;
 let activeSide='chats';
@@ -592,9 +597,11 @@ ownerLoginForm.onsubmit=async e=>{
   const registering=coreHealth?.registration_open===true;
   ownerLoginError.textContent='';
   try{
+    const headers={'Content-Type':'application/json'};
+    if(registering&&setupToken)headers['X-Olivia-Setup-Token']=setupToken;
     const r=await fetch(registering?'/api/auth/register':'/api/auth/login',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers,
       credentials:'same-origin',
       body:JSON.stringify({
         email,
@@ -613,6 +620,7 @@ ownerLoginForm.onsubmit=async e=>{
       return;
     }
     ownerAuthReady=true;
+    if(registering)setupToken='';
     hideOwnerLogin();
     await probeCore();
     await syncCanonicalWorkspace();
