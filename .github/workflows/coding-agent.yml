@@ -299,8 +299,9 @@ jobs:
         run: |
           set -euo pipefail
           git check-ref-format --allow-onelevel "$BASE_REF"
-          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
-          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
+          test -n "$DEFAULT_BRANCH"
+          git fetch --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
 
       - name: Download verified agent series
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
