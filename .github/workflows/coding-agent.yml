@@ -15,7 +15,7 @@ on:
       base_ref:
         description: "Exact branch/SHA to start from"
         required: true
-        default: "arch/gpt-synthesis-v1"
+        default: "main"
         type: string
       mode:
         description: "Bounded coding mode"
@@ -72,10 +72,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git check-ref-format --allow-onelevel "$BASE_REF"
-          test -n "$(git rev-parse --verify HEAD^{commit})"
-          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
-          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
+          checked="$(git rev-parse --verify HEAD^{commit})"
+          if [[ "$BASE_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            test "${checked,,}" = "${BASE_REF,,}"
+          else
+            git check-ref-format --branch "$BASE_REF" >/dev/null
+            git fetch --no-tags origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+            test "$checked" = "$(git rev-parse "refs/remotes/origin/$BASE_REF^{commit}")"
+          fi
 
       - uses: actions/setup-python@v5
         with:
