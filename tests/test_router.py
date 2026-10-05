@@ -287,3 +287,30 @@ def test_provider_catalog_exposes_models_capabilities_without_secrets(tmp_path):
         }
     ]
     assert "VERY_SECRET_ENV_NAME" not in repr(catalog)
+
+
+def test_openai_compatible_configured_state_is_transport_aware(tmp_path, monkeypatch):
+    local = OpenAICompatibleProvider(
+        ProviderSpec(
+            name="local",
+            base_url="http://127.0.0.1:11434/v1",
+            model="local-model",
+            api_key_env="",
+            cost_mode="local",
+        )
+    )
+    assert local.configured is True
+
+    remote = OpenAICompatibleProvider(
+        ProviderSpec(
+            name="remote",
+            base_url="https://example.com/v1",
+            model="remote-model",
+            api_key_env="REMOTE_KEY",
+            cost_mode="free_hard_cap",
+        )
+    )
+    monkeypatch.delenv("REMOTE_KEY", raising=False)
+    assert remote.configured is False
+    monkeypatch.setenv("REMOTE_KEY", "test-key")
+    assert remote.configured is True
