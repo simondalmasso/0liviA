@@ -37,3 +37,13 @@ def test_bootstrap_protects_first_registration_with_setup_link():
     assert "chmod 0600" in BOOTSTRAP
     assert 'echo "0liviA bootstrap complete: https://${HOST}"' in BOOTSTRAP
     assert 'echo "0liviA bootstrap complete: https://${HOST}/#setup=' not in BOOTSTRAP
+
+
+def test_small_local_model_is_recovery_only_by_default():
+    assert 'LOCAL_RECOVERY_ENABLED="${LOCAL_RECOVERY_ENABLED:-0}"' in BOOTSTRAP
+    assert 'PROVIDERS_JSON=\'[]\'' in BOOTSTRAP
+    assert 'if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then' in BOOTSTRAP
+    assert '"name":"local-recovery-qwen"' in BOOTSTRAP
+    assert '"priority":1000' in BOOTSTRAP
+    assert 'systemctl disable --now llama-local' in BOOTSTRAP
+    assert "never silently downgrades normal chat quality" in BOOTSTRAP
