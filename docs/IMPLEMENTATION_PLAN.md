@@ -49,7 +49,7 @@ Implemented:
 Still gated:
 - authenticated browsing;
 - owner-approved write/click automation;
-- production smoke of the isolated JS browser worker.
+- owner-approved write/click automation remains a separate future capability.
 
 Implemented in branch:
 - `/browse`: opt-in GitHub Actions burst worker using a standard public-repo runner, pinned Playwright, JavaScript rendering, reserved/private-network egress blocks, no third-party browser secrets, bounded requests/text/artifacts, and external page content kept out of durable chat/model context until explicitly requested.
@@ -113,7 +113,7 @@ Every meaningful mutation must preserve:
 ## Exact next engineering gates
 
 1. Keep the branch green and do not regress the security baseline.
-2. Smoke the implemented JS browser worker against a controlled public page, verify artifact retrieval end-to-end, then consider owner-approved click/write automation as a separate capability; never embed a privileged Playwright browser inside the Core.
+2. Browser worker smoke is complete (GitHub Actions run `37257844129`): controlled public page rendered with Chrome, bounded JSON + screenshot artifact uploaded and downloaded successfully. Keep `/browse` read-only; owner-approved click/write automation is a separate future capability and must never embed a privileged browser inside the Core.
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
 4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/encrypted-backup/restore/latency/resource gates.
 5. Complete one real owner Sign in with ChatGPT connection, confirm the selected account/model catalog, verify ChatGPT Usage controls prevent credit overage, transfer the protected profile to the target Core, and smoke one bounded Responses turn.
