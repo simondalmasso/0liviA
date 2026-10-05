@@ -491,29 +491,40 @@ class Gateway:
 
     async def healthz(self, request: web.Request) -> web.Response:
         providers = list(self.agent.router.providers)
-        configured = 0
+        configured = len(providers)
         available = 0
         health = getattr(self.agent.router, "health", None)
         health_metrics = health.metrics() if health is not None else {}
+        availability_by_name: dict[str, bool] = {}
         for provider in providers:
-            configured += 1
-            spec = getattr(provider, "spec", None)
-            env_name = getattr(spec, "api_key_env", "")
-            cost_mode = getattr(spec, "cost_mode", "free_unverified")
-            if cost_mode != "local" and (not env_name or not os.getenv(env_name)):
-                continue
+            transport_ready = bool(getattr(provider, "configured", False))
             state = health_metrics.get(provider.name, {})
             cooldown = float(state.get("cooldown_remaining_s", 0.0))
             daily = int(state.get("daily_requests", 0)) if state.get("day_current", True) else 0
-            if cooldown <= 0 and (
+            route_ready = transport_ready and cooldown <= 0 and (
                 not provider.daily_limit or daily < provider.daily_limit
-            ):
+            )
+            availability_by_name[provider.name] = route_ready
+            if route_ready:
                 available += 1
+
         catalog_fn = getattr(self.agent.router, "catalog", None)
-        provider_catalog = catalog_fn() if callable(catalog_fn) else []
-        primary_model = ""
-        if provider_catalog:
-            primary_model = str(provider_catalog[0].get("model") or "")
+        base_catalog = catalog_fn() if callable(catalog_fn) else []
+        provider_catalog = [
+            {
+                **row,
+                "available": bool(availability_by_name.get(str(row.get("name") or ""), False)),
+            }
+            for row in base_catalog
+        ]
+        primary_model = next(
+            (
+                str(row.get("model") or "")
+                for row in provider_catalog
+                if row.get("available") and row.get("model")
+            ),
+            str(provider_catalog[0].get("model") or "") if provider_catalog else "",
+        )
 
         return _json({
             "process_alive": True,
