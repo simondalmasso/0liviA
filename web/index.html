@@ -1604,7 +1604,7 @@ function attachCanonicalCapture(){
   voiceProcessor.connect(voiceSilentGain);
   voiceSilentGain.connect(voiceAudioContext.destination);
   voiceProcessor.onaudioprocess=event=>{
-    if(!voiceCanonical||voiceMuted||voiceSpeaking||!voiceTurnId||voiceSocket?.readyState!==WebSocket.OPEN)return;
+    if(!voiceCanonical||voiceMuted||!voiceTurnId||voiceSocket?.readyState!==WebSocket.OPEN)return;
     const samples=event.inputBuffer.getChannelData(0);
     try{
       voiceSocket.send(encodeCanonicalAudio(samples,voiceTurnId,voiceSeq++,voiceAudioContext.sampleRate));
