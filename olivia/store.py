@@ -25,6 +25,7 @@ def _scrub_value(value: Any) -> Any:
 
 
 DEFAULT_PROJECT_ID = "default"
+TRUSTED_DEVICE_TOUCH_INTERVAL_S = 300
 
 
 _SCHEMA = """
@@ -308,7 +309,8 @@ class Store:
         moment = time.time() if now is None else float(now)
         with self._lock:
             row = self._conn.execute(
-                "SELECT expires_at FROM trusted_devices WHERE id=? LIMIT 1",
+                """SELECT expires_at,last_seen_at
+                   FROM trusted_devices WHERE id=? LIMIT 1""",
                 (str(device_id),),
             ).fetchone()
             if row is None:
@@ -319,10 +321,11 @@ class Store:
                     (str(device_id),),
                 )
                 return False
-            self._conn.execute(
-                "UPDATE trusted_devices SET last_seen_at=? WHERE id=?",
-                (moment, str(device_id)),
-            )
+            if moment - float(row["last_seen_at"]) >= TRUSTED_DEVICE_TOUCH_INTERVAL_S:
+                self._conn.execute(
+                    "UPDATE trusted_devices SET last_seen_at=? WHERE id=?",
+                    (moment, str(device_id)),
+                )
         return True
 
     def list_trusted_devices(
