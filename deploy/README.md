@@ -66,3 +66,18 @@ The model route is tagged `cost_mode=local`, so the hard-zero-cost router accept
 Production installs accept an exact 40-hex Git commit SHA. `cloud-init-a1.yaml` is intentionally a template that fails closed until `REF` is supplied as an immutable SHA. Never execute a mutable branch as root in production.
 
 The bootstrap pins the llama.cpp release plus SHA-256 per architecture and pins each GGUF to an immutable Hugging Face revision plus SHA-256. Every download is verified before execution/use.
+
+
+## Local recovery model
+
+The bundled tiny Qwen/llama.cpp lane is **not** the normal-quality brain.
+
+Production bootstrap defaults to:
+
+```bash
+LOCAL_RECOVERY_ENABLED=0
+```
+
+That means 0liviA starts its durable Core/UI without silently routing normal chat to the small local model. Configure a high-quality verified-free provider separately. Only set `LOCAL_RECOVERY_ENABLED=1` when an explicit emergency/offline fallback is desired; the local lane is then registered at low priority as `local-recovery-qwen`.
+
+This preserves the product quality floor: when no strong verified-free route exists, fail/degrade visibly instead of pretending a 0.6B/1.7B recovery model is equivalent to a frontier provider.
