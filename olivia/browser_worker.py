@@ -124,8 +124,22 @@ class GitHubActionsBrowserWorker:
             },
         }
         timeout = aiohttp.ClientTimeout(total=20)
+        headers = self._headers()
         async with self._session_factory(timeout=timeout) as session:
-            async with session.post(url, json=payload, headers=self._headers()) as response:
+            repo_url = f"{self.api_base}/repos/{self.repo}"
+            async with session.get(repo_url, headers=headers) as response:
+                if response.status != 200:
+                    detail = (await response.text())[:500]
+                    raise BrowserWorkerError(
+                        f"github browser repository check HTTP {response.status}: {detail}"
+                    )
+                metadata = await response.json()
+            if not isinstance(metadata, dict) or metadata.get("private") is not True:
+                raise BrowserWorkerError(
+                    "browser worker requires a private GitHub repository for result artifacts"
+                )
+
+            async with session.post(url, json=payload, headers=headers) as response:
                 if response.status != 204:
                     detail = (await response.text())[:500]
                     raise BrowserWorkerError(
