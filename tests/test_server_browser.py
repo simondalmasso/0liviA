@@ -149,7 +149,7 @@ async def test_job_recovers_browser_result_without_persisting_external_text_in_c
         job_id,
         "dispatched",
         {
-            "base_ref": "arch/gpt-synthesis-v1",
+            "base_ref": "main",
             "url": "https://example.com/app",
             "objective": "inspeccioná",
         },
