@@ -70,6 +70,8 @@ async def main() -> int:
                 assert composer["top"] >= 0 and composer["bottom"] <= height + 1, (name, "composer-y", composer)
 
                 await page.locator('.rail-btn[data-side="session"]').click()
+                await page.wait_for_timeout(50)
+                assert not page_errors, (name, "page errors after drawer click", page_errors)
                 await page.wait_for_function(
                     """() => {
                       const el = document.querySelector("#drawer");
