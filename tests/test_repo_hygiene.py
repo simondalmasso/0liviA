@@ -114,3 +114,17 @@ def test_chatgpt_plan_docs_match_implemented_onboarding():
     assert "one-time local Sign in with ChatGPT OAuth helper" in readme
     assert "PKCE" in runbook and "JWKS" in runbook
     assert "no_credit_overage_verified" in runbook
+
+
+def test_github_actions_are_pinned_to_immutable_commits():
+    import re
+
+    workflows = ROOT / ".github" / "workflows"
+    action_ref = re.compile(r"^\s*uses:\s+(actions/[^@\s]+)@([^\s#]+)", re.MULTILINE)
+    unpinned = []
+    for path in workflows.glob("*.yml"):
+        text = path.read_text(encoding="utf-8")
+        for action, ref in action_ref.findall(text):
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                unpinned.append(f"{path.name}: {action}@{ref}")
+    assert unpinned == []
