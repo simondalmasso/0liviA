@@ -1,0 +1,58 @@
+name: 0liviA Browser Smoke Once
+
+on:
+  push:
+    branches:
+      - arch/gpt-synthesis-v1
+    paths:
+      - ".github/browser-smoke-trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: arch/gpt-synthesis-v1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded browser runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e . 'playwright==1.55.0'
+          google-chrome --version
+
+      - name: Smoke controlled public page
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/browser_snapshot.py             --url "https://example.com/"             --output browser-result.json             --screenshot browser-shot.png
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("browser-result.json").read_text(encoding="utf-8"))
+          assert payload["final_url"].startswith("https://example.com")
+          assert payload["status"] == 200
+          assert "Example Domain" in payload["title"]
+          assert 1 <= int(payload["request_count"]) <= 101
+          assert len(str(payload.get("text",""))) <= 30000
+          PY
+
+      - name: Upload browser smoke artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-smoke-result
+          path: |
+            browser-result.json
+            browser-shot.png
+          if-no-files-found: error
+          retention-days: 1
