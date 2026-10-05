@@ -414,25 +414,35 @@ Result:
 Consequence: the latest inference bridge must not be deployed under a claim of account-wide zero-cost safety until billing-plan evidence is available. Production remains unchanged.
 
 
-### OpenClaw 2026.9.8 / GPT-6 Astra screenshot evidence
+### OpenClaw 2026.9.8 / GPT-6 Astra → official Sign in with ChatGPT route
 
 Sources:
 - owner-provided screenshots from 2026-10-05;
 - https://github.com/openclaw/openclaw
-- OpenClaw compatibility inventory for build `2026.9.8`, source commit `fc23bc864e4553c2d215e479eeec47b67a0bf943`.
+- https://developers.openai.com/siwc/token-sharing-open-source
+- https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites
+- https://github.com/openai/sign-in-with-chatgpt-devkit
 
-Verified:
-- OpenClaw is a real open-source assistant/gateway whose model providers are pluggable;
-- the supplied screenshots are consistent with the public OpenClaw 2026.9.8 build and show one configured environment listing several `openai/*` model names and returning the text “GPT-6 Astra funcionando correctamente.”;
-- OpenClaw itself is **not** the model provider: its own documentation states that prompts go to whichever hosted/local model provider the operator configures.
+Updated verification:
+- the screenshots are consistent with OpenClaw exposing `openai/gpt-6-astra` in a configured environment;
+- OpenAI now officially documents **Sign in with ChatGPT** plan usage for open-source tools, and lists OpenClaw among supported examples;
+- eligible Plus/Pro owners may authorize supported external tools to consume ChatGPT-plan usage without creating or sharing an OpenAI API key;
+- the requested OAuth permission includes `chatgpt.tokens.use.direct`;
+- eligible requests use the official Responses API; OpenAI's OSS docs require `store:false` and streaming;
+- app usage has owner-controlled limits. Paid ChatGPT credits after included usage are opt-in and are off by default; an app limit below 100% prevents credit use for that app;
+- if an app cannot use plan usage or allowed credits, it does not automatically switch to a different paid option.
 
-Not verified:
-- that the specific `openai/gpt-6-astra` route in the screenshot is an official OpenAI API endpoint available to 0liviA;
-- that the route is free, has a hard no-overage boundary, or may be reused outside that configured OpenClaw environment;
-- that the returned text proves the backend model identity rather than the selected provider/model label.
+What the screenshots still do **not** prove:
+- that every listed OpenClaw slug is available to every ChatGPT account;
+- unlimited/free usage: plan usage is bounded by the connected account's allowance and app limit;
+- that 0liviA has completed its own OAuth connection; it has not.
 
-0liviA decision:
-- **do not add this route to the production provider catalog yet**;
-- preserve the evidence as a discovery lead only;
-- if a provider endpoint becomes available, verify provenance, authorization, account-level cost behavior, and a direct API response before classifying it as `free_hard_cap`;
-- OpenClaw architecture patterns (trusted gateway, pluggable providers/tools, untrusted execution boundary) remain useful references, but importing the full framework would duplicate 0liviA's existing Core and increase complexity.
+0liviA implementation/decision:
+- do **not** import OpenClaw as a runtime dependency;
+- use the documented OpenAI path directly behind the existing provider router;
+- a native `chatgpt_plan` provider now targets `https://api.openai.com/v1/responses`, keeps OAuth credentials server-side, refreshes them, and uses `store:false`;
+- `gpt-6-astra` is a preferred configured slug, not a hardcoded identity claim; actual availability must come from the signed-in account/model catalog;
+- under hard-zero-cost mode, this route is blocked unless `no_credit_overage_verified=true`; that remains an owner/account assertion until onboarding can inspect/guide the relevant ChatGPT Usage controls;
+- one-time OAuth onboarding remains a release gate. The OpenAI DevKit is an implementation/security reference, but its noncommercial license means 0liviA should not copy it wholesale without a separate license decision.
+
+
