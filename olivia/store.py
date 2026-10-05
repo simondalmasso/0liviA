@@ -574,6 +574,29 @@ class Store:
             )
         return int(cur.lastrowid)
 
+    def recent_events(self, *, prefix: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        where = ""
+        args: list[Any] = []
+        if prefix:
+            where = "WHERE type LIKE ?"
+            args.append(f"{prefix}%")
+        args.append(max(1, min(int(limit), 500)))
+        with self._lock:
+            rows = self._conn.execute(
+                f"""SELECT id,session_id,job_id,type,payload_json,created_at
+                    FROM events
+                    {where}
+                    ORDER BY id DESC
+                    LIMIT ?""",
+                tuple(args),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = json.loads(item.pop("payload_json"))
+            out.append(item)
+        return out
+
     def create_job(self, kind: str, repo: str | None = None) -> str:
         job_id = uuid.uuid4().hex[:16]
         now = time.time()
