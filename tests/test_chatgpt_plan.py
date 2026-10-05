@@ -171,6 +171,7 @@ async def test_chatgpt_plan_provider_refreshes_expired_profile_atomically(tmp_pa
                 "access_token": "fresh-access",
                 "refresh_token": "fresh-refresh",
                 "expires_in": 7200,
+                "earliest_refresh_at": 1234567999,
                 "scope": "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct",
             }
         ),
@@ -195,6 +196,7 @@ async def test_chatgpt_plan_provider_refreshes_expired_profile_atomically(tmp_pa
     assert saved["access_token"] == "fresh-access"
     assert saved["refresh_token"] == "fresh-refresh"
     assert saved["expires_at"] > int(time.time())
+    assert saved["earliest_refresh_at"] == 1234567999
     mode = stat.S_IMODE(profile.stat().st_mode)
     assert mode == 0o600
 
@@ -224,3 +226,41 @@ async def test_chatgpt_plan_usage_limit_maps_to_rate_limit(tmp_path):
 def test_chatgpt_installer_declares_frontier_text_capabilities():
     script = Path("scripts/install_chatgpt_plan_profile.sh").read_text(encoding="utf-8")
     assert '"capabilities": ["chat", "research", "code", "review"]' in script
+
+
+@pytest.mark.asyncio
+async def test_chatgpt_plan_respects_earliest_refresh_floor(tmp_path):
+    profile = tmp_path / "profile.json"
+    write_profile(
+        profile,
+        expires_at=1_000,
+        earliest_refresh_at=950,
+    )
+    calls = []
+    provider = ChatGPTPlanProvider(
+        spec(profile),
+        session_factory=lambda **kwargs: FakeSession([], calls, **kwargs),
+        clock=lambda: 900,
+    )
+
+    token = await provider._access_token()
+    assert token == "access-demo"
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_chatgpt_plan_fails_closed_if_expired_before_refresh_floor(tmp_path):
+    profile = tmp_path / "profile.json"
+    write_profile(
+        profile,
+        expires_at=800,
+        earliest_refresh_at=950,
+    )
+    provider = ChatGPTPlanProvider(
+        spec(profile),
+        session_factory=lambda **kwargs: FakeSession([], [], **kwargs),
+        clock=lambda: 900,
+    )
+
+    with pytest.raises(ProviderConfigError, match="expired before refresh"):
+        await provider._access_token()
