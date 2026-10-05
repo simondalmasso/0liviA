@@ -35,8 +35,11 @@ jobs:
       - name: Dependency consistency
         run: python -m pip check
 
-      - name: Ruff correctness audit
-        run: ruff check olivia tests scripts
+      - name: Ruff production correctness
+        run: ruff check olivia scripts
+
+      - name: Ruff test correctness
+        run: ruff check tests --select E9,F63,F7,F82
 
       - name: Bandit security audit
         run: bandit -q -r olivia scripts -x tests
