@@ -1,3 +1,3 @@
 static-audit-request
-source_head=1bf84af72aea3957db53720559c0de0e78e25249
-reason=post-chatgpt-plan-refresh-hardening
+source_head=58354ecdb34c9f31b19bd4a0fb7eb48460db11f5
+reason=post-muse-config-auth-mobile-chatgpt-hardening
