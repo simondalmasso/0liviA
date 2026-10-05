@@ -31,6 +31,8 @@ from .research import SearchUnavailable, WebSearch, web_search_from_env
 from .security import make_password_verifier, redact_secrets, verify_password
 from .store import Store
 from .web import SafeWebReader, WebReadError
+from .voice.adapters.transport import AiohttpWebSocketTransport, DirectWssConfig
+from .voice.pipeline import VoicePipeline
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_MESSAGE_CHARS = 12_000
@@ -44,6 +46,7 @@ LOGIN_FAILURE_LIMIT = 5
 LOGIN_FAILURE_WINDOW_S = 60
 
 LocaleValidator = Callable[[str], bool]
+VoicePipelineFactory = Callable[[AiohttpWebSocketTransport, str], VoicePipeline]
 
 
 def default_es_ar_validator(text: str) -> bool:
@@ -122,6 +125,8 @@ class Gateway:
         browser_worker: GitHubActionsBrowserWorker | None = None,
         web_reader: SafeWebReader | None = None,
         web_search: WebSearch | None = None,
+        voice_pipeline_factory: VoicePipelineFactory | None = None,
+        voice_wss_config: DirectWssConfig | None = None,
     ):
         self.agent = agent
         self.settings = settings
@@ -154,6 +159,8 @@ class Gateway:
         self.browser_worker = browser_worker
         self.web_reader = web_reader or SafeWebReader()
         self.web_search = web_search
+        self.voice_pipeline_factory = voice_pipeline_factory
+        self.voice_wss_config = voice_wss_config or DirectWssConfig()
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
         self._login_failures: dict[str, list[float]] = {}
@@ -501,6 +508,9 @@ class Gateway:
             "browser_worker_configured": bool(self.browser_worker and self.browser_worker.configured),
             "web_read_configured": self.web_reader is not None,
             "web_search_configured": bool(self.web_search and self.web_search.configured),
+            "voice_backend_configured": self.voice_pipeline_factory is not None,
+            "voice_transport": "direct-wss",
+            "voice_locale": "es-AR",
         })
 
     async def security_events(self, request: web.Request) -> web.Response:
@@ -1384,6 +1394,47 @@ class Gateway:
                     self._turns.pop(session_id, None)
         return response
 
+    async def voice_ws(self, request: web.Request) -> web.StreamResponse:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        if self.voice_pipeline_factory is None:
+            return _json({"error": "voice_backend_unavailable"}, 503)
+
+        session_id = str(request.query.get("session_id") or "").strip()
+        if not session_id or len(session_id) > 128:
+            return _json({"error": "session_id is required"}, 400)
+        if not self.agent.store.session_exists(session_id):
+            return _json({"error": "session not found"}, 404)
+
+        config = self.voice_wss_config
+        ws = web.WebSocketResponse(
+            heartbeat=config.ping_interval_s,
+            receive_timeout=config.receive_timeout_s,
+            max_msg_size=config.max_audio_frame_bytes + 16 * 1024 + 4,
+            autoping=True,
+        )
+        await ws.prepare(request)
+        transport = AiohttpWebSocketTransport(
+            ws,
+            max_audio_frame_bytes=config.max_audio_frame_bytes,
+        )
+        try:
+            pipeline = self.voice_pipeline_factory(transport, session_id)
+            await pipeline.run()
+        except (ValueError, TypeError):
+            if not ws.closed:
+                await ws.close(code=1003, message=b"invalid voice frame")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            if not ws.closed:
+                await ws.close(code=1011, message=b"voice backend error")
+        finally:
+            with contextlib.suppress(Exception):
+                await transport.close()
+        return ws
+
     async def cancel(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
         if denied:
@@ -1491,6 +1542,8 @@ def create_app(
     browser_worker: GitHubActionsBrowserWorker | None = None,
     web_reader: SafeWebReader | None = None,
     web_search: WebSearch | None = None,
+    voice_pipeline_factory: VoicePipelineFactory | None = None,
+    voice_wss_config: DirectWssConfig | None = None,
 ) -> web.Application:
     settings = settings or Settings.from_env()
     if agent is None:
@@ -1525,6 +1578,8 @@ def create_app(
         browser_worker=browser_worker,
         web_reader=web_reader,
         web_search=web_search,
+        voice_pipeline_factory=voice_pipeline_factory,
+        voice_wss_config=voice_wss_config,
     )
     app = web.Application(
         client_max_size=MAX_BODY_BYTES,
@@ -1550,6 +1605,7 @@ def create_app(
     app.router.add_get("/api/sessions/{session_id}/messages", gateway.get_messages)
     app.router.add_post("/api/chat/{session_id}", gateway.chat)
     app.router.add_post("/api/chat/{session_id}/cancel", gateway.cancel)
+    app.router.add_get("/api/voice/ws", gateway.voice_ws)
     app.router.add_post("/api/jobs/code", gateway.create_code_job)
     app.router.add_get("/api/jobs/{job_id}", gateway.get_job)
     return app
