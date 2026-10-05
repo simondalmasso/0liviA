@@ -12,9 +12,10 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Failover only before validated visible output; partial answers are preserved rather than silently replayed through another provider.
 - Browser/API gateway with first-run single-owner registration, email/password login, remembered-device revocation, login throttling, bounded bodies and one active turn per session.
 - Authenticated server-side workspace API backed by SQLite; Projects/Chats/Library/Memory sync into browser cache when the canonical core is active.
-- Current browser product shell with Chats/Projects/Library/Memory/Config/Session rail navigation, first-run auth UI, remembered-device management, fullscreen Live Voice, and 360–430 px responsive hardening.
+- Current browser product shell with Chats/Projects/Library/Memory/Config/Session rail navigation, first-run auth UI, remembered-device management, fullscreen Live Voice, 360–430 px responsive hardening, contextual slash commands and compact in-chat durable job state.
 - Canonical SSRF-safe `/read` tool with page content kept ephemeral and explicitly untrusted.
 - Replaceable `/search` adapter contract, disabled unless an exact route is configured and zero-cost verified.
+- Capability-aware provider catalog (`chat/research/vision/code/review`) with backwards-compatible chat defaults; research tools prefer a research-capable route and safely fall back to chat when none is configured.
 - Isolated GitHub Actions coding worker with durable job IDs, exact base refs, `implement/repair/review` modes and deterministic post-agent verification.
 - Isolated JS browser burst worker with `/browse`, JavaScript rendering, read-only GET/HEAD enforcement, public-network egress guards, bounded artifacts, and no external-page persistence into model/chat context.
 - Review mode may only create/update `AGENT_REVIEW.md`; any product mutation fails the job.
@@ -116,6 +117,7 @@ Every meaningful mutation must preserve:
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
 4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/encrypted-backup/restore/latency/resource gates.
 5. Complete one real owner Sign in with ChatGPT connection, confirm the selected account/model catalog, verify ChatGPT Usage controls prevent credit overage, transfer the protected profile to the target Core, and smoke one bounded Responses turn.
-6. Evaluate the Intern Discovery GPU burst lane only as a challenger: read point/hour estimates before creating resources and implement an adapter only after a real no-overage/account gate exists.
-7. Verify production entitlement/cost for every retained model/coding route and account-level MFA/2FA.
-8. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
+6. Muse Glimmer remains a parked OpenAI-compatible challenger: no new Core module is needed. Promote only when a recurring-free/self-owned host with adequate GPU memory is proven; current public inference-provider availability does not satisfy that gate.
+7. Evaluate the Intern Discovery GPU burst lane only as a challenger: read point/hour estimates before creating resources and implement an adapter only after a real no-overage/account gate exists.
+8. Verify production entitlement/cost for every retained model/coding route and account-level MFA/2FA.
+9. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
