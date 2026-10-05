@@ -78,3 +78,45 @@ def test_restore_fails_with_wrong_passphrase(tmp_path: Path):
     result = run(RESTORE, str(encrypted), env=bad)
     assert result.returncode != 0
     assert not Path(bad["OLIVIA_RESTORE_TARGET"]).exists()
+
+
+def test_backup_checksum_survives_relocation(tmp_path: Path):
+    source = tmp_path / "source.sqlite3"
+    original_dir = tmp_path / "original"
+    moved_dir = tmp_path / "moved"
+    restored = tmp_path / "restored.sqlite3"
+    original_dir.mkdir()
+    moved_dir.mkdir()
+
+    conn = sqlite3.connect(source)
+    conn.execute("CREATE TABLE demo(value TEXT)")
+    conn.execute("INSERT INTO demo(value) VALUES(?)", ("portable-backup",))
+    conn.commit()
+    conn.close()
+
+    original = original_dir / "backup.sqlite3.enc"
+    env = {
+        "OLIVIA_DB_PATH": str(source),
+        "OLIVIA_BACKUP_PASSPHRASE": "portable-passphrase-0123456789",
+    }
+    created = run(BACKUP, str(original), env=env)
+    assert created.returncode == 0, created.stderr
+
+    moved = moved_dir / original.name
+    moved_checksum = Path(str(moved) + ".sha256")
+    original_checksum = Path(str(original) + ".sha256")
+    original.replace(moved)
+    original_checksum.replace(moved_checksum)
+
+    result = run(
+        RESTORE,
+        str(moved),
+        env={**env, "OLIVIA_RESTORE_TARGET": str(restored)},
+    )
+    assert result.returncode == 0, result.stderr
+
+    conn = sqlite3.connect(restored)
+    try:
+        assert conn.execute("SELECT value FROM demo").fetchone()[0] == "portable-backup"
+    finally:
+        conn.close()

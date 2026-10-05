@@ -4,10 +4,10 @@ WORKFLOW = Path(".github/workflows/browser-agent.yml").read_text(encoding="utf-8
 RUNNER = Path("scripts/browser_snapshot.py").read_text(encoding="utf-8")
 
 
-def test_browser_workflow_is_manual_public_repo_only_and_least_privilege():
+def test_browser_workflow_is_manual_private_repo_only_and_least_privilege():
     assert "workflow_dispatch:" in WORKFLOW
     assert "permissions:\n  contents: read" in WORKFLOW
-    assert 'test "$REPO_PRIVATE" = "false"' in WORKFLOW
+    assert 'test "$REPO_PRIVATE" = "true"' in WORKFLOW
     assert "persist-credentials: false" in WORKFLOW
     assert "timeout-minutes: 8" in WORKFLOW
     assert "publish" not in WORKFLOW.lower()

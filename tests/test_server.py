@@ -1690,6 +1690,116 @@ async def test_voice_wss_rejects_second_connection_for_same_session(aiohttp_clie
 
 
 @pytest.mark.asyncio
+async def test_owner_logout_revokes_non_remembered_cookie_server_side(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "logout-replay.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": False,
+        },
+    )
+    assert login.status == 200
+    cookie = login.cookies["olivia_owner"]
+    stolen_cookie = {"Cookie": f"olivia_owner={cookie.value}"}
+
+    assert (await client.get("/api/sessions", headers=stolen_cookie)).status == 200
+    assert (await client.post("/api/auth/logout", headers=stolen_cookie)).status == 200
+
+    replay = await client.get("/api/sessions", headers=stolen_cookie)
+    assert replay.status == 401
+
+
+@pytest.mark.asyncio
+async def test_read_rejects_sensitive_query_before_fetch_or_persistence(client, gateway):
+    _, store, _ = gateway
+    reader = FakeWebReader()
+    client.app["gateway"].web_reader = reader
+    session_id = store.create_session()
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/read https://example.com/private?token=abc123 resumí"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    events = [
+        json.loads(line[6:])
+        for line in (await response.text()).splitlines()
+        if line.startswith("data: ")
+    ]
+
+    assert reader.urls == []
+    assert any(event.get("code") == "sensitive_url" for event in events)
+    persisted = repr(store.recent_messages(session_id))
+    assert "abc123" not in persisted
+    assert "token=" not in persisted
+
+
+@pytest.mark.asyncio
+async def test_health_exposes_exact_build_sha(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path, build_sha="b" * 40)
+    store = Store(tmp_path / "build-sha.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    body = await (await client.get("/healthz")).json()
+    assert body["build_sha"] == "b" * 40
+
+
+@pytest.mark.asyncio
+async def test_session_only_login_is_revocable_but_not_listed_as_remembered(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "session-only-device.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": False,
+            "device_name": "Temporal",
+        },
+    )
+    assert login.status == 200
+    cookie = login.cookies["olivia_owner"]
+    headers = {"Cookie": f"olivia_owner={cookie.value}"}
+
+    assert (await client.get("/api/sessions", headers=headers)).status == 200
+    devices = await client.get("/api/auth/devices", headers=headers)
+    assert devices.status == 200
+    assert (await devices.json())["devices"] == []
+
+    assert (await client.post("/api/auth/logout", headers=headers)).status == 200
+    assert (await client.get("/api/sessions", headers=headers)).status == 401
+
+
+@pytest.mark.asyncio
 async def test_protected_registration_ui_explains_setup_link(client):
     html = await (await client.get("/")).text()
     assert "registration_protected" in html

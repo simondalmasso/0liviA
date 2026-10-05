@@ -1,3 +1,7 @@
+import sqlite3
+
+import pytest
+
 from pathlib import Path
 
 from olivia.store import Store
@@ -172,6 +176,87 @@ def test_security_event_retention_prunes_old_and_bounds_count(tmp_path: Path):
     assert len(rows) <= 5
     assert all(row["created_at"] >= 5.0 for row in rows)
     assert store.recent_events(prefix="demo.", limit=10)
+
+
+def test_store_database_file_is_owner_only(tmp_path: Path):
+    path = tmp_path / "private.sqlite3"
+    store = Store(path)
+    try:
+        assert path.stat().st_mode & 0o777 == 0o600
+    finally:
+        store.close()
+
+
+def test_store_sets_schema_version(tmp_path: Path):
+    path = tmp_path / "versioned.sqlite3"
+    store = Store(path)
+    store.close()
+
+    conn = sqlite3.connect(path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_store_rejects_future_schema_version(tmp_path: Path):
+    path = tmp_path / "future.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA user_version=999")
+    conn.execute("CREATE TABLE future_only(value TEXT)")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(ValueError, match="newer schema"):
+        Store(path)
+
+    conn = sqlite3.connect(path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 999
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='future_only'"
+        ).fetchone() == ("future_only",)
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
+        ).fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_legacy_session_migration_enforces_project_reference(tmp_path: Path):
+    path = tmp_path / "legacy-fk.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL, updated_at REAL NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO sessions(id,title,created_at,updated_at) VALUES('legacy','Viejo',1,1)"
+    )
+    conn.commit()
+    conn.close()
+
+    store = Store(path)
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            store._conn.execute(
+                "INSERT INTO sessions(id,title,project_id,created_at,updated_at) VALUES(?,?,?,?,?)",
+                ("orphan", "Huérfana", "missing-project", 2, 2),
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            store._conn.execute(
+                "UPDATE sessions SET project_id=? WHERE id='legacy'",
+                ("missing-project",),
+            )
+        default_project = next(
+            row["project_id"] for row in store.list_sessions() if row["id"] == "legacy"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            store._conn.execute(
+                "DELETE FROM projects WHERE id=?",
+                (default_project,),
+            )
+    finally:
+        store.close()
 
 
 def test_trusted_device_last_seen_touch_is_bounded(tmp_path: Path):

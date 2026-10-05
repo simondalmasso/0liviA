@@ -59,3 +59,23 @@ def test_chatgpt_plan_installer_is_fail_closed_and_never_echoes_tokens():
     assert '"no_credit_overage_verified": True' in CHATGPT_INSTALLER
     assert "access_token" not in CHATGPT_INSTALLER.split("print(model)", 1)[1]
     assert "refresh_token" not in CHATGPT_INSTALLER.split("print(model)", 1)[1]
+
+
+def test_caddy_overwrites_client_ip_header_for_login_throttling():
+    caddy = (ROOT / "deploy" / "Caddyfile.example").read_text(encoding="utf-8")
+    bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
+    expected = "header_up X-Olivia-Client-IP {http.request.remote.host}"
+    assert expected in caddy
+    assert expected in bootstrap
+
+
+def test_chatgpt_plan_installer_requires_provider_health_confirmation():
+    assert '"provider_ready"' in CHATGPT_INSTALLER
+    assert '"provider_catalog"' in CHATGPT_INSTALLER
+    assert '"chatgpt-plan"' in CHATGPT_INSTALLER
+    assert "installed ChatGPT plan provider is not ready" in CHATGPT_INSTALLER
+
+
+def test_bootstrap_exports_exact_build_sha():
+    bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
+    assert "OLIVIA_BUILD_SHA=${REF}" in bootstrap

@@ -165,13 +165,35 @@ if ! systemctl restart olivia; then
 fi
 
 for _ in $(seq 1 30); do
-  if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+  if curl -fsS http://127.0.0.1:8080/healthz 2>/dev/null | python3 -c '
+import json
+import sys
+
+try:
+    body = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+
+catalog = body.get("provider_catalog")
+ready = body.get("provider_ready") is True
+provider_ready = (
+    isinstance(catalog, list)
+    and any(
+        isinstance(item, dict)
+        and item.get("name") == "chatgpt-plan"
+        and item.get("available") is True
+        for item in catalog
+    )
+)
+raise SystemExit(0 if ready and provider_ready else 1)
+'; then
     echo "ChatGPT plan provider instalado para 0liviA (modelo: ${MODEL})."
     exit 0
   fi
   sleep 1
 done
 
+echo "installed ChatGPT plan provider is not ready" >&2
 rollback
 if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
   echo "Se restauró la configuración anterior correctamente." >&2

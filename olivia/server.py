@@ -30,7 +30,7 @@ from .router import ProviderPool
 from .research import SearchUnavailable, WebSearch, web_search_from_env
 from .security import make_password_verifier, redact_secrets, verify_password
 from .store import Store
-from .web import SafeWebReader, WebReadError
+from .web import SafeWebReader, WebReadError, has_sensitive_query_parameters
 from .voice.adapters.transport import AiohttpWebSocketTransport, DirectWssConfig
 from .voice.pipeline import VoicePipeline
 
@@ -164,8 +164,6 @@ class Gateway:
         self.voice_wss_config = voice_wss_config or DirectWssConfig()
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
-        self._voice_sessions: set[str] = set()
-        self._voice_sessions_lock = asyncio.Lock()
         self._login_failures: dict[str, list[float]] = {}
 
     def _owner_cookie_value(self, expires_at: int, device_id: str | None = None) -> str:
@@ -290,17 +288,16 @@ class Gateway:
     ) -> web.Response:
         ttl_s = OWNER_REMEMBER_TTL_S if remember else OWNER_SESSION_TTL_S
         expires_at = int(time.time()) + ttl_s
-        device_id = None
-        if remember:
-            device_id = self.agent.store.create_trusted_device(
-                device_name.strip() or "Este dispositivo",
-                expires_at=expires_at,
-            )
+        device_id = self.agent.store.create_trusted_device(
+            device_name.strip() or "Este dispositivo",
+            expires_at=expires_at,
+            remembered=remember,
+        )
         response = _json({
             "authenticated": True,
             "email": email,
             "remembered": remember,
-            "device_id": device_id,
+            "device_id": device_id if remember else None,
             "expires_at": expires_at,
         })
         cookie_kwargs = {
@@ -538,6 +535,7 @@ class Gateway:
             "provider_catalog": provider_catalog,
             "hard_zero_cost": bool(self.settings.hard_zero_cost),
             "api_mode": "canonical",
+            "build_sha": self.settings.build_sha,
             "owner_auth_configured": bool(
                 self.auth_token and self.agent.store.get_owner_account() is not None
             ),
@@ -999,6 +997,33 @@ class Gateway:
                 return
 
             url, separator, question = argument.partition(" ")
+            if has_sensitive_query_parameters(url):
+                safe_question = redact_secrets(question.strip())
+                persisted_user = "/read [REDACTED_SENSITIVE_URL]"
+                if safe_question:
+                    persisted_user += f" {safe_question}"
+                assistant = (
+                    "No puedo leer una URL que incluya parámetros sensibles "
+                    "como tokens, credenciales o firmas."
+                )
+                self.agent.store.append_message(session_id, "user", persisted_user)
+                self.agent.store.append_message(
+                    session_id,
+                    "assistant",
+                    assistant,
+                    provider="web-reader",
+                    status="complete",
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "sensitive_url",
+                    "retryable": False,
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
             try:
                 document = await self.web_reader.read(url)
             except WebReadError as exc:
@@ -1453,43 +1478,33 @@ class Gateway:
         if not self.agent.store.session_exists(session_id):
             return _json({"error": "session not found"}, 404)
 
-        async with self._voice_sessions_lock:
-            if session_id in self._voice_sessions:
-                return _json({"error": "voice_session_busy"}, 409)
-            self._voice_sessions.add(session_id)
-
-        transport = None
-        ws = None
+        config = self.voice_wss_config
+        ws = web.WebSocketResponse(
+            heartbeat=config.ping_interval_s,
+            receive_timeout=config.receive_timeout_s,
+            max_msg_size=config.max_audio_frame_bytes + 16 * 1024 + 4,
+            autoping=True,
+        )
+        await ws.prepare(request)
+        transport = AiohttpWebSocketTransport(
+            ws,
+            max_audio_frame_bytes=config.max_audio_frame_bytes,
+        )
         try:
-            config = self.voice_wss_config
-            ws = web.WebSocketResponse(
-                heartbeat=config.ping_interval_s,
-                receive_timeout=config.receive_timeout_s,
-                max_msg_size=config.max_audio_frame_bytes + 16 * 1024 + 4,
-                autoping=True,
-            )
-            await ws.prepare(request)
-            transport = AiohttpWebSocketTransport(
-                ws,
-                max_audio_frame_bytes=config.max_audio_frame_bytes,
-            )
             pipeline = self.voice_pipeline_factory(transport, session_id)
             await pipeline.run()
         except (ValueError, TypeError):
-            if ws is not None and not ws.closed:
+            if not ws.closed:
                 await ws.close(code=1003, message=b"invalid voice frame")
         except asyncio.CancelledError:
             raise
         except Exception:
-            if ws is not None and not ws.closed:
+            if not ws.closed:
                 await ws.close(code=1011, message=b"voice backend error")
         finally:
-            if transport is not None:
-                with contextlib.suppress(Exception):
-                    await transport.close()
-            async with self._voice_sessions_lock:
-                self._voice_sessions.discard(session_id)
-        return ws if ws is not None else _json({"error": "voice_transport_failed"}, 500)
+            with contextlib.suppress(Exception):
+                await transport.close()
+        return ws
 
     async def cancel(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
@@ -1614,7 +1629,9 @@ def create_app(
             coding_worker = None
     if browser_worker is None:
         try:
-            browser_worker = browser_worker_from_env()
+            browser_worker = browser_worker_from_env(
+                hard_zero_cost=settings.hard_zero_cost
+            )
         except (BrowserWorkerError, ValueError):
             browser_worker = None
     if web_search is None:

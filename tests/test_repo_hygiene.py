@@ -114,3 +114,33 @@ def test_chatgpt_plan_docs_match_implemented_onboarding():
     assert "one-time local Sign in with ChatGPT OAuth helper" in readme
     assert "PKCE" in runbook and "JWKS" in runbook
     assert "no_credit_overage_verified" in runbook
+
+
+def test_github_actions_are_pinned_to_immutable_commits():
+    import re
+
+    workflows = ROOT / ".github" / "workflows"
+    action_ref = re.compile(r"^\s*(?:-\s*)?uses:\s+(actions/[^@\s]+)@([^\s#]+)", re.MULTILINE)
+    unpinned = []
+    for path in workflows.glob("*.yml"):
+        text = path.read_text(encoding="utf-8")
+        for action, ref in action_ref.findall(text):
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                unpinned.append(f"{path.name}: {action}@{ref}")
+    assert unpinned == []
+
+
+def test_browser_worker_docs_require_private_artifact_repo():
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    worker = (ROOT / "olivia" / "browser_worker.py").read_text(encoding="utf-8")
+
+    assert "OLIVIA_BROWSER_REPO=owner/private-browser" in env_example
+    assert "OLIVIA_BROWSER_ZERO_COST_VERIFIED=0" in env_example
+    assert "OLIVIA_BROWSER_REPO=simondalmasso/0liviA" not in env_example
+    assert "public-repo runner" not in architecture
+    assert "public-repo runner" not in plan
+    assert "private GitHub" in architecture
+    assert "private GitHub" in plan
+    assert "public GitHub Actions runner" not in worker

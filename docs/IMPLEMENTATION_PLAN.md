@@ -48,10 +48,11 @@ Implemented:
 
 Still gated:
 - authenticated browsing;
+- owner-approved write/click automation;
 - owner-approved write/click automation remains a separate future capability.
 
 Implemented in branch:
-- `/browse`: opt-in GitHub Actions burst worker using a standard public-repo runner, pinned Playwright, JavaScript rendering, reserved/private-network egress blocks, no third-party browser secrets, bounded requests/text/artifacts, and external page content kept out of durable chat/model context until explicitly requested.
+- `/browse`: opt-in GitHub Actions burst worker using a dedicated private GitHub repository, pinned Playwright, JavaScript rendering, reserved/private-network egress blocks, no third-party browser secrets, bounded requests/text/artifacts, Core-side repository-privacy preflight, and external page content kept out of durable chat/model context until explicitly requested.
 
 ### 5. Live Voice
 The UI, authenticated direct-WSS Gateway route and Python pipeline now exist; production speech engines do not. The route is capability-gated and returns 503 until a backend is configured. Benchmark direct WSS + candidate VAD/STT/TTS on the actual target host for es-AR quality, TTFT/TTFA, barge-in and 60-minute stability before promotion. LiveKit Agents and Pipecat remain challengers, not defaults.
@@ -112,7 +113,7 @@ Every meaningful mutation must preserve:
 ## Exact next engineering gates
 
 1. Keep the branch green and do not regress the security baseline.
-2. Browser worker smoke is complete (GitHub Actions run `37257844129`): controlled public page rendered with Chrome, bounded JSON + screenshot artifact uploaded and downloaded successfully. Keep `/browse` read-only; owner-approved click/write automation is a separate future capability and must never embed a privileged browser inside the Core.
+2. Historical browser smoke rendered a controlled public page successfully, but the old public-repository artifact path is superseded. Production `/browse` now requires a dedicated private GitHub repository plus explicit zero-cost verification; rerun the smoke on that private boundary before calling browser work production-ready. Keep `/browse` read-only; owner-approved click/write automation remains separate.
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
 4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/encrypted-backup/restore/latency/resource gates.
 5. Complete one real owner Sign in with ChatGPT connection, confirm the selected account/model catalog, verify ChatGPT Usage controls prevent credit overage, transfer the protected profile to the target Core, and smoke one bounded Responses turn.

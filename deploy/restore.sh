@@ -17,7 +17,12 @@ if [[ -z "${PASSPHRASE}" || "${#PASSPHRASE}" -lt 16 ]]; then
   exit 2
 fi
 if [[ -f "${INPUT}.sha256" ]]; then
-  sha256sum -c "${INPUT}.sha256"
+  read -r expected_hash _ < "${INPUT}.sha256"
+  actual_hash="$(sha256sum "${INPUT}" | awk '{print $1}')"
+  if [[ ! "${expected_hash}" =~ ^[0-9a-fA-F]{64}$ ]] || [[ "${actual_hash}" != "${expected_hash,,}" ]]; then
+    echo "backup checksum verification failed" >&2
+    exit 2
+  fi
 fi
 if [[ -e "${TARGET}" && "${ALLOW_OVERWRITE}" != "1" ]]; then
   echo "target exists; set OLIVIA_RESTORE_OVERWRITE=1 after taking an encrypted backup" >&2
