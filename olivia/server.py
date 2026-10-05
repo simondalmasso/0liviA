@@ -128,6 +128,7 @@ class Gateway:
         web_search: WebSearch | None = None,
         voice_pipeline_factory: VoicePipelineFactory | None = None,
         voice_wss_config: DirectWssConfig | None = None,
+        worker_base_ref: str | None = None,
     ):
         self.agent = agent
         self.settings = settings
@@ -162,6 +163,12 @@ class Gateway:
         self.web_search = web_search
         self.voice_pipeline_factory = voice_pipeline_factory
         self.voice_wss_config = voice_wss_config or DirectWssConfig()
+        configured_worker_ref = (
+            worker_base_ref
+            if worker_base_ref is not None
+            else os.getenv("OLIVIA_WORKER_BASE_REF", "main")
+        )
+        self.worker_base_ref = str(configured_worker_ref or "main").strip() or "main"
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
         self._voice_sessions: set[str] = set()
@@ -926,7 +933,7 @@ class Gateway:
 
         payload = await self._read_json(request)
         task = payload.get("task")
-        base_ref = payload.get("base_ref", "arch/gpt-synthesis-v1")
+        base_ref = payload.get("base_ref", self.worker_base_ref)
         mode = payload.get("mode", "implement")
         publish_branch = payload.get("publish_branch", False)
         if (
@@ -1232,7 +1239,7 @@ class Gateway:
                 result = await self._dispatch_browser_job(
                     url=target_url,
                     objective=objective.strip() if separator else "",
-                    base_ref="arch/gpt-synthesis-v1",
+                    base_ref=self.worker_base_ref,
                 )
             except (ValueError, BrowserWorkerError) as exc:
                 assistant = (
@@ -1299,7 +1306,7 @@ class Gateway:
             try:
                 result = await self._dispatch_code_job(
                     task=redact_secrets(argument),
-                    base_ref="arch/gpt-synthesis-v1",
+                    base_ref=self.worker_base_ref,
                     mode=mode,
                     publish_branch=True,
                 )
@@ -1628,6 +1635,7 @@ def create_app(
     web_search: WebSearch | None = None,
     voice_pipeline_factory: VoicePipelineFactory | None = None,
     voice_wss_config: DirectWssConfig | None = None,
+    worker_base_ref: str | None = None,
 ) -> web.Application:
     settings = settings or Settings.from_env()
     if agent is None:
@@ -1666,6 +1674,7 @@ def create_app(
         web_search=web_search,
         voice_pipeline_factory=voice_pipeline_factory,
         voice_wss_config=voice_wss_config,
+        worker_base_ref=worker_base_ref,
     )
     app = web.Application(
         client_max_size=MAX_BODY_BYTES,
