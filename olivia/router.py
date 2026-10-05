@@ -370,8 +370,21 @@ class ChatGPTPlanProvider:
                 raise ProviderConfigError(
                     f"{self.name}: invalid ChatGPT token expiry"
                 ) from exc
-            if expires_at > self._clock() + 120:
+            now = self._clock()
+            if expires_at > now + 120:
                 return str(profile["access_token"])
+            try:
+                earliest_refresh_at = float(profile.get("earliest_refresh_at") or 0)
+            except (TypeError, ValueError) as exc:
+                raise ProviderConfigError(
+                    f"{self.name}: invalid ChatGPT earliest refresh time"
+                ) from exc
+            if earliest_refresh_at > now:
+                if expires_at > now:
+                    return str(profile["access_token"])
+                raise ProviderConfigError(
+                    f"{self.name}: ChatGPT token expired before refresh became eligible"
+                )
 
             timeout = aiohttp.ClientTimeout(total=20, sock_connect=10, sock_read=15)
             async with self._session_factory(timeout=timeout) as session:
@@ -410,6 +423,20 @@ class ChatGPTPlanProvider:
             except (TypeError, ValueError):
                 expires_in = 3600
             updated["expires_at"] = int(self._clock()) + expires_in
+            if body.get("earliest_refresh_at") is not None:
+                try:
+                    refresh_floor = int(body["earliest_refresh_at"])
+                except (TypeError, ValueError) as exc:
+                    raise ProviderConfigError(
+                        f"{self.name}: invalid ChatGPT earliest refresh time"
+                    ) from exc
+                if refresh_floor < 0:
+                    raise ProviderConfigError(
+                        f"{self.name}: invalid ChatGPT earliest refresh time"
+                    )
+                updated["earliest_refresh_at"] = refresh_floor
+            else:
+                updated.pop("earliest_refresh_at", None)
             self._validate_profile(updated)
             self._save_profile(updated)
             return str(updated["access_token"])
