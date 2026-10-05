@@ -148,10 +148,10 @@ if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
   chmod 0600 "${MODEL_PATH}"
   
   cat > "${ETC_ROOT}/llama.env" <<EOF
-  LLAMA_MODEL_PATH=${MODEL_PATH}
-  LLAMA_CTX=${LLAMA_CTX}
-  LLAMA_THREADS=${LLAMA_THREADS}
-  EOF
+LLAMA_MODEL_PATH=${MODEL_PATH}
+LLAMA_CTX=${LLAMA_CTX}
+LLAMA_THREADS=${LLAMA_THREADS}
+EOF
   chown root:olivia "${ETC_ROOT}/llama.env"
   chmod 0640 "${ETC_ROOT}/llama.env"
 fi
