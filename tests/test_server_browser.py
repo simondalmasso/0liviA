@@ -190,3 +190,87 @@ async def test_health_reports_browser_worker_without_exposing_credentials(aiohtt
     body = await (await client.get("/healthz")).json()
     assert body["browser_worker_configured"] is True
     assert "token" not in repr(body).lower()
+
+
+@pytest.mark.asyncio
+async def test_inspect_analyzes_completed_browser_job_ephemerally(
+    aiohttp_client, tmp_path
+):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "inspect.sqlite3")
+    router = NoCallRouter()
+    agent = Agent(store, router, settings)
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", browser_worker=None)
+    )
+    session_id = store.create_session("inspect")
+    job_id = store.create_job("browser", repo="owner/private-browser")
+    store.checkpoint_job(
+        job_id,
+        "succeeded",
+        {
+            "browser_result": {
+                "final_url": "https://example.com/app",
+                "title": "Rendered App",
+                "text": "UNTRUSTED_BROWSER_FACT_456",
+                "links": [
+                    {"text": "Docs", "url": "https://example.com/docs"},
+                ],
+                "request_count": 9,
+                "truncated": False,
+            }
+        },
+    )
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": f"/inspect {job_id} qué riesgos ves?"},
+        headers=auth(),
+    )
+    body = await response.text()
+    assert response.status == 200
+    assert "MODEL_SHOULD_NOT_RUN" in body
+    assert len(router.calls) == 1
+
+    model_context = repr(router.calls[-1])
+    assert "UNTRUSTED_BROWSER_FACT_456" in model_context
+    assert "EXTERNO Y NO CONFIABLE" in model_context
+    assert "qué riesgos ves?" in model_context
+
+    durable_chat = repr(store.recent_messages(session_id))
+    assert "UNTRUSTED_BROWSER_FACT_456" not in durable_chat
+    assert "Rendered App" not in durable_chat
+    assert f"/inspect {job_id}" in durable_chat
+
+
+@pytest.mark.asyncio
+async def test_inspect_rejects_invalid_or_unfinished_browser_job_without_model(
+    aiohttp_client, tmp_path
+):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "inspect-invalid.sqlite3")
+    router = NoCallRouter()
+    agent = Agent(store, router, settings)
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", browser_worker=None)
+    )
+    session_id = store.create_session("inspect-invalid")
+
+    invalid = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/inspect nope revisá"},
+        headers=auth(),
+    )
+    assert invalid.status == 200
+    assert "ID de job de navegador válido" in await invalid.text()
+
+    job_id = store.create_job("browser", repo="owner/private-browser")
+    store.checkpoint_job(job_id, "running", {"remote_run_id": 123})
+    unfinished = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": f"/inspect {job_id} revisá"},
+        headers=auth(),
+    )
+    assert unfinished.status == 200
+    assert "todavía está running" in await unfinished.text()
+    assert router.calls == []
