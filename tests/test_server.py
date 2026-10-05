@@ -843,7 +843,7 @@ async def test_agentic_slash_palette_is_contextual_not_permanent_clutter(client)
     html = await (await client.get("/")).text()
     assert 'id="slashPalette"' in html
     assert "SLASH_COMMANDS" in html
-    for command in ("/read", "/search", "/research", "/code", "/repair", "/review", "/job"):
+    for command in ("/read", "/search", "/research", "/browse", "/inspect", "/code", "/repair", "/review", "/job"):
         assert command in html
     assert "backendMode!=='canonical'" in html
     assert "textInput.addEventListener('input',renderSlashPalette)" in html
