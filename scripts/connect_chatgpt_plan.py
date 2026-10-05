@@ -4,7 +4,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from olivia.chatgpt_oauth import ChatGPTOAuthError, authorize_local
+from olivia.chatgpt_oauth import ChatGPTOAuthError, authorize_local, disconnect_profile
 
 
 def parser() -> argparse.ArgumentParser:
@@ -30,10 +30,26 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="imprime la URL en vez de abrir el navegador",
     )
+    p.add_argument(
+        "--disconnect",
+        action="store_true",
+        help="revoca la sesión renovable de ChatGPT y borra el perfil local",
+    )
     return p
 
 
 async def run(args: argparse.Namespace) -> int:
+    if args.disconnect:
+        confirmed = await disconnect_profile(profile_path=args.profile)
+        if confirmed:
+            print("ChatGPT desconectado y revocación remota confirmada.")
+            return 0
+        print(
+            "Perfil local eliminado, pero la revocación remota no pudo confirmarse. "
+            "Revisá ChatGPT Settings y desconectá 0liviA si todavía aparece."
+        )
+        return 3
+
     profile, models = await authorize_local(
         profile_path=args.profile,
         host_id_path=args.host_id,
