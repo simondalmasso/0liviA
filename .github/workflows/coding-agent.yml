@@ -15,7 +15,7 @@ on:
       base_ref:
         description: "Exact branch/SHA to start from"
         required: true
-        default: "main"
+        default: "arch/gpt-synthesis-v1"
         type: string
       mode:
         description: "Bounded coding mode"
@@ -44,27 +44,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      AIDER_OPENAI_API_BASE: ${{ vars.OLIVIA_CODING_API_BASE || 'https://integrate.api.nvidia.com/v1' }}
-      AIDER_MODEL: ${{ vars.OLIVIA_CODING_MODEL || 'openai/deepseek-ai/deepseek-v4.1-flash' }}
+      AIDER_OPENAI_API_BASE: "https://integrate.api.nvidia.com/v1"
+      AIDER_MODEL: "openai/deepseek-ai/deepseek-v4.1-flash"
       AIDER_ANALYTICS_DISABLE: "true"
-      ZERO_COST_VERIFIED: ${{ vars.OLIVIA_CODING_ZERO_COST_VERIFIED || 'false' }}
       PYTHONUNBUFFERED: "1"
       BASE_REF: ${{ inputs.base_ref }}
       MODE: ${{ inputs.mode }}
       MAX_AGENT_PASSES: "2"
 
     steps:
-      - name: Fail closed without operator-owned verified-free coding route
+      - name: Fail closed without the development-only NIM key
         shell: bash
         env:
-          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
-          test "$ZERO_COST_VERIFIED" = "true"
           test -n "$AIDER_OPENAI_API_KEY"
 
       - name: Checkout exact base
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.base_ref }}
           fetch-depth: 0
@@ -74,16 +72,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          checked="$(git rev-parse --verify HEAD^{commit})"
-          if [[ "$BASE_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            test "${checked,,}" = "${BASE_REF,,}"
-          else
-            git check-ref-format --branch "$BASE_REF" >/dev/null
-            git fetch --no-tags origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
-            test "$checked" = "$(git rev-parse "refs/remotes/origin/$BASE_REF^{commit}")"
-          fi
+          git check-ref-format --allow-onelevel "$BASE_REF"
+          test -n "$(git rev-parse --verify HEAD^{commit})"
+          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
+          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -108,7 +102,7 @@ jobs:
         shell: bash
         env:
           TASK: ${{ inputs.task }}
-          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           if [ "$MODE" = "repair" ]; then
@@ -191,7 +185,7 @@ jobs:
         if: steps.verify1.outputs.needs_repair == 'true' && inputs.mode != 'review'
         shell: bash
         env:
-          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           test "$MAX_AGENT_PASSES" = "2"
@@ -261,7 +255,7 @@ jobs:
 
       - name: Upload verified agent series
         if: ${{ inputs.publish_branch }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: verified-agent-series
           path: agent-series.patch
@@ -279,7 +273,7 @@ jobs:
 
     steps:
       - name: Checkout exact base without persisted credentials
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.base_ref }}
           fetch-depth: 0
@@ -289,17 +283,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          checked="$(git rev-parse --verify HEAD^{commit})"
-          if [[ "$BASE_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            test "${checked,,}" = "${BASE_REF,,}"
-          else
-            git check-ref-format --branch "$BASE_REF" >/dev/null
-            git fetch --no-tags origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
-            test "$checked" = "$(git rev-parse "refs/remotes/origin/$BASE_REF^{commit}")"
-          fi
+          git check-ref-format --allow-onelevel "$BASE_REF"
+          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
+          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
 
       - name: Download verified agent series
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: verified-agent-series
 
