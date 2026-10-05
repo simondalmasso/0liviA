@@ -2,13 +2,14 @@
 set -euo pipefail
 
 # Install a locally authorized ChatGPT-plan profile on the 0liviA Core.
-# This script never prints credential contents.
+# This script never prints credential contents and rolls back on failed health.
 
 PROFILE_SOURCE="${1:-}"
 MODEL_OVERRIDE="${2:-}"
 STATE_ROOT="${STATE_ROOT:-/var/lib/0livia}"
 ETC_ROOT="${ETC_ROOT:-/etc/0livia}"
 TARGET="${STATE_ROOT}/private/chatgpt-plan.json"
+ENV_FILE="${ETC_ROOT}/olivia.env"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "run as root on the 0liviA host" >&2
@@ -22,14 +23,12 @@ if [[ "${OLIVIA_CHATGPT_NO_CREDIT_OVERAGE_VERIFIED:-0}" != "1" ]]; then
   echo "refusing to enable: set OLIVIA_CHATGPT_NO_CREDIT_OVERAGE_VERIFIED=1 only after checking ChatGPT Usage controls" >&2
   exit 3
 fi
+test -f "${ENV_FILE}"
 
-install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}/private"
-install -o olivia -g olivia -m 0600 "${PROFILE_SOURCE}" "${TARGET}"
-
+# Validate the staging file before touching a known-good installed profile.
 readarray -t META < <(
-  python3 - "${TARGET}" "${MODEL_OVERRIDE}" <<'PY'
+  python3 - "${PROFILE_SOURCE}" "${MODEL_OVERRIDE}" <<'PY'
 import json
-import os
 import re
 import sys
 
@@ -41,8 +40,15 @@ required = ("client_id", "access_token", "refresh_token", "expires_at", "scope")
 missing = [key for key in required if not profile.get(key)]
 if missing:
     raise SystemExit("profile missing required fields")
-if "chatgpt.tokens.use.direct" not in str(profile["scope"]).split():
-    raise SystemExit("profile does not grant ChatGPT plan usage")
+
+scopes = set(str(profile["scope"]).split())
+required_scopes = {
+    "offline_access",
+    "resource.invoke",
+    "chatgpt.tokens.use.direct",
+}
+if not required_scopes.issubset(scopes):
+    raise SystemExit("profile does not grant the complete ChatGPT plan permission")
 
 models = [
     item.get("slug")
@@ -62,12 +68,38 @@ PY
 )
 MODEL="${META[0]}"
 
-ENV_FILE="${ETC_ROOT}/olivia.env"
-test -f "${ENV_FILE}"
+backup_dir="$(mktemp -d)"
+had_target=0
+cleanup() { rm -rf "${backup_dir}"; }
+trap cleanup EXIT
+
+cp -p "${ENV_FILE}" "${backup_dir}/olivia.env"
+if [[ -f "${TARGET}" ]]; then
+  had_target=1
+  cp -p "${TARGET}" "${backup_dir}/chatgpt-plan.json"
+fi
+
+rollback() {
+  echo "ChatGPT plan activation failed; restoring previous 0liviA configuration." >&2
+  cp -p "${backup_dir}/olivia.env" "${ENV_FILE}"
+  chown root:olivia "${ENV_FILE}"
+  chmod 0640 "${ENV_FILE}"
+  if (( had_target == 1 )); then
+    install -o olivia -g olivia -m 0600 "${backup_dir}/chatgpt-plan.json" "${TARGET}"
+  else
+    rm -f "${TARGET}"
+  fi
+  systemctl restart olivia >/dev/null 2>&1 || true
+}
+
+install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}/private"
+install -o olivia -g olivia -m 0600 "${PROFILE_SOURCE}" "${TARGET}"
 
 python3 - "${ENV_FILE}" "${TARGET}" "${MODEL}" <<'PY'
 import json
+import os
 import sys
+import tempfile
 
 env_path, profile_path, model = sys.argv[1:4]
 with open(env_path, "r", encoding="utf-8") as fh:
@@ -110,13 +142,26 @@ for line in lines:
 if not replaced:
     new_lines.append("OLIVIA_PROVIDERS_JSON=" + encoded)
 
-with open(env_path, "w", encoding="utf-8") as fh:
-    fh.write("\n".join(new_lines) + "\n")
+directory = os.path.dirname(env_path) or "."
+fd, tmp = tempfile.mkstemp(prefix=".olivia.env.", dir=directory, text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(new_lines) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, env_path)
+finally:
+    if os.path.exists(tmp):
+        os.unlink(tmp)
 PY
 
 chown root:olivia "${ENV_FILE}"
 chmod 0640 "${ENV_FILE}"
-systemctl restart olivia
+
+if ! systemctl restart olivia; then
+  rollback
+  exit 1
+fi
 
 for _ in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
@@ -126,5 +171,10 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-echo "0liviA no volvió a healthz después del restart; revisá journalctl -u olivia" >&2
+rollback
+if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+  echo "Se restauró la configuración anterior correctamente." >&2
+else
+  echo "Rollback aplicado, pero 0liviA sigue sin responder; revisá journalctl -u olivia." >&2
+fi
 exit 1
