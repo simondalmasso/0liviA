@@ -116,6 +116,7 @@ class Gateway:
         self.locale_buffer_chars = max(1, locale_buffer_chars)
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
         self.coding_worker = coding_worker
+        self.coding_base_ref = os.getenv("OLIVIA_CODING_BASE_REF", "main").strip() or "main"
         self.web_reader = web_reader or SafeWebReader()
         self.web_search = web_search
         self._turns: dict[str, ActiveTurn] = {}
@@ -688,7 +689,7 @@ class Gateway:
 
         payload = await self._read_json(request)
         task = payload.get("task")
-        base_ref = payload.get("base_ref", "arch/gpt-synthesis-v1")
+        base_ref = payload.get("base_ref", self.coding_base_ref)
         mode = payload.get("mode", "implement")
         publish_branch = payload.get("publish_branch", False)
         if (
@@ -962,7 +963,7 @@ class Gateway:
             try:
                 result = await self._dispatch_code_job(
                     task=redact_secrets(argument),
-                    base_ref="arch/gpt-synthesis-v1",
+                    base_ref=self.coding_base_ref,
                     mode=mode,
                     publish_branch=True,
                 )
