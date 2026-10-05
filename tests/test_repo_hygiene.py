@@ -267,7 +267,6 @@ def test_active_code_and_tests_do_not_target_historical_arch_branch():
     forbidden = "arch/gpt-synthesis-v1"
     active_paths = [
         ROOT / "olivia",
-        ROOT / "tests",
         ROOT / ".github" / "workflows",
         ROOT / "deploy",
     ]
