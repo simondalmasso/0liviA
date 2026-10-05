@@ -29,7 +29,7 @@ class BrowserJobRequest:
 
 
 class GitHubActionsBrowserWorker:
-    """Dispatches bounded JS-browser jobs to a public GitHub Actions runner."""
+    """Dispatches bounded JS-browser jobs through a private GitHub Actions repository."""
 
     def __init__(
         self,
