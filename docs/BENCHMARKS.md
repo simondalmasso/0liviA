@@ -119,17 +119,26 @@ This closes the controlled public-page JS-rendering/artifact-retrieval gate only
 
 ## Mobile UI smoke
 
-Status: **PASS** for the current shell at the two required narrow viewports.
+Status: **PASS** for the current mobile shell, protected first-run registration and fullscreen Voice at both required narrow viewports.
 
-Durable evidence:
+Final durable evidence:
 - workflow: `0liviA Mobile UI Smoke Once`;
-- run: `37258626574`;
-- source SHA: `afcdce10193e77cb91333fc314d9c27dcc431d8b`;
-- runtime: Python 3.12 + Playwright 1.55.0 + Google Chrome 154.0.8037.57;
+- run: `37261271848`;
+- functional product SHA under test: `85596ea143e3561cc99f3b7cebfba547cd73539e` (the workflow head `76839bcd...` differs only by its trigger file);
+- runtime: Python 3.12 + Playwright 1.55.0 + Chromium;
 - viewports: `360x800` and `430x900`, mobile/touch context;
-- assertions: no horizontal document/body overflow, rail width within 44–54 px, composer flush to viewport bottom, Session rail button opens drawer, final drawer bounds remain within viewport;
-- artifact: `mobile-ui-smoke`, artifact ID `11323133397`;
-- artifact digest: `sha256:35a0b1deb570cb73c8125aa323935b0e2536ac24cc284a8838dd2caae2cf7290`;
-- artifact contains `mobile-ui-smoke.json` plus screenshots for both viewports.
+- artifact: `olivia-mobile-ui-smoke`, artifact ID `11324552562`;
+- artifact digest: `sha256:ce6ad8d63b27fa51788cd61daae2fbecc382e16b9488a0c7538395c4afdfba8a`;
+- artifact contains six screenshots plus `report.json`: Session, Voice and protected `Registrate` at both viewports.
 
-The first smoke exposed a real closed-drawer pointer interception bug; the UI was fixed with closed/open pointer-event isolation. A second smoke exposed only a test timing issue during the 220 ms drawer transition; the final stable-position smoke above passed.
+Verified geometry:
+- document/body width exactly matches the viewport: no horizontal overflow;
+- rail is 48 px wide at both target sizes;
+- composer remains fully inside the viewport and flush to the bottom;
+- Session drawer stays fully inside the viewport;
+- Live Voice is exactly fullscreen at both sizes;
+- protected first-run `Registrate` card, email/password fields and CTA remain fully inside the viewport;
+- setup token is consumed from the URL fragment and the visible hash is cleared;
+- zero browser `pageerror` events in both normal and auth pages.
+
+This certifies the current 360–430 px layout and auth/Voice geometry. It does not replace real-device keyboard, safe-area/notch or mobile-network soak testing on the eventual production host.
