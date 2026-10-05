@@ -67,3 +67,10 @@ def test_caddy_overwrites_client_ip_header_for_login_throttling():
     expected = "header_up X-Olivia-Client-IP {http.request.remote.host}"
     assert expected in caddy
     assert expected in bootstrap
+
+
+def test_chatgpt_plan_installer_requires_provider_health_confirmation():
+    assert '"provider_ready"' in CHATGPT_INSTALLER
+    assert '"provider_catalog"' in CHATGPT_INSTALLER
+    assert '"chatgpt-plan"' in CHATGPT_INSTALLER
+    assert "installed ChatGPT plan provider is not ready" in CHATGPT_INSTALLER
