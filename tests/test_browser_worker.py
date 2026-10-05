@@ -184,3 +184,34 @@ def test_public_browser_workflow_is_read_only_and_prompt_private():
     assert "127.0.0.0/8" in workflow
     assert "::1/128" in workflow
     assert "169.254.0.0/16" in workflow
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/?token=abc",
+        "https://example.com/?api_key=abc",
+        "https://example.com/?sessionid=abc",
+        "https://example.com/?signature=abc",
+        "https://example.com/?code=abc",
+    ],
+)
+def test_browser_job_rejects_sensitive_query_parameters(url):
+    with pytest.raises(ValueError, match="sensitive query"):
+        GitHubActionsBrowserWorker.validate_request(
+            BrowserJobRequest(
+                url=url,
+                objective="",
+                base_ref="arch/gpt-synthesis-v1",
+            )
+        )
+
+
+def test_browser_job_allows_ordinary_public_query_parameters():
+    GitHubActionsBrowserWorker.validate_request(
+        BrowserJobRequest(
+            url="https://example.com/search?q=olivia&page=2",
+            objective="",
+            base_ref="arch/gpt-synthesis-v1",
+        )
+    )
