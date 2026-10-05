@@ -97,26 +97,11 @@ For an always-on local model to become the normal chat/coding route, record:
 
 The Oracle A1 2 OCPU / 12 GB profile must not claim Muse Glimmer compatibility unless an actual quantized build fits and passes the same quality/latency gates.
 
-
 ## Browser worker smoke
 
+Status: **PASS** for the bounded read-only JavaScript renderer and artifact retrieval. This is not approval for authenticated or write automation.
+
 Verified 2026-10-05 on a standard public-repository GitHub-hosted `ubuntu-latest` runner.
-
-Evidence:
-- workflow run: `37257844129`;
-- head: `1a2ec658f3142795e53bf522399b5d56bc98ece9`;
-- target: `https://example.com/`;
-- result: HTTP 200, title `Example Domain`, bounded text, one public link, request_count=2;
-- artifact: `browser-smoke-result` / artifact id `11323124125`;
-- artifact digest: `sha256:677f7d9a0bc00e4cf71565863cd6b6f96853f50e04bb89a977118acd7554779a`;
-- downloaded archive contained `browser-result.json` and a valid rendered screenshot.
-
-This closes the read-only JS-rendering/artifact-retrieval smoke gate. It does **not** authorize click/write/browser-login automation.
-
-
-## Browser worker controlled smoke
-
-Status: **PASS** for the bounded read-only JS renderer, not for authenticated/write automation.
 
 Durable evidence:
 - workflow: `0liviA Browser Smoke Once`;
@@ -124,8 +109,9 @@ Durable evidence:
 - source SHA: `1a2ec658f3142795e53bf522399b5d56bc98ece9`;
 - target: `https://example.com/`;
 - runtime: Python 3.12 + Playwright 1.55.0 + Google Chrome 154.0.8037.57;
-- assertions: final URL remained on `example.com`, HTTP 200, title contained `Example Domain`, request count stayed within the worker bound, extracted text stayed <= 30k chars;
+- result: HTTP 200, title `Example Domain`, request_count=2, extracted text <= 30k chars, one public link;
 - artifact: `browser-smoke-result`, artifact ID `11323124125`;
-- artifact digest: `sha256:677f7d9a0bc00e4cf71565863cd6b6f96853f50e04bb89a977118acd7554779a`.
+- artifact digest: `sha256:677f7d9a0bc00e4cf71565863cd6b6f96853f50e04bb89a977118acd7554779a`;
+- downloaded archive contained `browser-result.json` and a valid rendered screenshot.
 
-This closes the controlled public-page JavaScript rendering smoke only. It does not certify login flows, write/click automation, arbitrary-site compatibility or production browser credentials.
+This closes the controlled public-page JS-rendering/artifact-retrieval gate only. It does not certify login flows, click/write actions, arbitrary-site compatibility or production browser credentials.
