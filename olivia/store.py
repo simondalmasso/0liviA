@@ -188,6 +188,7 @@ class Store:
         if current_version < SCHEMA_VERSION:
             self._migrate_workspace_schema()
             self._conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        self._ensure_workspace_invariants()
 
     def _migrate_workspace_schema(self) -> None:
         with self._lock:
@@ -210,6 +211,35 @@ class Store:
             self._conn.execute(
                 "UPDATE sessions SET project_id=? WHERE project_id IS NULL OR project_id=''",
                 (DEFAULT_PROJECT_ID,),
+            )
+
+    def _ensure_workspace_invariants(self) -> None:
+        with self._lock:
+            self._conn.executescript(
+                """
+                CREATE TRIGGER IF NOT EXISTS sessions_project_insert_guard
+                BEFORE INSERT ON sessions
+                WHEN NEW.project_id IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM projects WHERE id=NEW.project_id)
+                BEGIN
+                    SELECT RAISE(ABORT, 'project not found');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS sessions_project_update_guard
+                BEFORE UPDATE OF project_id ON sessions
+                WHEN NEW.project_id IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM projects WHERE id=NEW.project_id)
+                BEGIN
+                    SELECT RAISE(ABORT, 'project not found');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS projects_delete_guard
+                BEFORE DELETE ON projects
+                WHEN EXISTS (SELECT 1 FROM sessions WHERE project_id=OLD.id)
+                BEGIN
+                    SELECT RAISE(ABORT, 'project in use');
+                END;
+                """
             )
 
     def project_exists(self, project_id: str) -> bool:
