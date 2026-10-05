@@ -322,6 +322,31 @@ Experiment order:
 5. After a successful live smoke, add the provider as disabled-by-default `free_hard_cap` and expose it to the router health/circuit-breaker system.
 6. Add automatic provider removal from routing when the service is stopped/expired, so chat never hangs waiting for a dead GPU lane.
 
+### Intern Discovery / Intern InkStone as a GPU burst backend
+Source: https://discovery.intern-ai.org.cn/docs/workbench/reasoning/
+
+Official platform documentation confirms:
+- cloud development machines can expose CPU/GPU/NPU resources, including NVIDIA-class GPU options, and mount persistent `/data` storage;
+- inference services can deploy model folders from the platform cloud drive and expose a callable POST endpoint with a per-service credential;
+- Hugging Face text-generation is a supported inference-service model format;
+- development machines and inference services consume platform compute points while running, and a single scheduled runtime may be set for up to 7×24 hours;
+- stopped resources stop consuming compute points and can later be restarted.
+
+Fit for 0liviA:
+- **strong GPU burst candidate** for Muse Glimmer and other heavyweight challengers;
+- Muse Glimmer's official Q4_K_M GGUF is ~17 GB, so it is practical on a GPU development machine with llama.cpp when the selected GPU has enough VRAM;
+- the documented hosted Inference Service path is preferable for 0liviA because it exposes a remote API, but the platform currently documents Hugging Face text-generation rather than GGUF as the managed serving format;
+- do not assume that a llama.cpp server started manually inside a development machine is externally reachable until ingress/networking is proven;
+- the outer Inference Service request uses `call_api_path`, `call_api_credential`, and a JSON-string `payload`, so 0liviA must not guess the response schema before a real Muse service is created and tested;
+- service credentials belong only in server-side environment/configuration, never browser storage or chat.
+
+Zero-cost status:
+- **free/unverified**, not `free_hard_cap` yet;
+- official docs prove compute-point accounting and quota requests, but do not establish a no-money/no-overage contract;
+- therefore this provider must remain opt-in and excluded by 0liviA's hard-zero-cost router until account-level terms and exhaustion behavior are verified.
+
+Decision: prepare the provider abstraction, but do not activate automatic routing until a real service proves model compatibility, response shape, endpoint reachability, latency, and strict no-overage behavior.
+
 ## Required benchmarks before architecture freeze
 
 Measure on the actual Oracle A1 VM:
