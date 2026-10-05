@@ -39,7 +39,6 @@ def _all_public_addresses(host: str) -> bool:
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
-    parser.add_argument("--objective", default="")
     parser.add_argument("--output", default="browser-result.json")
     parser.add_argument("--screenshot", default="browser-shot.png")
     args = parser.parse_args()
@@ -69,6 +68,9 @@ async def main() -> None:
                 return
 
             request = route.request
+            if request.method not in {"GET", "HEAD"}:
+                await route.abort("blockedbyclient")
+                return
             raw = request.url
             scheme = urlsplit(raw).scheme.lower()
             if scheme in {"data", "blob", "about"}:
@@ -155,7 +157,6 @@ async def main() -> None:
                 "truncated": truncated,
                 "links": safe_links,
                 "request_count": request_count,
-                "objective": str(args.objective or "")[:4_000],
                 "screenshot": screenshot,
             }
             Path(args.output).write_text(
