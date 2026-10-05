@@ -2,6 +2,13 @@ name: 0liviA Mobile UI Smoke Once
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "web/**"
+      - "scripts/ui_mobile_smoke.py"
+      - ".github/workflows/ui-mobile-smoke-once.yml"
   push:
     branches:
       - main
