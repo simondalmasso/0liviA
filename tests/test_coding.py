@@ -16,7 +16,7 @@ def test_coding_worker_validates_fixed_repo_and_refs(monkeypatch):
     worker.validate_request(
         CodingJobRequest(
             task="Fix the failing tests.",
-            base_ref="arch/gpt-synthesis-v1",
+            base_ref="main",
             mode="repair",
             publish_branch=False,
         )
