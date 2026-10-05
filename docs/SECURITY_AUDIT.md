@@ -41,6 +41,12 @@ The active Gateway has no `POST /api/memory` route. Durable explicit memory prom
 ### Worker SSE newline claim
 The active Worker uses JavaScript string/template escape sequences such as `\n\n`; those evaluate to real LF delimiters at runtime. Treat this as a false positive unless a runtime byte-level smoke shows otherwise.
 
+### AUTH-SURFACE-REGRESSION — FIXED / CI-gated
+All sensitive API routes are covered by an unauthenticated regression gate. The only intentionally public HTTP surfaces are the static UI, health, registration/login and logout; first-owner registration can additionally require the one-shot setup token. Login throttling state is bounded and purged so hostile IP churn cannot grow the in-memory map without limit.
+
+### SEARCH-BILLING-FALLBACK — FIXED / fail closed
+Cloudflare Web Search remains disabled unless zero-cost behavior is explicitly verified. When enabled with BYOK, requests carry both a required `byokAlias` and `cf-aig-no-wholesale: true`, so missing provider credentials fail rather than falling back to AI Gateway wholesale credits.
+
 ### SECURITY-BASELINE-CHECKLIST — ENFORCED IN BRANCH
 The owner security checklist is now represented by code/tests rather than UI assumptions:
 - scrypt password verifiers; no plaintext password storage;
