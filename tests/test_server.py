@@ -407,8 +407,10 @@ async def test_coding_job_fails_closed_without_worker(aiohttp_client, tmp_path):
 async def test_ui_preserves_partial_stream_without_requeue(client):
     response = await client.get("/")
     html = await response.text()
-    assert "let buffer='',answer='',streamError=null,sawDone=false;" in html
+    assert "streamError=null" in html
+    assert "sawDone=false" in html
     assert "if(raw==='[DONE]'){sawDone=true;return}" in html
+    assert "if(answer.trim()&&(streamError||!sawDone))" in html
     assert "assistant.status='partial'" in html
     assert "userMessage.status='synced'" in html
     assert "if(streamError||!sawDone)throw new Error" in html
