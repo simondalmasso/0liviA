@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import struct
 
+import pytest
+
 from olivia.voice.adapters.endpointing import AdaptiveSilenceEndpoint
 from olivia.voice.adapters.transport import DirectWssConfig, WireCodec
 from olivia.voice.adapters.vad import EnergyVAD
@@ -59,3 +61,17 @@ def test_direct_wss_config_is_small_and_absolute():
     cfg = DirectWssConfig()
     assert cfg.path == "/api/voice/ws"
     assert cfg.max_audio_frame_bytes == 64 * 1024
+
+
+def test_audio_wire_rejects_missing_required_header_fields():
+    raw_header = b'{"seq":0,"sample_rate":16000,"channels":1}'
+    payload = struct.pack(">I", len(raw_header)) + raw_header + pcm(0)
+    with pytest.raises(ValueError, match="invalid audio header fields"):
+        WireCodec.decode_audio(payload)
+
+
+def test_audio_wire_rejects_invalid_required_header_types():
+    raw_header = b'{"turn_id":"t","seq":"nope","sample_rate":16000,"channels":1}'
+    payload = struct.pack(">I", len(raw_header)) + raw_header + pcm(0)
+    with pytest.raises(ValueError, match="invalid audio header fields"):
+        WireCodec.decode_audio(payload)
