@@ -1687,3 +1687,11 @@ async def test_voice_wss_rejects_second_connection_for_same_session(aiohttp_clie
             break
         await asyncio.sleep(0.01)
     assert session_id not in client.app["gateway"]._voice_sessions
+
+
+@pytest.mark.asyncio
+async def test_protected_registration_ui_explains_setup_link(client):
+    html = await (await client.get("/")).text()
+    assert "registration_protected" in html
+    assert "Abrí el enlace de instalación inicial" in html
+    assert "r.status===403&&registering" in html
