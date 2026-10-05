@@ -1,0 +1,34 @@
+[Unit]
+Description=0liviA local llama.cpp inference
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=olivia
+Group=olivia
+WorkingDirectory=/opt/llama
+EnvironmentFile=/etc/0livia/llama.env
+Environment=LD_LIBRARY_PATH=/opt/llama
+ExecStart=/opt/llama/llama-server -m ${LLAMA_MODEL_PATH} --host 127.0.0.1 --port 11434 --alias local-qwen -c ${LLAMA_CTX} -t ${LLAMA_THREADS} --parallel 1 --jinja --reasoning off --reasoning-format none --no-ui
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+KillSignal=SIGINT
+
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+ReadOnlyPaths=/opt/llama
+ReadOnlyPaths=/var/lib/0livia/models
+
+[Install]
+WantedBy=multi-user.target

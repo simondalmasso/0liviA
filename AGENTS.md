@@ -11,7 +11,7 @@ Build a browser-first personal AI workspace that can chat, code, research, use t
 1. Normal operation must not require the user's PC to be on or remotely accessible.
 2. Primary available compute is Oracle Cloud Free Tier in São Paulo: `VM.Standard.A1.Flex`, max 2 OCPU / 12 GB RAM. Treat this as a hard benchmark target, not a theoretical spec.
 3. GitHub is the durable source of truth.
-4. Cloudflare is **deployment infrastructure only**. Do not put normal chat/model/memory/voice traffic through Workers, Durable Objects, Tunnel or a Cloudflare proxy unless the user explicitly changes this rule.
+4. Cloudflare is **not the canonical chat/model/memory/voice backend**. A thin frontend or explicitly temporary bridge may exist, but it must be deployment-gated, fail closed on cost uncertainty, and never become the durable source of truth without a new ADR/user decision.
 5. Avoid paid SaaS and paid inference as mandatory dependencies. Free providers may be used only behind replaceable routing/fallback.
 6. Do not use reverse-engineered session/cookie hacks to impersonate commercial APIs.
 7. Keep model, harness, memory, browser and voice layers replaceable.
@@ -46,3 +46,19 @@ Aim for a one-button browser conversation with:
 - no Cloudflare dependency in the per-turn media/intelligence path.
 
 Measure actual time-to-first-transcript, LLM first token, time-to-first-audio, interruption cancellation latency, CPU/RAM and session stability.
+
+
+## Local-device boundary
+
+- Normal operation must not read from or write to the owner's PC filesystem.
+- The browser is a thin client: UI, microphone capture and playback only. No File System Access API, local shell, localhost agent, Desktop Commander, browser extension or local background service is part of 0liviA runtime.
+- Durable writes go only to Oracle runtime storage, GitHub, or explicitly configured remote storage.
+- browser storage may be used only as a disposable bridge cache; it is never the durable source of truth for projects, chats, library, memory, jobs or checkpoints.
+- Production session/project state must be recoverable from the cloud after authentication even if browser storage is cleared or the user changes devices.
+
+## Language contract
+
+- Default user-facing language is Spanish (Argentina, es-AR) unless the user explicitly asks for another language.
+- Providers do not control locale. The kernel owns it.
+- Before releasing/TTS-speaking a new answer, buffer a small initial segment and run a lightweight language gate. If the segment is not compatible with the requested locale, cancel that provider turn and retry before exposing it.
+- Never splice two providers into one visible answer. Failover is allowed only before the first validated visible segment.

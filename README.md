@@ -1,71 +1,88 @@
 # 0liviA 🎲
 
-0liviA is a **personal super-AI**: one persistent cloud intelligence for its owner, combining conversation, coding, repository control, research, tools, memory, autonomous execution and live voice. It is not a generic SaaS workspace, a team product, or a thin chatbot wrapper.
+**0liviA is a cloud-first personal AI for one owner.** It combines conversation, coding, repositories, research, tools, durable memory, resumable jobs and live voice behind replaceable providers. It is not a generic SaaS workspace and not a wrapper around one model.
 
-The target is deliberately hard: **always available, browser-first, persistent, fast, model-agnostic and $0 to operate within free-tier limits**. The user's PC must not be required for normal operation.
+## Product invariants
 
-## Non-negotiable constraints
+- normal operation does not depend on the owner's PC;
+- recurring infrastructure target: **USD 0**;
+- if no verified-free route is available, fail/degrade before spending;
+- GitHub is the durable source of truth for code, architecture and checkpoints;
+- runtime conversation/memory/project state belongs server-side;
+- providers, browser workers, coding workers and voice engines remain replaceable;
+- no reverse-engineered consumer-session APIs;
+- no secrets in Git, prompts or durable memory;
+- default user-facing locale: **es-AR**.
 
-- **Cloud-only runtime:** normal use must continue with the user's PC turned off.
-- **Budget:** target recurring infrastructure cost is USD 0.
-- **Primary host available:** Oracle Cloud Free Tier, `VM.Standard.A1.Flex`, up to **2 OCPU / 12 GB RAM**, São Paulo.
-- **GitHub is the durable source of truth:** code, architecture, agent instructions and checkpoints live here.
-- **Cloudflare is for application deployment only.** Normal chat, memory, voice and agent turns must not depend on Cloudflare Workers/Tunnel/runtime.
-- **Browser-first:** text chat and one-button live voice should work from desktop/mobile browsers.
-- **Model-agnostic:** no single model/provider may be a permanent dependency; routing/fallback is expected.
-- **Persistent memory/context:** conversations, project state, decisions and learned operating patterns should survive restarts and model swaps.
-- **High autonomy with evidence:** agents should plan, execute, verify, recover and leave current checkpoints without claiming unverified success.
-- **Security:** least-privilege credentials, no secrets in prompts/memory/git, explicit approval for destructive or high-impact actions.
+## Canonical architecture
 
-## Current research tracks
+`browser / mobile`
+→ direct HTTPS/WSS
+→ **small Python 0liviA Core**
+→ SQLite WAL + FTS5
+→ direct provider router
+→ isolated on-demand workers for coding, research/browser and voice
+→ GitHub for durable engineering state.
 
-The repository is intentionally not committed to one stack yet. The council should evaluate and benchmark candidates rather than inherit a predetermined architecture.
-
-### Agent / harness / orchestration
-- Agent Zero — https://github.com/agent0ai/agent-zero
-- DeepSeek Harness — https://github.com/deepseek-ai/deepseek-harness
-- OpenCode — https://github.com/anomalyco/opencode
-- OmO / oh-my-openagent — https://github.com/code-yeongyu/oh-my-openagent
-- Tenet — https://github.com/JeiKeiLim/tenet
-- HarnessRouter — https://github.com/HarnessRouter/harnessrouter
-- Letta Code — https://github.com/letta-ai/letta-code
-- Monomind — https://github.com/monoes/monomind
-- free-claude-code — https://github.com/Alishahryar1/free-claude-code
-- GitHub MCP Server — https://github.com/github/github-mcp-server
-- MCP ecosystem — https://github.com/mcp
-
-### Live voice / realtime
-- GhostCall — https://www.ghostcall.space/
-- LiveKit Agents — https://github.com/livekit/agents
-- StreamCore — https://github.com/streamcoreai/streamcore-server
-- Moonshine Voice — https://github.com/moonshine-ai/moonshine
-- faster-whisper — https://github.com/SYSTRAN/faster-whisper
-- Silero VAD — https://github.com/snakers4/silero-vad
-- Kokoro — https://github.com/hexgrad/kokoro
-- MOSS-TTS-Nano — https://github.com/OpenMOSS/MOSS-TTS-Nano
-- Fish Speech — https://github.com/fishaudio/fish-speech
-- OpenVoice — https://github.com/myshell-ai/OpenVoice
-- CosyVoice — https://github.com/QwenAudio/CosyVoice
-
-## Start here
-
-**Council / implementation order:** [`SUPER_ORDER_END_TO_END.md`](./SUPER_ORDER_END_TO_END.md)
-
-Give that single file to any zero-context LLM/coding agent with GitHub access. It is intentionally architecture-neutral and instructs the agent to research stronger alternatives and implement evidence-backed improvements directly in this repository.
+Cloudflare may host a thin public shell or temporary bridge, but it is not the canonical chat/memory/voice backend. The current Worker bridge is disabled by default and remains deployment-gated; inference/read routes stay unavailable until identity and zero-cost/account guards are explicitly proven.
 
 ## Repository map
 
-- `SUPER_ORDER_END_TO_END.md` — canonical zero-context council + end-to-end build order for building the personal super-AI.
-- `AGENTS.md` — invariant operating contract for any coding/research agent.
-- `docs/COUNCIL_HANDOFF.md` — compact zero-context handoff for independent LLM council review.
-- `docs/RESEARCH.md` — verified facts, candidates, caveats and open questions.
-- `docs/DECISIONS.md` — append-only architectural decisions once evidence justifies them.
+- `olivia/` — canonical Python control plane, router, memory/jobs, research contracts and voice contracts
+- `olivia/voice/` — transport/speech contracts and benchmark scaffolding
+- `web/` — current violet/blue/cyan browser product shell
+- `cloudflare/` — temporary public bridge; not durable product state
+- `deploy/` — Oracle A1 deployment/runtime material
+- `.github/workflows/coding-agent.yml` — isolated burst coding worker
+- `tests/` — behavioral, security and repository-hygiene gates
+- `docs/` — architecture, decisions, research and current implementation state
+- `docs/history/` — superseded council/build prompts preserved as evidence
 
-## Status
+## Implemented
 
-**Phase:** architecture research / council review  
-**Default branch:** `main`  
-**Deployment:** not started  
-**Production claims:** none
+- SQLite WAL/FTS5 sessions, projects, library, memories, jobs, checkpoints and events;
+- authenticated canonical workspace API with Projects/Chats/Library/Memory durable server-side and IndexedDB used only as a browser cache/migration layer;
+- provider health/quota state with circuit breaker, half-open recovery and redacted telemetry;
+- pre-visible-output failover with cancellation/partial-answer safety;
+- aiohttp browser/API gateway with first-run single-owner registration, email+password login, Secure/HttpOnly/SameSite cookies, login throttling, revocable remembered devices, bounded request bodies and one active turn per session;
+- canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
+- replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
+- bounded `/research` tool: one search plus safe reads of up to three results, injected only as ephemeral untrusted context;
+- violet/blue/cyan rail UI with Chats, Projects, Library, Memory, Config and Session surfaces, plus fullscreen Live Voice; responsive gates cover 360–430 px mobile layouts;
+- isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
+- review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
+- coding execution job has read-only repository permission; optional publication happens in a separate write-capable job after verification;
+- voice transport/pipeline contracts, sequence/cancel/barge-in tests and benchmark recorder;
+- production bootstrap with immutable source SHA, pinned artifact SHA-256 verification and first-run owner registration;
+- CI on Python 3.11 and 3.12 plus shell, JS and Worker syntax gates.
 
-Do not treat candidate links as approved dependencies. Benchmark against the actual Oracle Free Tier machine and preserve replaceability.
+## Still gated
+
+- Oracle A1 production availability and target-host benchmarks;
+- production JS-capable browser automation/research worker beyond safe `/read`;
+- a production `/search` provider only after its exact account/provider route is proven zero-cost;
+- production STT/VAD/TTS selection and es-AR voice acceptance;
+- production entitlement for the preferred DeepSeek NIM coding/model route;
+- exact-SHA public deployment and production smoke;
+- any Cloudflare inference/search path whose account-level zero-cost behavior is not independently verified.
+
+## Development
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -e '.[dev]'
+pytest -q
+```
+
+Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memory SQLite files inside the repository.
+
+## Canonical documents
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Architecture decisions](docs/DECISIONS.md)
+- [Current implementation checkpoint](docs/IMPLEMENTATION_PLAN.md)
+- [Security audit reconciliation](docs/SECURITY_AUDIT.md)
+- [Research evidence](docs/RESEARCH.md)
+- [Benchmark gates](docs/BENCHMARKS.md)
+- [Canonical build mandate](SUPER_ORDER_END_TO_END.md)

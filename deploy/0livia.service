@@ -1,0 +1,35 @@
+[Unit]
+Description=0liviA personal AI core
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=olivia
+Group=olivia
+WorkingDirectory=/opt/0livia/current
+EnvironmentFile=/etc/0livia/olivia.env
+ExecStart=/opt/0livia/venv/bin/python -m olivia.server
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=20
+KillSignal=SIGINT
+
+# Runtime state is remote and durable; the owner's PC is never mounted/used.
+ReadWritePaths=/var/lib/0livia
+ReadOnlyPaths=/opt/0livia/current
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

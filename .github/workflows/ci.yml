@@ -1,0 +1,45 @@
+name: core-ci
+
+on:
+  push:
+    branches:
+      - main
+      - arch/**
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Compile
+        run: python -m compileall -q olivia tests
+      - name: Check deployment scripts
+        run: bash -n deploy/*.sh
+      - name: Check browser script syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path("web/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected exactly one inline script, got {len(scripts)}")
+          Path("/tmp/olivia-ui.js").write_text(scripts[0], encoding="utf-8")
+          PY
+          node --check /tmp/olivia-ui.js
+      - name: Check Cloudflare Worker syntax
+        run: node --check cloudflare/worker.mjs
+      - name: Test
+        run: pytest -q

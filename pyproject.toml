@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "0livia-core"
+version = "0.1.0"
+description = "Thin control plane for 0liviA, a personal cloud super-AI."
+requires-python = ">=3.11"
+dependencies = [
+  "aiohttp>=3.10,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.24,<1",
+  "pytest-aiohttp>=1.0,<2",
+]
+
+[tool.setuptools.packages.find]
+include = ["olivia*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]
