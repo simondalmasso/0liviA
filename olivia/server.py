@@ -44,6 +44,7 @@ OWNER_SESSION_TTL_S = 12 * 60 * 60
 OWNER_REMEMBER_TTL_S = 30 * 24 * 60 * 60
 LOGIN_FAILURE_LIMIT = 5
 LOGIN_FAILURE_WINDOW_S = 60
+LOGIN_FAILURE_KEYS_MAX = 2048
 
 LocaleValidator = Callable[[str], bool]
 VoicePipelineFactory = Callable[[AiohttpWebSocketTransport, str], VoicePipeline]
@@ -227,9 +228,29 @@ class Gateway:
                 return str(client_ip)
         return remote[:128] or "unknown"
 
+    def _prune_login_failures(self, now: float) -> None:
+        stale = []
+        for key, stamps in self._login_failures.items():
+            recent = [stamp for stamp in stamps if now - stamp < LOGIN_FAILURE_WINDOW_S]
+            if recent:
+                self._login_failures[key] = recent[-LOGIN_FAILURE_LIMIT:]
+            else:
+                stale.append(key)
+        for key in stale:
+            self._login_failures.pop(key, None)
+        overflow = len(self._login_failures) - LOGIN_FAILURE_KEYS_MAX
+        if overflow > 0:
+            oldest = sorted(
+                self._login_failures.items(),
+                key=lambda item: item[1][-1] if item[1] else 0.0,
+            )
+            for key, _ in oldest[:overflow]:
+                self._login_failures.pop(key, None)
+
     def _login_retry_after(self, request: web.Request) -> int:
         key = self._login_key(request)
         now = time.monotonic()
+        self._prune_login_failures(now)
         recent = [
             stamp
             for stamp in self._login_failures.get(key, [])
@@ -246,6 +267,7 @@ class Gateway:
     def _record_login_failure(self, request: web.Request) -> None:
         key = self._login_key(request)
         now = time.monotonic()
+        self._prune_login_failures(now)
         recent = [
             stamp
             for stamp in self._login_failures.get(key, [])
