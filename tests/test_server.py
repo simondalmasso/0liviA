@@ -1452,3 +1452,42 @@ async def test_login_rate_key_ignores_spoofed_x_forwarded_for(aiohttp_client, tm
         headers={"X-Forwarded-For": "198.51.100.77"},
     )
     assert blocked.status == 429
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_current_remembered_device_cookie(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "logout-revoke.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": True,
+            "device_name": "Chrome · Windows",
+        },
+    )
+    payload = await login.json()
+    device_id = payload["device_id"]
+    cookie = login.cookies["olivia_owner"].value
+    assert store.trusted_device_active(device_id) is True
+
+    logout = await client.post(
+        "/api/auth/logout",
+        headers={"Cookie": f"olivia_owner={cookie}"},
+    )
+    assert logout.status == 200
+    assert store.trusted_device_active(device_id) is False
+    assert client.app["gateway"]._owner_cookie_valid(cookie) is False
