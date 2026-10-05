@@ -181,3 +181,39 @@ def test_store_database_file_is_owner_only(tmp_path: Path):
         assert path.stat().st_mode & 0o777 == 0o600
     finally:
         store.close()
+
+
+def test_store_sets_schema_version(tmp_path: Path):
+    path = tmp_path / "versioned.sqlite3"
+    store = Store(path)
+    store.close()
+
+    conn = sqlite3.connect(path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_store_rejects_future_schema_version(tmp_path: Path):
+    path = tmp_path / "future.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA user_version=999")
+    conn.execute("CREATE TABLE future_only(value TEXT)")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(ValueError, match="newer schema"):
+        Store(path)
+
+    conn = sqlite3.connect(path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 999
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='future_only'"
+        ).fetchone() == ("future_only",)
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
+        ).fetchone() is None
+    finally:
+        conn.close()
