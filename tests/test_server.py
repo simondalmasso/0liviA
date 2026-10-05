@@ -1852,3 +1852,23 @@ async def test_ui_distinguishes_public_shell_from_transitional_bridge(client):
     assert "backendMode='public_shell'" in html
     assert "Shell público · Core desconectado" in html
 
+
+
+@pytest.mark.asyncio
+async def test_live_voice_prefers_canonical_wss_when_backend_exists(client):
+    html = await (await client.get("/")).text()
+    assert "coreHealth?.voice_backend_configured===true" in html
+    assert "function voiceWsUrl(" in html
+    assert "/api/voice/ws?session_id=" in html
+    assert "new WebSocket(voiceWsUrl(" in html
+    assert "function encodeCanonicalAudio(" in html
+    assert "type:'turn_started'" in html
+    assert "type:'cancelled'" in html
+    assert "stt_partial" in html
+    assert "stt_final" in html
+    assert "llm_delta" in html
+    assert "turn_completed" in html
+    assert "hydrateCanonicalChat" in html
+    # Browser speech remains a graceful fallback while the server voice backend is gated.
+    assert "SpeechRecognition" in html
+    assert "speechSynthesis" in html
