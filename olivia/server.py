@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -196,12 +197,20 @@ class Gateway:
         return _json({"error": "unauthorized"}, status=401)
 
     def _login_key(self, request: web.Request) -> str:
-        forwarded = request.headers.get("X-Forwarded-For", "")
-        if forwarded:
-            candidate = forwarded.split(",", 1)[0].strip()
-            if candidate:
-                return candidate[:128]
-        return str(request.remote or "unknown")[:128]
+        remote = str(request.remote or "").strip()
+        try:
+            remote_ip = ipaddress.ip_address(remote)
+        except ValueError:
+            remote_ip = None
+        if remote_ip is not None and remote_ip.is_loopback:
+            proxied = request.headers.get("X-Olivia-Client-IP", "").strip()
+            try:
+                client_ip = ipaddress.ip_address(proxied)
+            except ValueError:
+                client_ip = None
+            if client_ip is not None:
+                return str(client_ip)
+        return remote[:128] or "unknown"
 
     def _login_retry_after(self, request: web.Request) -> int:
         key = self._login_key(request)
