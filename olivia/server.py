@@ -473,6 +473,14 @@ class Gateway:
             "web_search_configured": bool(self.web_search and self.web_search.configured),
         })
 
+    async def security_events(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        return _json({
+            "events": self.agent.store.recent_events(prefix="security.", limit=100)
+        })
+
     async def workspace(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
         if denied:
@@ -1309,6 +1317,7 @@ def create_app(
     app.router.add_get("/api/auth/session", gateway.auth_session)
     app.router.add_get("/api/auth/devices", gateway.list_devices)
     app.router.add_delete("/api/auth/devices/{device_id}", gateway.revoke_device)
+    app.router.add_get("/api/security/events", gateway.security_events)
     app.router.add_get("/api/workspace", gateway.workspace)
     app.router.add_post("/api/projects", gateway.create_project)
     app.router.add_post("/api/library", gateway.create_library_item)
