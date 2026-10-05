@@ -9,6 +9,9 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="0liviA — Self-hosted agentic AI workspace">
 <meta property="og:description" content="Private, multi-model, zero-cost-first AI workspace with coding agents, research, memory, projects and live voice.">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="0liviA — Self-hosted agentic AI workspace">
+<meta name="twitter:description" content="Private, multi-model, zero-cost-first AI workspace with coding agents, research, memory, projects and live voice.">
 <title>0liviA — Self-hosted agentic AI workspace</title>
 <style>
 :root{
@@ -37,6 +40,7 @@ body{overflow:hidden;overscroll-behavior:none;touch-action:manipulation}
 button,input{font:inherit}
 button{border:0;color:inherit;background:transparent;cursor:pointer}
 button:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.rail-btn:focus-visible,.icon:focus-visible,.mini:focus-visible,.side-tab:focus-visible,.send:focus-visible,.device-revoke:focus-visible,.auth-submit:focus-visible{box-shadow:0 0 0 3px rgba(29,231,220,.18)}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .shell{height:100svh;display:grid;grid-template-columns:56px minmax(0,1fr);background:
 radial-gradient(860px 520px at 16% -8%,rgba(255,60,199,.12),transparent 58%),
@@ -299,7 +303,7 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
     </button>
   </div>
 
-  <nav class="side-tabs">
+  <nav class="side-tabs" aria-label="Secciones de 0liviA">
     <button class="side-tab active" data-side="chats" type="button">
       <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4Z"/><path d="M8 9h8M8 12h5"/></svg><span>Chats</span>
     </button>
