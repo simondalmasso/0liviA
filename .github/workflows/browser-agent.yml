@@ -12,11 +12,6 @@ on:
         description: "Public HTTP/HTTPS URL to render"
         required: true
         type: string
-      objective:
-        description: "Optional owner objective"
-        required: false
-        default: ""
-        type: string
       base_ref:
         description: "Exact trusted branch/SHA containing the runner"
         required: true
@@ -37,7 +32,6 @@ jobs:
     env:
       BASE_REF: ${{ inputs.base_ref }}
       TARGET_URL: ${{ inputs.url }}
-      OBJECTIVE: ${{ inputs.objective }}
       REPO_PRIVATE: ${{ github.event.repository.private }}
 
     steps:
@@ -106,7 +100,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/browser_snapshot.py             --url "$TARGET_URL"             --objective "$OBJECTIVE"             --output browser-result.json             --screenshot browser-shot.png
+          python scripts/browser_snapshot.py             --url "$TARGET_URL"             --output browser-result.json             --screenshot browser-shot.png
           test -s browser-result.json
           python - <<'PY'
           import json
