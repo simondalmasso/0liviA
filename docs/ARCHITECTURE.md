@@ -114,8 +114,16 @@ The canonical Gateway registers authenticated `GET /api/voice/ws?session_id=...`
 - requires the same owner auth boundary as chat;
 - validates that the target chat session exists;
 - remains unavailable with HTTP 503 unless a server-side `VoicePipeline` factory is explicitly configured;
-- uses bounded binary frames and the existing sequencing/cancel/barge-in pipeline;
-- does not pretend that browser SpeechRecognition/SpeechSynthesis are the production speech backend.
+- uses bounded binary frames and the existing sequencing/cancel/barge-in pipeline.
+
+The browser/mobile shell now implements that same wire contract:
+- it opens same-origin WSS only when `/healthz` reports `voice_backend_configured=true`;
+- microphone audio is resampled to 16 kHz PCM16 and framed with `turn_id`/sequence metadata;
+- server STT/LLM/TTS events drive the existing cyan fullscreen voice surface;
+- server PCM is streamed back through Web Audio;
+- microphone frames remain active during playback so server-side VAD can perform spoken barge-in;
+- completed turns rehydrate the same durable chat session;
+- browser SpeechRecognition/SpeechSynthesis remains only a provisional fallback while the server speech backend is gated.
 
 Production VAD/STT/TTS promotion still requires target-host es-AR quality, latency and 60-minute stability evidence.
 
@@ -128,7 +136,7 @@ Implemented in the canonical core:
 - `/research` composes bounded search + safe reads while keeping external content ephemeral;
 - `/browse` dispatches a JavaScript-capable Playwright job to an isolated private GitHub Actions repository. The private boundary is mandatory because the bounded result includes page text and an optional screenshot artifact. The runner accepts only public HTTP(S), enforces GET/HEAD-only requests, blocks reserved/private network egress, disables downloads/service workers, bounds requests/text/artifacts, and the Core preflights repository privacy before dispatch.
 
-The Core never embeds a privileged browser. Browser result text is shown from the job result and is not persisted into chat/model context automatically.
+The Core never embeds a privileged browser. `/job` can show a completed render without persisting it into chat history; `/inspect <job_id> [question]` is the explicit owner action that injects the bounded render into the model as ephemeral untrusted `research` context. The page text still does not enter durable chat/memory automatically.
 
 Still gated:
 - authenticated browsing;
