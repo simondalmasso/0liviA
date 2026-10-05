@@ -1306,3 +1306,50 @@ async def test_ui_consumes_setup_fragment_without_persisting_it(client):
     assert "location.hash.startsWith('#setup=')" in html
     assert "X-Olivia-Setup-Token" in html
     assert "history.replaceState(null,'',location.pathname+location.search)" in html
+
+
+@pytest.mark.asyncio
+async def test_cross_origin_requests_fail_closed_without_cors_headers(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "cors.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": "x@example.com", "password": "irrelevant"},
+        headers={"Origin": "https://evil.example"},
+    )
+    assert response.status == 403
+    assert "Access-Control-Allow-Origin" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_security_headers_are_emitted_by_core(client):
+    response = await client.get("/")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Cross-Origin-Resource-Policy"] == "same-origin"
+    assert response.headers["Cross-Origin-Opener-Policy"] == "same-origin"
+
+
+@pytest.mark.asyncio
+async def test_no_public_password_reset_or_email_enumeration_endpoint(client):
+    for path in ("/api/auth/reset", "/api/auth/password-reset", "/api/auth/forgot-password"):
+        response = await client.post(path, json={"email": "owner@example.com"})
+        assert response.status == 404
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_client_cannot_read_arbitrary_session_id(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "authz-session.sqlite3")
+    sid = store.create_session("private")
+    store.append_message(sid, "user", "private message")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    response = await client.get(f"/api/sessions/{sid}/messages")
+    assert response.status == 401
+    assert "private message" not in await response.text()
