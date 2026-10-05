@@ -24,6 +24,9 @@ The Python core now rejects secret-like durable-memory values and redacts common
 ### WEB-RESEARCH-BOUNDARY — FIXED / gated
 The canonical `/read` path uses an SSRF-safe URL reader and injects page text only as ephemeral untrusted model context; fetched page contents are not persisted. `/search` is disabled unless an explicit adapter is configured and its exact route is marked zero-cost verified. No Cloudflare Web Search call occurs by default.
 
+### VOICE-WSS-CONTRACT — FIXED IN BRANCH / speech backend gated
+The canonical Gateway now exposes the declared direct-WSS voice route behind owner authentication and session validation. It fails closed with 503 while no approved speech backend factory is configured. Binary audio frames remain bounded by the transport contract. This fixes the old route mismatch without claiming production STT/TTS readiness.
+
 ### ZERO-COST-ACCOUNT-PROOF — OPEN / fail closed
 A request-count cap is not an account billing guard. Cloudflare account-wide billing status could not be verified with the available token. The transitional Worker runtime is now disabled by default, and provider readiness is false while disabled; no production-cost guarantee is claimed.
 
