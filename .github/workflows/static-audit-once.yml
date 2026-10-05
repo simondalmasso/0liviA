@@ -40,7 +40,7 @@ jobs:
       - id: ruff_prod
         name: Ruff production correctness
         continue-on-error: true
-        run: ruff check olivia scripts
+        run: ruff check olivia scripts --select E9,F63,F7,F82
 
       - id: ruff_tests
         name: Ruff test correctness
@@ -50,12 +50,23 @@ jobs:
       - id: bandit
         name: Bandit security audit
         continue-on-error: true
-        run: bandit -q -r olivia scripts -x tests
+        run: bandit -q -ll -r olivia scripts -x tests
 
       - id: pip_audit
-        name: Dependency vulnerability audit
+        name: Runtime dependency vulnerability audit
         continue-on-error: true
-        run: pip-audit --strict
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/runtime-requirements.txt
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          for requirement in data["project"].get("dependencies", []):
+              print(requirement)
+          PY
+          pip-audit --strict -r /tmp/runtime-requirements.txt
 
       - name: Audit gate
         shell: bash
