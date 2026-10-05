@@ -603,8 +603,8 @@ async function probeCore(){
 ownerLoginForm.onsubmit=async e=>{
   e.preventDefault();
   const email=ownerEmail.value.trim();
-  const password=ownerPassword.value;
-  if(!email||!password)return;
+  const credential=ownerPassword.value;
+  if(!email||!credential)return;
   const registering=coreHealth?.registration_open===true;
   ownerLoginError.textContent='';
   try{
@@ -616,7 +616,7 @@ ownerLoginForm.onsubmit=async e=>{
       credentials:'same-origin',
       body:JSON.stringify({
         email,
-        password,
+        password:credential,
         remember:ownerRemember.checked,
         device_name:simpleDeviceName()
       })
