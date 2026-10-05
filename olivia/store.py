@@ -580,6 +580,34 @@ class Store:
             )
         return int(cur.lastrowid)
 
+    def prune_security_events(
+        self,
+        *,
+        now: float | None = None,
+        retention_s: float = 90 * 24 * 60 * 60,
+        keep_latest: int = 2000,
+    ) -> int:
+        moment = time.time() if now is None else float(now)
+        cutoff = moment - max(0.0, float(retention_s))
+        keep = max(1, min(int(keep_latest), 10_000))
+        with self._lock:
+            old = self._conn.execute(
+                "DELETE FROM events WHERE type LIKE ? AND created_at<?",
+                ("security.%", cutoff),
+            ).rowcount
+            overflow = self._conn.execute(
+                """DELETE FROM events
+                   WHERE type LIKE ?
+                     AND id NOT IN (
+                       SELECT id FROM events
+                       WHERE type LIKE ?
+                       ORDER BY id DESC
+                       LIMIT ?
+                     )""",
+                ("security.%", "security.%", keep),
+            ).rowcount
+        return int(old) + int(overflow)
+
     def recent_events(self, *, prefix: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         bounded_limit = max(1, min(int(limit), 500))
         with self._lock:
