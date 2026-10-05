@@ -15,6 +15,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Canonical SSRF-safe `/read` tool with page content kept ephemeral and explicitly untrusted.
 - Replaceable `/search` adapter contract, disabled unless an exact route is configured and zero-cost verified.
 - Isolated GitHub Actions coding worker with durable job IDs, exact base refs, `implement/repair/review` modes and deterministic post-agent verification.
+- Isolated JS browser burst worker with `/browse`, JavaScript rendering, read-only GET/HEAD enforcement, public-network egress guards, bounded artifacts, and no external-page persistence into model/chat context.
 - Review mode may only create/update `AGENT_REVIEW.md`; any product mutation fails the job.
 - Voice contracts/pipeline/sequence/cancel tests and benchmark recorder.
 - Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
@@ -109,7 +110,7 @@ Every meaningful mutation must preserve:
 ## Exact next engineering gates
 
 1. Keep the branch green and do not regress the security baseline.
-2. Add a JS-capable browser worker only with real process/network isolation and a zero-cost runtime path; do not embed a privileged Playwright browser inside the Core.
+2. Smoke the implemented JS browser worker against a controlled public page, verify artifact retrieval end-to-end, then consider owner-approved click/write automation as a separate capability; never embed a privileged Playwright browser inside the Core.
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
 4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/encrypted-backup/restore/latency/resource gates.
 5. Evaluate the Intern Discovery GPU burst lane: read the A100 point/hour estimate without creating resources; prefer official Muse BF16 if cloud-disk expansion reaches >=70 GB, otherwise benchmark the 22.2 GB INT4 challenger. Implement an adapter only after capturing the real inference-service request/response schema without its credential.
