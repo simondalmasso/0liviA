@@ -70,8 +70,7 @@ MODEL="${META[0]}"
 
 backup_dir="$(mktemp -d)"
 had_target=0
-cleanup() { rm -rf "${backup_dir}"; }
-trap cleanup EXIT
+trap 'rm -rf "$backup_dir"' EXIT
 
 cp -p "${ENV_FILE}" "${backup_dir}/olivia.env"
 if [[ -f "${TARGET}" ]]; then
