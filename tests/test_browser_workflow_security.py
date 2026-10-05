@@ -42,3 +42,10 @@ def test_browser_runner_guards_all_pages_and_disables_downloads():
     assert 'request.resource_type in {"media", "websocket"}' in RUNNER
     assert "MAX_REQUESTS = 100" in RUNNER
     assert "MAX_TEXT_CHARS = 30_000" in RUNNER
+
+
+def test_browser_workflow_is_branch_generic():
+    assert 'default: "main"' in WORKFLOW
+    assert "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in WORKFLOW
+    assert "refs/heads/arch/gpt-synthesis-v1" not in WORKFLOW
+    assert 'refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH' in WORKFLOW

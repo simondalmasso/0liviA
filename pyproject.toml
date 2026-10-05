@@ -5,8 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "0livia-core"
 version = "0.1.0"
-description = "Thin control plane for 0liviA, a personal cloud super-AI."
+description = "Self-hosted agentic AI workspace for chat, coding, research, memory, projects and voice."
 requires-python = ">=3.11"
+keywords = [
+  "agentic-ai",
+  "self-hosted-ai",
+  "ai-assistant",
+  "coding-agent",
+  "web-research",
+  "long-term-memory",
+  "voice-assistant",
+  "llm-router",
+]
 dependencies = [
   "aiohttp>=3.10,<4",
 ]
@@ -19,8 +29,8 @@ chatgpt = [
   "PyJWT[crypto]>=2.10,<3",
 ]
 dev = [
-  "pytest>=8.3,<9",
-  "pytest-asyncio>=0.24,<1",
+  "pytest>=8.3,<10",
+  "pytest-asyncio>=0.24,<2",
   "pytest-aiohttp>=1.0,<2",
   "PyJWT[crypto]>=2.10,<3",
 ]

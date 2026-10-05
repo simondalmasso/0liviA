@@ -50,6 +50,7 @@ jobs:
       AIDER_ANALYTICS_DISABLE: "true"
       PYTHONUNBUFFERED: "1"
       BASE_REF: ${{ inputs.base_ref }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       MODE: ${{ inputs.mode }}
       MAX_AGENT_PASSES: "2"
 
@@ -76,6 +77,9 @@ jobs:
           set -euo pipefail
           git check-ref-format --allow-onelevel "$BASE_REF"
           test -n "$(git rev-parse --verify HEAD^{commit})"
+          test -n "$DEFAULT_BRANCH"
+          git fetch --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -294,8 +298,9 @@ jobs:
         run: |
           set -euo pipefail
           git check-ref-format --allow-onelevel "$BASE_REF"
-          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
-          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
+          test -n "$DEFAULT_BRANCH"
+          git fetch --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
 
       - name: Download verified agent series
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
