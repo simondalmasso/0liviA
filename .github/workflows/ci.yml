@@ -31,8 +31,8 @@ jobs:
         run: python scripts/scan_secret_tree.py
       - name: Scan Git history for high-confidence secrets
         run: python scripts/scan_secret_history.py
-      - name: Check deployment scripts
-        run: bash -n deploy/*.sh
+      - name: Check deployment and setup scripts
+        run: bash -n deploy/*.sh scripts/*.sh
       - name: Check browser script syntax
         run: |
           python - <<'PY'
