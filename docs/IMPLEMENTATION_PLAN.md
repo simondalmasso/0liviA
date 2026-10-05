@@ -32,6 +32,7 @@ The canonical Python Core is now the durable source of truth for Projects/Chats/
 ### 3. Stable zero-cost model routing
 Provider routing must remain catalog-driven and fail closed:
 - never move to a paid/unverified route silently;
+- official ChatGPT-plan usage is the preferred frontier-quality lane for eligible Plus/Pro owners once OAuth onboarding exists and no-credit-overage is explicitly verified; exhaustion must fail/degrade rather than use credits silently;
 - DeepSeek V4.1 Flash/NVIDIA NIM remains development/evaluation-only unless explicit production entitlement exists;
 - the transitional Cloudflare bridge is disabled by default; Workers AI/read routes remain unavailable until both identity and account-wide zero-cost behavior are independently verified;
 - local inference is allowed as a zero-cost fallback but is not the quality target for normal chat;
@@ -113,6 +114,7 @@ Every meaningful mutation must preserve:
 2. Smoke the implemented JS browser worker against a controlled public page, verify artifact retrieval end-to-end, then consider owner-approved click/write automation as a separate capability; never embed a privileged Playwright browser inside the Core.
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
 4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/encrypted-backup/restore/latency/resource gates.
-5. Evaluate the Intern Discovery GPU burst lane: read the A100 point/hour estimate without creating resources; prefer official Muse BF16 if cloud-disk expansion reaches >=70 GB, otherwise benchmark the 22.2 GB INT4 challenger. Implement an adapter only after capturing the real inference-service request/response schema without its credential.
-6. Verify production entitlement/cost for the preferred model/coding routes and account-level MFA/2FA.
-7. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
+5. Implement the one-time local Sign in with ChatGPT OAuth onboarding helper using the published OSS contract, including PKCE/state/nonce, issuer/JWKS identity validation, stable host ID, protected credential storage and secure transfer to the cloud Core. Do not place OAuth credentials in browser storage.
+6. Evaluate the Intern Discovery GPU burst lane only as a challenger: read point/hour estimates before creating resources and implement an adapter only after a real no-overage/account gate exists.
+7. Verify production entitlement/cost for every retained model/coding route and account-level MFA/2FA.
+8. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
