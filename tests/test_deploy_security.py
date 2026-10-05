@@ -59,3 +59,11 @@ def test_chatgpt_plan_installer_is_fail_closed_and_never_echoes_tokens():
     assert '"no_credit_overage_verified": True' in CHATGPT_INSTALLER
     assert "access_token" not in CHATGPT_INSTALLER.split("print(model)", 1)[1]
     assert "refresh_token" not in CHATGPT_INSTALLER.split("print(model)", 1)[1]
+
+
+def test_caddy_overwrites_client_ip_header_for_login_throttling():
+    caddy = (ROOT / "deploy" / "Caddyfile.example").read_text(encoding="utf-8")
+    bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
+    expected = "header_up X-Olivia-Client-IP {http.request.remote.host}"
+    assert expected in caddy
+    assert expected in bootstrap
