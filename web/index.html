@@ -103,8 +103,8 @@ linear-gradient(180deg,#050506 0%,#08070c 48%,#090811 100%)}
 .auth-error{min-height:18px;margin-top:9px;color:#ff8ba1;font-size:12px}
 .drawer-backdrop{position:fixed;inset:0;z-index:40;background:rgba(2,3,18,.58);backdrop-filter:blur(5px);display:none}
 .drawer-backdrop.open{display:block}
-.drawer{position:fixed;z-index:50;inset:0 auto 0 56px;width:min(86vw,322px);background:linear-gradient(180deg,rgba(24,12,30,.99) 0%,rgba(18,13,28,.995) 48%,rgba(7,7,10,.998) 100%);transform:translateX(calc(-100% - 10px));transition:transform .22s var(--ease);padding:max(14px,env(safe-area-inset-top)) 10px max(16px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto auto 1fr;box-shadow:24px 0 70px rgba(2,3,18,.62),inset -1px 0 rgba(255,255,255,.06);backdrop-filter:blur(22px)}
-.drawer.open{transform:translateX(0)}
+.drawer{position:fixed;z-index:50;inset:0 auto 0 56px;width:min(86vw,322px);background:linear-gradient(180deg,rgba(24,12,30,.99) 0%,rgba(18,13,28,.995) 48%,rgba(7,7,10,.998) 100%);transform:translateX(calc(-100% - 10px));transition:transform .22s var(--ease);padding:max(14px,env(safe-area-inset-top)) 10px max(16px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto auto 1fr;box-shadow:24px 0 70px rgba(2,3,18,.62),inset -1px 0 rgba(255,255,255,.06);backdrop-filter:blur(22px);pointer-events:none}
+.drawer.open{transform:translateX(0);pointer-events:auto}
 .drawer-head{display:flex;align-items:center;gap:8px;padding:0 5px 12px}
 .drawer-head strong{font-size:12px;font-weight:650;letter-spacing:.1em}
 .drawer-head .icon{margin-left:auto}
