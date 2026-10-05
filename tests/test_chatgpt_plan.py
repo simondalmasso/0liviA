@@ -219,3 +219,8 @@ async def test_chatgpt_plan_usage_limit_maps_to_rate_limit(tmp_path):
         _ = [token async for token in provider.stream([{"role": "user", "content": "x"}])]
     assert exc.value.status == 429
     assert exc.value.provider == "chatgpt-plan"
+
+
+def test_chatgpt_installer_declares_frontier_text_capabilities():
+    script = Path("scripts/install_chatgpt_plan_profile.sh").read_text(encoding="utf-8")
+    assert '"capabilities": ["chat", "research", "code", "review"]' in script
