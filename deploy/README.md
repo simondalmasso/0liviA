@@ -1,57 +1,136 @@
-# Oracle deployment
+# Reference Linux deployment
 
-Primary target: Oracle Always Free A1 ARM64, 2 OCPU / 12 GB. The bootstrap also has a deliberately degraded `micro` profile for the existing 1 GB E2 fallback. This directory does not create paid resources.
+This directory contains a reference self-hosted deployment for 0liviA.
+
+Oracle Always Free A1 ARM64 (2 OCPU / 12 GB) is one useful zero-cost benchmark profile, not a required vendor/account. The same Core can run on another Linux host if the operator supplies the equivalent runtime prerequisites.
+
+The scripts do **not** contain or grant access to the maintainer's Oracle, Cloudflare, GitHub or model-provider accounts.
 
 ## Runtime shape
 
-Internet → HTTPS/Caddy → `127.0.0.1:8080` → 0liviA Core → SQLite in `/var/lib/0livia`.
+```text
+Internet
+  │ HTTPS
+  ▼
+Caddy
+  │ loopback
+  ▼
+0liviA Core :8080
+  ├─ SQLite /var/lib/0livia
+  └─ local/provider router
+```
 
-Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's PC is not part of the runtime.
+Only ports 80/443 should be public. Port 8080 stays loopback-only.
 
 ## Bootstrap
 
-1. Provision the A1 VM with a public IPv4 and Ubuntu ARM64.
-2. Open OCI ingress TCP 80/443 only (SSH 22 restricted to the minimum source needed for administration).
-3. Pick the exact green commit SHA you intend to release and run `sudo REF=<40-hex-SHA> ./deploy/bootstrap-a1.sh`. Mutable branches are rejected unless `ALLOW_MUTABLE_REF=1` is explicitly set for development.
-4. Read `/var/lib/0livia/bootstrap-info` as root and open its one-time `SETUP_URL`. The setup token lives in the URL fragment and is removed from the browser address bar immediately.
-5. Choose **Registrate**, create the owner email/password, and optionally enable **Recordarme**. Registration closes after the first owner.
-6. If adding external providers, edit `/etc/0livia/olivia.env` (0640 root:olivia) and configure only accounts/routes owned by that deployment.
-7. Pick an HTTPS hostname you control and keep port 8080 private. Browser auth uses Secure/HttpOnly/SameSite cookies; provider credentials remain server-side.
-8. Run the CLI smoke with the server-side bearer obtained directly from `/etc/0livia/olivia.env`, never through a browser URL or UI.
+1. Provision a Linux host with a public IP.
+2. Open TCP 80/443 only. Restrict SSH to the minimum administrative source needed.
+3. Pick the exact green commit SHA you intend to release.
+4. Run:
+
+```bash
+sudo REF=<40-hex-SHA> ./deploy/bootstrap-a1.sh
+```
+
+Mutable branches are rejected unless `ALLOW_MUTABLE_REF=1` is explicitly set for development.
+
+5. Read `/var/lib/0livia/bootstrap-info` as root.
+6. Open its one-time `SETUP_URL`.
+7. Choose **Registrate**, create the first owner email/password and optionally enable **Recordarme**.
+8. Registration closes after the first owner.
+9. Configure only provider/accounts owned by that installation.
+
+The setup token is placed in the URL fragment and removed from the browser address bar by the UI.
+
+## Per-installation secrets
+
+The bootstrap generates unique server-side values for:
+
+- `OLIVIA_GATEWAY_TOKEN`;
+- `OLIVIA_REGISTRATION_TOKEN`.
+
+Provider keys remain in `/etc/0livia/olivia.env`, never in the normal browser UI.
+
+The public repository contains no maintainer runtime secrets.
 
 ## Provider policy
 
-No provider is the brain. Provider keys stay in `/etc/0livia/olivia.env`; `OLIVIA_PROVIDERS_JSON` references their environment variable names. If all free lanes are exhausted, 0liviA reports unavailable/degraded instead of silently paying.
+No provider is the product identity.
+
+`OLIVIA_PROVIDERS_JSON` references provider credentials by environment-variable name.
+
+With `OLIVIA_HARD_ZERO_COST=1`, only:
+
+- `cost_mode=local`; or
+- `cost_mode=free_hard_cap`
+
+are eligible.
+
+`free_unverified` and `paid` routes are blocked before use.
+
+If all verified-free routes are unavailable/exhausted, the expected behavior is degraded/unavailable rather than hidden spend.
+
+## Coding worker
+
+The coding worker is optional and disabled by default.
+
+If enabled, configure a repository/token you control:
+
+```env
+OLIVIA_CODING_WORKER_ENABLED=1
+OLIVIA_CODING_REPO=owner/your-repo
+OLIVIA_CODING_WORKFLOW=coding-agent.yml
+OLIVIA_CODING_BASE_REF=main
+OLIVIA_GITHUB_TOKEN=...
+```
+
+Public forks do not inherit this repository's GitHub Actions secrets.
 
 ## Backups
 
-The durable runtime file is `/var/lib/0livia/olivia.sqlite3` plus WAL/SHM while live. Use SQLite's online backup API or stop the service briefly before copying; never copy only the main DB file while WAL has uncheckpointed data. Git remains the source of truth for code/docs, not conversations.
+The canonical runtime DB is:
 
-## Rollback
+```text
+/var/lib/0livia/olivia.sqlite3
+```
 
-Deploys are branch/commit based. Keep the previous checkout under a versioned release path before production rollout; switch `/opt/0livia/current` only after compile/tests/smoke pass. `bootstrap-a1.sh` is the single canonical installer. Atomic release switching remains a deployment hardening gate.
+SQLite may also have WAL/SHM files while live.
 
+Use SQLite's online backup API or stop the service briefly before copying. Do not copy only the main DB file while WAL has uncheckpointed data.
 
-## Zero-spend gate
-
-Production keeps `OLIVIA_HARD_ZERO_COST=1`. Provider entries are accepted only with `cost_mode=local` or `cost_mode=free_hard_cap`, where the upstream account/route has a verified hard boundary that cannot create a charge.
-
-An advertised free quota without a hard billing boundary is `free_unverified` and is blocked. When all verified-free lanes are unavailable or quota-exhausted, the expected behavior is **degraded/unavailable, USD 0 spend**.
-
+Git is the source of truth for code/docs, not user conversations.
 
 ## Local inference runtime
 
-The bootstrap uses a pinned **llama.cpp** prebuilt instead of Ollama to keep the hot path small. The runtime binds only to loopback and exposes its OpenAI-compatible endpoint to 0liviA Core.
+The reference bootstrap uses pinned llama.cpp binaries and SHA-256-verified GGUF files.
 
 Profiles:
+
 - `a1`: Qwen3 1.7B Q4_K_M, 4096-token context, up to 2 CPU threads.
-- `micro`: Qwen3 0.6B Q4_K_M, 1024-token context, 1 thread plus swap. This is only a temporary text fallback; it is not considered the final super-AI quality target.
+- `micro`: Qwen3 0.6B Q4_K_M, 1024-token context, 1 thread plus swap.
 
-The model route is tagged `cost_mode=local`, so the hard-zero-cost router accepts it without an API key.
+These models are emergency/reference local baselines, not a claim of frontier-model quality.
 
+## HTTPS hostname
 
-## Release immutability
+The bootstrap can use an IP-derived hostname for convenience. A production operator should prefer a hostname they control.
 
-Production installs accept an exact 40-hex Git commit SHA. `cloud-init-a1.yaml` is intentionally a template that fails closed until `REF` is supplied as an immutable SHA. Never execute a mutable branch as root in production.
+## Rollback
 
-The bootstrap pins the llama.cpp release plus SHA-256 per architecture and pins each GGUF to an immutable Hugging Face revision plus SHA-256. Every download is verified before execution/use.
+Production installs accept exact commit SHAs.
+
+Keep the previous release available until:
+
+- compile/tests pass;
+- services restart successfully;
+- health/smoke checks pass;
+- persistent state is readable.
+
+`bootstrap-a1.sh` is the canonical reference installer. It does not create paid infrastructure.
+
+## Cost claims
+
+The reference setup is zero-cost-first, not a guarantee that every cloud/vendor will remain free.
+
+External provider, domain, storage and network terms can change. Review the selected host/provider account before calling a deployment "$0".
