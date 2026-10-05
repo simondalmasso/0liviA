@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from aiohttp import web
 
@@ -63,6 +64,32 @@ def default_es_ar_validator(text: str) -> bool:
 
 def _json(payload: dict[str, Any], status: int = 200) -> web.Response:
     return web.json_response(payload, status=status, dumps=lambda value: json.dumps(value, ensure_ascii=False))
+
+
+@web.middleware
+async def security_headers_and_origin(
+    request: web.Request,
+    handler: Callable[[web.Request], Any],
+) -> web.StreamResponse:
+    origin = request.headers.get("Origin", "")
+    if origin and request.path.startswith("/api/"):
+        try:
+            parsed = urlsplit(origin)
+        except ValueError:
+            return _json({"error": "origin"}, 403)
+        host = request.headers.get("Host", "")
+        if parsed.scheme not in {"http", "https"} or not host or parsed.netloc != host:
+            return _json({"error": "origin"}, 403)
+
+    response = await handler(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    if request.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 
 @dataclass
@@ -279,6 +306,10 @@ class Gateway:
         verifier = make_password_verifier(password)
         if not self.agent.store.register_owner(normalized_email, verifier):
             return _json({"error": "registration_closed"}, 409)
+        self.agent.store.record_event(
+            "security.owner_registered",
+            {"remembered": bool(remember)},
+        )
         self._clear_login_failures(request)
         return self._issue_owner_session(
             email=normalized_email,
@@ -295,6 +326,7 @@ class Gateway:
 
         retry_after = self._login_retry_after(request)
         if retry_after:
+            self.agent.store.record_event("security.login_rate_limited", {"blocked": True})
             response = _json({"error": "login_rate_limited"}, 429)
             response.headers["Retry-After"] = str(retry_after)
             return response
@@ -316,6 +348,7 @@ class Gateway:
             or len(device_name) > 120
         ):
             self._record_login_failure(request)
+            self.agent.store.record_event("security.login_failed", {"reason": "invalid_input"})
             return _json({"error": "invalid credentials"}, 400)
 
         normalized_email = email.strip().casefold()
@@ -323,8 +356,13 @@ class Gateway:
         password_ok = verify_password(password, str(account["password_verifier"]))
         if not email_ok or not password_ok:
             self._record_login_failure(request)
+            self.agent.store.record_event("security.login_failed", {"reason": "credentials"})
             return _json({"error": "unauthorized"}, 401)
 
+        self.agent.store.record_event(
+            "security.login_succeeded",
+            {"remembered": bool(remember)},
+        )
         self._clear_login_failures(request)
         return self._issue_owner_session(
             email=str(account["email"]),
@@ -362,6 +400,10 @@ class Gateway:
             return denied
         device_id = request.match_info["device_id"]
         revoked = self.agent.store.delete_trusted_device(device_id) > 0
+        self.agent.store.record_event(
+            "security.device_revoked",
+            {"revoked": revoked},
+        )
         return _json({"revoked": revoked})
 
     async def _read_json(self, request: web.Request) -> dict[str, Any]:
@@ -1253,7 +1295,10 @@ def create_app(
         web_reader=web_reader,
         web_search=web_search,
     )
-    app = web.Application(client_max_size=MAX_BODY_BYTES)
+    app = web.Application(
+        client_max_size=MAX_BODY_BYTES,
+        middlewares=[security_headers_and_origin],
+    )
     app["gateway"] = gateway
     app.router.add_get("/", gateway.index)
     app.router.add_get("/index.html", gateway.index)
