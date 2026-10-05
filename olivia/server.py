@@ -164,6 +164,8 @@ class Gateway:
         self.voice_wss_config = voice_wss_config or DirectWssConfig()
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
+        self._voice_sessions: set[str] = set()
+        self._voice_sessions_lock = asyncio.Lock()
         self._login_failures: dict[str, list[float]] = {}
 
     def _owner_cookie_value(self, expires_at: int, device_id: str | None = None) -> str:
@@ -1451,33 +1453,43 @@ class Gateway:
         if not self.agent.store.session_exists(session_id):
             return _json({"error": "session not found"}, 404)
 
-        config = self.voice_wss_config
-        ws = web.WebSocketResponse(
-            heartbeat=config.ping_interval_s,
-            receive_timeout=config.receive_timeout_s,
-            max_msg_size=config.max_audio_frame_bytes + 16 * 1024 + 4,
-            autoping=True,
-        )
-        await ws.prepare(request)
-        transport = AiohttpWebSocketTransport(
-            ws,
-            max_audio_frame_bytes=config.max_audio_frame_bytes,
-        )
+        async with self._voice_sessions_lock:
+            if session_id in self._voice_sessions:
+                return _json({"error": "voice_session_busy"}, 409)
+            self._voice_sessions.add(session_id)
+
+        transport = None
+        ws = None
         try:
+            config = self.voice_wss_config
+            ws = web.WebSocketResponse(
+                heartbeat=config.ping_interval_s,
+                receive_timeout=config.receive_timeout_s,
+                max_msg_size=config.max_audio_frame_bytes + 16 * 1024 + 4,
+                autoping=True,
+            )
+            await ws.prepare(request)
+            transport = AiohttpWebSocketTransport(
+                ws,
+                max_audio_frame_bytes=config.max_audio_frame_bytes,
+            )
             pipeline = self.voice_pipeline_factory(transport, session_id)
             await pipeline.run()
         except (ValueError, TypeError):
-            if not ws.closed:
+            if ws is not None and not ws.closed:
                 await ws.close(code=1003, message=b"invalid voice frame")
         except asyncio.CancelledError:
             raise
         except Exception:
-            if not ws.closed:
+            if ws is not None and not ws.closed:
                 await ws.close(code=1011, message=b"voice backend error")
         finally:
-            with contextlib.suppress(Exception):
-                await transport.close()
-        return ws
+            if transport is not None:
+                with contextlib.suppress(Exception):
+                    await transport.close()
+            async with self._voice_sessions_lock:
+                self._voice_sessions.discard(session_id)
+        return ws if ws is not None else _json({"error": "voice_transport_failed"}, 500)
 
     async def cancel(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
