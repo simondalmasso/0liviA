@@ -222,8 +222,8 @@ def test_main_is_the_only_canonical_integration_branch():
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     governance = (ROOT / "docs" / "GOVERNANCE.md").read_text(encoding="utf-8")
 
-    assert "main is the only canonical integration branch" in agents
-    assert "arch/gpt-synthesis-v1 is a compatibility mirror" in agents
-    assert "branch new work from main" in governance
-    assert "do not base new work on arch/gpt-synthesis-v1" in governance
+    assert "`main` is the only canonical integration branch" in agents
+    assert "`arch/gpt-synthesis-v1` is a compatibility mirror" in agents
+    assert "Branch new work from `main`" in governance
+    assert "Do not base new work on `arch/gpt-synthesis-v1`" in governance
 
