@@ -153,6 +153,27 @@ def test_local_provider_allows_no_api_key(tmp_path):
     assert provider.cost_mode == "local"
 
 
+def test_plan_included_is_reserved_for_official_chatgpt_lane(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        hard_zero_cost=True,
+        providers=(
+            {
+                "name": "fake-plan",
+                "kind": "openai_compatible",
+                "base_url": "https://paid.example/v1",
+                "model": "m",
+                "api_key_env": "FAKE_PLAN_KEY",
+                "cost_mode": "plan_included",
+                "no_credit_overage_verified": True,
+            },
+        ),
+    )
+    store = Store(tmp_path / "fake-plan.sqlite3")
+    with pytest.raises(Exception, match="plan_included"):
+        ProviderPool.from_settings(settings, store)
+
+
 def test_chatgpt_plan_route_requires_no_credit_overage_verification(tmp_path):
     settings = Settings(
         data_dir=tmp_path,
