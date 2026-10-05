@@ -76,3 +76,23 @@ Do not label voice “Live-like” until:
 - server cancellation <= 300 ms;
 - 60-minute soak clean;
 - Spanish false-cut rate acceptable to the owner.
+
+
+## Local model quality floor
+
+A local model is never promoted merely because it is free.
+
+Candidates:
+- Meta Muse Glimmer 30B on suitable GPU / high-memory host;
+- current small Qwen profiles remain emergency/recovery baselines only.
+
+For an always-on local model to become the normal chat/coding route, record:
+- tool-call correctness;
+- agent-task completion;
+- code benchmark success/regression rate;
+- long-context stability;
+- es-AR response quality;
+- TTFT/tokens-per-second;
+- RAM/VRAM footprint and 60-minute stability.
+
+The Oracle A1 2 OCPU / 12 GB profile must not claim Muse Glimmer compatibility unless an actual quantized build fits and passes the same quality/latency gates.
