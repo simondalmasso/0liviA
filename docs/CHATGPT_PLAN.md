@@ -86,7 +86,7 @@ The provider:
 - calls only `https://api.openai.com/v1/responses`;
 - sets `store:false` and `stream:true`;
 - keeps conversation state in 0liviA, not OpenAI Responses storage;
-- refreshes OAuth tokens server-side and rotates the saved refresh token atomically;
+- refreshes OAuth tokens server-side, respects OpenAI's `earliest_refresh_at`, serializes rotation and writes the replacement refresh token atomically;
 - treats plan/app-limit exhaustion as quota failure;
 - may fail over only before visible output to another eligible provider;
 - never accepts an OpenAI API key.
@@ -95,12 +95,27 @@ The configured model slug must exist in the connected account's model catalog. `
 
 ## Disconnect / recovery
 
-If the ChatGPT connection is revoked or refresh becomes terminally invalid:
+To end the renewable ChatGPT session from the machine that holds the profile:
+
+```bash
+python scripts/connect_chatgpt_plan.py --disconnect
+```
+
+The helper:
+- discovers OpenAI's current `revocation_endpoint`;
+- posts the saved refresh token with `token_type_hint=refresh_token` and the issued client ID;
+- retries only bounded network/5xx failures;
+- removes the local credential profile whether or not remote revocation can be confirmed;
+- never prints the refresh/access token.
+
+If remote revocation cannot be confirmed, the CLI says so explicitly. Check **ChatGPT Settings** and disconnect 0liviA there if it still appears.
+
+If refresh becomes terminally invalid:
 - stop using the route;
-- reconnect with the local helper using the saved issued client ID/host ID;
+- reconnect with the local helper using the retained host ID and the issued client mapping where available;
 - never loop OAuth or requests to bypass a plan/app limit.
 
-For a compromised profile, disconnect the app in ChatGPT settings, remove the VM profile, and reconnect.
+For a compromised profile, disconnect the app in ChatGPT settings, remove any copied VM profile, and reconnect.
 
 ## Not yet claimed
 
