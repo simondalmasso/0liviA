@@ -128,3 +128,19 @@ def test_github_actions_are_pinned_to_immutable_commits():
             if not re.fullmatch(r"[0-9a-f]{40}", ref):
                 unpinned.append(f"{path.name}: {action}@{ref}")
     assert unpinned == []
+
+
+def test_browser_worker_docs_require_private_artifact_repo():
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    worker = (ROOT / "olivia" / "browser_worker.py").read_text(encoding="utf-8")
+
+    assert "OLIVIA_BROWSER_REPO=owner/private-browser" in env_example
+    assert "OLIVIA_BROWSER_ZERO_COST_VERIFIED=0" in env_example
+    assert "OLIVIA_BROWSER_REPO=simondalmasso/0liviA" not in env_example
+    assert "public-repo runner" not in architecture
+    assert "public-repo runner" not in plan
+    assert "private GitHub" in architecture
+    assert "private GitHub" in plan
+    assert "public GitHub Actions runner" not in worker
