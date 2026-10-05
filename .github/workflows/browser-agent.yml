@@ -1,0 +1,113 @@
+name: 0liviA Browser Worker
+run-name: "0liviA browse ${{ inputs.olivia_job_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      olivia_job_id:
+        description: "0liviA durable job identifier"
+        required: true
+        type: string
+      url:
+        description: "Public HTTP/HTTPS URL to render"
+        required: true
+        type: string
+      objective:
+        description: "Optional owner objective"
+        required: false
+        default: ""
+        type: string
+      base_ref:
+        description: "Exact trusted branch/SHA containing the runner"
+        required: true
+        default: "arch/gpt-synthesis-v1"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: olivia-browser-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  browse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      BASE_REF: ${{ inputs.base_ref }}
+      TARGET_URL: ${{ inputs.url }}
+      OBJECTIVE: ${{ inputs.objective }}
+      REPO_PRIVATE: ${{ github.event.repository.private }}
+
+    steps:
+      - name: Fail closed unless standard public-repo runner is eligible
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$REPO_PRIVATE" = "false"
+
+      - name: Checkout trusted base without persisted credentials
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.base_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate dispatch ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          git check-ref-format --allow-onelevel "$BASE_REF"
+          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
+          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded browser runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e . 'playwright>=1.55,<2'
+          google-chrome --version
+
+      - name: Add network egress guardrails
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo iptables -I OUTPUT -d 10.0.0.0/8 -j REJECT
+          sudo iptables -I OUTPUT -d 172.16.0.0/12 -j REJECT
+          sudo iptables -I OUTPUT -d 192.168.0.0/16 -j REJECT
+          sudo iptables -I OUTPUT -d 169.254.0.0/16 -j REJECT
+          sudo iptables -I OUTPUT -d 100.64.0.0/10 -j REJECT
+          if command -v ip6tables >/dev/null 2>&1; then
+            sudo ip6tables -I OUTPUT -d fc00::/7 -j REJECT || true
+            sudo ip6tables -I OUTPUT -d fe80::/10 -j REJECT || true
+          fi
+
+      - name: Render public page with JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/browser_snapshot.py             --url "$TARGET_URL"             --objective "$OBJECTIVE"             --output browser-result.json             --screenshot browser-shot.png
+          test -s browser-result.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("browser-result.json").read_text(encoding="utf-8"))
+          assert str(payload.get("final_url", "")).startswith(("http://", "https://"))
+          assert len(str(payload.get("text", ""))) <= 30000
+          assert int(payload.get("request_count", 0)) <= 101
+          PY
+
+      - name: Upload bounded browser result
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-result
+          path: |
+            browser-result.json
+            browser-shot.png
+          if-no-files-found: error
+          retention-days: 1
