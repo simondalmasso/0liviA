@@ -92,7 +92,9 @@ class VoicePipeline:
             return decision
 
         turn = self._turn
-        assert turn is not None
+        if turn is None:
+            self.dropped_audio += 1
+            return SequenceDecision.WRONG_TURN
         turn.last_seq = frame.seq
 
         started, ended = self.vad.accept(frame)
