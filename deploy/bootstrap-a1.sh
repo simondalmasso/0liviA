@@ -204,6 +204,7 @@ ${HOST} {
   encode zstd gzip
   reverse_proxy 127.0.0.1:8080 {
     flush_interval -1
+    header_up X-Olivia-Client-IP {http.request.remote.host}
   }
   header {
     Strict-Transport-Security "max-age=31536000"
