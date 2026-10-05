@@ -43,6 +43,8 @@ html{overflow:hidden}
 body{overflow:hidden;overscroll-behavior:none;touch-action:manipulation}
 button,input{font:inherit}
 button{border:0;color:inherit;background:transparent;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.rail-btn:focus-visible,.icon:focus-visible,.mini:focus-visible,.side-tab:focus-visible,.send:focus-visible,.device-revoke:focus-visible,.auth-submit:focus-visible{box-shadow:0 0 0 3px rgba(29,231,220,.18)}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .shell{height:100svh;display:grid;grid-template-columns:58px minmax(0,1fr);background:
 radial-gradient(780px 430px at 18% -10%,rgba(255,75,200,.11),transparent 60%),
@@ -305,7 +307,7 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
     </button>
   </div>
 
-  <nav class="side-tabs">
+  <nav class="side-tabs" aria-label="Secciones de 0liviA">
     <button class="side-tab active" data-side="chats" type="button">
       <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4Z"/><path d="M8 9h8M8 12h5"/></svg><span>Chats</span>
     </button>
@@ -366,11 +368,11 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
   </div>
 </aside>
 
-<section id="ownerLogin" class="auth-gate" aria-hidden="true">
+<section id="ownerLogin" class="auth-gate" role="dialog" aria-modal="true" aria-labelledby="ownerAuthTitle" aria-hidden="true">
   <form id="ownerLoginForm" class="auth-card">
     <div class="auth-mark">0</div>
     <strong id="ownerAuthTitle">Entrar a 0liviA</strong>
-    <p id="ownerAuthCopy">Tu cuenta personal. Sin cuentas externas.</p>
+    <p id="ownerAuthCopy">Tu instancia privada.</p>
     <input id="ownerEmail" type="email" autocomplete="username" placeholder="Mail" aria-label="Mail" required>
     <input id="ownerPassword" type="password" autocomplete="current-password" placeholder="Contraseña" aria-label="Contraseña" required>
     <label class="auth-remember">
@@ -378,7 +380,7 @@ linear-gradient(180deg,#020403 0%,#030706 54%,#020403 100%)}
       <span>Recordarme en este dispositivo</span>
     </label>
     <button id="ownerAuthSubmit" class="auth-submit" type="submit">Entrar</button>
-    <div id="ownerLoginError" class="auth-error" role="status"></div>
+    <div id="ownerLoginError" class="auth-error" role="status" aria-live="polite"></div>
   </form>
 </section>
 
@@ -880,9 +882,17 @@ function renderAll(){renderChats();renderTree();renderLibrary();renderMemory();r
 function sideTitle(name){return({chats:'CHATS',projects:'PROYECTOS',library:'BIBLIOTECA',memory:'MEMORIA',config:'CONFIG',session:'SESIÓN'})[name]||'0LIVIA'}
 function activateSide(name,open=true){
   activeSide=name;
-  $$('.side-tab').forEach(b=>b.classList.toggle('active',b.dataset.side===name));
-  $$('.rail-btn[data-side]').forEach(b=>b.classList.toggle('active',b.dataset.side===name));
-  $$('.side-section').forEach(s=>s.classList.remove('active'));
+  $('.side-tab').forEach(b=>{
+    const active=b.dataset.side===name;
+    b.classList.toggle('active',active);
+    if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
+  });
+  $('.rail-btn[data-side]').forEach(b=>{
+    const active=b.dataset.side===name;
+    b.classList.toggle('active',active);
+    if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
+  });
+  $('.side-section').forEach(s=>s.classList.remove('active'));
   const id='#side'+name[0].toUpperCase()+name.slice(1);
   $(id)?.classList.add('active');
   $('#drawerTitle').textContent=sideTitle(name);
