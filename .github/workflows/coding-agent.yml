@@ -95,7 +95,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q olivia tests
+          python -m compileall -q olivia tests scripts
+          python scripts/scan_secret_tree.py
+          python scripts/scan_secret_history.py
+          bash -n deploy/*.sh
+          git diff --check
           pytest -q
 
       - name: Execute bounded coding task
@@ -156,8 +160,11 @@ jobs:
         run: |
           set +e
           : > /tmp/verify-first.log
-          python -m compileall -q olivia tests >> /tmp/verify-first.log 2>&1
+          python -m compileall -q olivia tests scripts >> /tmp/verify-first.log 2>&1
           rc=$?
+          if [ "$rc" -eq 0 ]; then python scripts/scan_secret_tree.py >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          if [ "$rc" -eq 0 ]; then bash -n deploy/*.sh >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          if [ "$rc" -eq 0 ]; then git diff --check >> /tmp/verify-first.log 2>&1; rc=$?; fi
           if [ "$rc" -eq 0 ]; then
             python - <<'PY' >> /tmp/verify-first.log 2>&1
           from pathlib import Path
@@ -212,7 +219,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q olivia tests
+          python -m compileall -q olivia tests scripts
+          python scripts/scan_secret_tree.py
+          bash -n deploy/*.sh
+          git diff --check
           python - <<'PY'
           from pathlib import Path
           import re
