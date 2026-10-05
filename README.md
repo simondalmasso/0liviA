@@ -87,6 +87,7 @@ Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memo
 - [Current implementation checkpoint](docs/IMPLEMENTATION_PLAN.md)
 - [Security audit reconciliation](docs/SECURITY_AUDIT.md)
 - [Security operations](docs/SECURITY_OPERATIONS.md)
+- [ChatGPT plan setup](docs/CHATGPT_PLAN.md)
 - [Research evidence](docs/RESEARCH.md)
 - [Benchmark gates](docs/BENCHMARKS.md)
 - [Canonical build mandate](SUPER_ORDER_END_TO_END.md)
