@@ -578,7 +578,10 @@ class Store:
                     time.time(),
                 ),
             )
-        return int(cur.lastrowid)
+        event_id = int(cur.lastrowid)
+        if str(event_type).startswith("security."):
+            self.prune_security_events()
+        return event_id
 
     def prune_security_events(
         self,
