@@ -112,3 +112,20 @@ Evidence:
 - downloaded archive contained `browser-result.json` and a valid rendered screenshot.
 
 This closes the read-only JS-rendering/artifact-retrieval smoke gate. It does **not** authorize click/write/browser-login automation.
+
+
+## Browser worker controlled smoke
+
+Status: **PASS** for the bounded read-only JS renderer, not for authenticated/write automation.
+
+Durable evidence:
+- workflow: `0liviA Browser Smoke Once`;
+- run: `37257844129`;
+- source SHA: `1a2ec658f3142795e53bf522399b5d56bc98ece9`;
+- target: `https://example.com/`;
+- runtime: Python 3.12 + Playwright 1.55.0 + Google Chrome 154.0.8037.57;
+- assertions: final URL remained on `example.com`, HTTP 200, title contained `Example Domain`, request count stayed within the worker bound, extracted text stayed <= 30k chars;
+- artifact: `browser-smoke-result`, artifact ID `11323124125`;
+- artifact digest: `sha256:677f7d9a0bc00e4cf71565863cd6b6f96853f50e04bb89a977118acd7554779a`.
+
+This closes the controlled public-page JavaScript rendering smoke only. It does not certify login flows, write/click automation, arbitrary-site compatibility or production browser credentials.
