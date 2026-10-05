@@ -1,7 +1,7 @@
 import pytest
 
 from olivia.config import Settings
-from olivia.router import ProviderPool, ProviderStreamInterrupted
+from olivia.router import OpenAICompatibleProvider, ProviderPool, ProviderSpec, ProviderStreamInterrupted
 from olivia.store import Store
 
 
