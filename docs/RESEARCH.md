@@ -257,6 +257,41 @@ Source: https://github.com/mobile-next/mobile-mcp
 
 Potential mobile automation tool, but not required for 0liviA core. ToolCheck snapshot: caution 72/100 at time checked; review permissions and attack surface before any use.
 
+## Training / publication workflow patterns
+
+### Homebrew AI
+Source: https://github.com/empero-org/homebrew-ai
+
+Useful patterns retained:
+- resumable long-running jobs with durable project state;
+- explicit confirmation before paid compute, software installation, data upload or publication;
+- hardware-aware planning before work starts;
+- evaluate the trained artifact before promotion;
+- credentials remain outside the chat transcript;
+- portable trace/data format for reproducible fine-tuning/evaluation.
+
+Fit for 0liviA:
+- **pattern source, not a runtime dependency**;
+- could inform a future optional fine-tuning/evaluation worker;
+- current training paths often need a capable local/rented GPU, so it does not satisfy the normal USD 0 runtime constraint by itself;
+- no reason to add its dependency surface to the always-on Core.
+
+### dev-to-publish
+Source: https://github.com/amirmushichge/dev-to-publish
+
+Useful patterns retained:
+- artifact → preview → human approval → publish/queue → durable receipt;
+- channel-specific packaging from one verified source;
+- dry-run first;
+- publishing adapter separated from editorial/creative agent logic;
+- no assumption of access to unrelated chats/accounts.
+
+Fit for 0liviA:
+- **optional future publishing skill/worker**, not core;
+- useful if 0liviA later publishes project demos/posts;
+- requires an external delivery account/API such as Buffer, so it is not a zero-cost core dependency;
+- the review/approval/receipt pattern is worth reusing for any irreversible external action.
+
 ## Required benchmarks before architecture freeze
 
 Measure on the actual Oracle A1 VM:
