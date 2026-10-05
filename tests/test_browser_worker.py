@@ -16,14 +16,14 @@ from olivia.browser_worker import (
 def test_browser_job_validation_rejects_private_and_oversized_input():
     with pytest.raises(ValueError):
         GitHubActionsBrowserWorker.validate_request(
-            BrowserJobRequest(url="http://127.0.0.1/", objective="x", base_ref="arch/gpt-synthesis-v1")
+            BrowserJobRequest(url="http://127.0.0.1/", objective="x", base_ref="main")
         )
     with pytest.raises(ValueError):
         GitHubActionsBrowserWorker.validate_request(
             BrowserJobRequest(
                 url="https://example.com/",
                 objective="x" * 4001,
-                base_ref="arch/gpt-synthesis-v1",
+                base_ref="main",
             )
         )
 
@@ -68,7 +68,7 @@ async def test_browser_worker_dispatches_bounded_workflow(monkeypatch):
         BrowserJobRequest(
             url="https://example.com/path#fragment",
             objective="Leé la página",
-            base_ref="arch/gpt-synthesis-v1",
+            base_ref="main",
         ),
     )
 
@@ -214,7 +214,7 @@ def test_browser_job_rejects_sensitive_query_parameters(url):
             BrowserJobRequest(
                 url=url,
                 objective="",
-                base_ref="arch/gpt-synthesis-v1",
+                base_ref="main",
             )
         )
 
@@ -224,7 +224,7 @@ def test_browser_job_allows_ordinary_public_query_parameters():
         BrowserJobRequest(
             url="https://example.com/search?q=olivia&page=2",
             objective="",
-            base_ref="arch/gpt-synthesis-v1",
+            base_ref="main",
         )
     )
 
@@ -293,7 +293,7 @@ async def test_browser_worker_rejects_public_repo_before_dispatch(monkeypatch):
             BrowserJobRequest(
                 url="https://example.com/",
                 objective="",
-                base_ref="arch/gpt-synthesis-v1",
+                base_ref="main",
             ),
         )
 
