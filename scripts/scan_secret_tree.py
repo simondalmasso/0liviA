@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -18,8 +18,11 @@ SURFACES = (
 
 
 def tracked_runtime_files() -> list[Path]:
+    git = shutil.which("git")
+    if not git:
+        raise SystemExit("git executable not found")
     proc = subprocess.run(
-        ["git", "ls-files", "-z", "--", *SURFACES],
+        [git, "ls-files", "-z", "--", *SURFACES],
         cwd=ROOT,
         capture_output=True,
         check=True,
