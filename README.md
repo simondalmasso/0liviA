@@ -80,6 +80,7 @@ python -m venv .venv
 . .venv/bin/activate
 pip install -e '.[dev]'
 pytest -q
+olivia
 ```
 
 Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memory SQLite files inside the repository.
