@@ -172,3 +172,12 @@ def test_security_event_retention_prunes_old_and_bounds_count(tmp_path: Path):
     assert len(rows) <= 5
     assert all(row["created_at"] >= 5.0 for row in rows)
     assert store.recent_events(prefix="demo.", limit=10)
+
+
+def test_store_database_file_is_owner_only(tmp_path: Path):
+    path = tmp_path / "private.sqlite3"
+    store = Store(path)
+    try:
+        assert path.stat().st_mode & 0o777 == 0o600
+    finally:
+        store.close()
