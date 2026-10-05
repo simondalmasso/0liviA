@@ -288,12 +288,10 @@ class Gateway:
     ) -> web.Response:
         ttl_s = OWNER_REMEMBER_TTL_S if remember else OWNER_SESSION_TTL_S
         expires_at = int(time.time()) + ttl_s
-        device_id = None
-        if remember:
-            device_id = self.agent.store.create_trusted_device(
-                device_name.strip() or "Este dispositivo",
-                expires_at=expires_at,
-            )
+        device_id = self.agent.store.create_trusted_device(
+            device_name.strip() or "Este dispositivo",
+            expires_at=expires_at,
+        )
         response = _json({
             "authenticated": True,
             "email": email,
