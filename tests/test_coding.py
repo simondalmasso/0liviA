@@ -123,3 +123,11 @@ async def test_coding_worker_fetches_review_report_from_isolated_run_branch(monk
     assert url.endswith("/contents/AGENT_REVIEW.md")
     assert params == {"ref": "agent/coding-123"}
     assert headers["authorization"] == "Bearer test-token"
+
+
+def test_publish_job_receives_default_branch_for_validation():
+    workflow = Path(".github/workflows/coding-agent.yml").read_text(encoding="utf-8")
+    publish = workflow.split("\n  publish:", 1)[1]
+    assert "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in publish
+    assert 'test -n "$DEFAULT_BRANCH"' in publish
+    assert 'refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH' in publish
