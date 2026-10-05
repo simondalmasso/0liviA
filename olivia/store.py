@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import json
 import re
 import sqlite3
@@ -25,6 +26,7 @@ def _scrub_value(value: Any) -> Any:
 
 
 DEFAULT_PROJECT_ID = "default"
+SCHEMA_VERSION = 1
 TRUSTED_DEVICE_TOUCH_INTERVAL_S = 300
 
 
@@ -168,12 +170,24 @@ class Store:
             check_same_thread=False,
         )
         self._conn.row_factory = sqlite3.Row
+        current_version = int(
+            self._conn.execute("PRAGMA user_version").fetchone()[0]
+        )
+        if current_version > SCHEMA_VERSION:
+            self._conn.close()
+            raise ValueError(
+                f"database uses newer schema version {current_version}; "
+                f"this build supports up to {SCHEMA_VERSION}"
+            )
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
-        self._migrate_workspace_schema()
+        os.chmod(self.path, 0o600)
+        if current_version < SCHEMA_VERSION:
+            self._migrate_workspace_schema()
+            self._conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     def _migrate_workspace_schema(self) -> None:
         with self._lock:
