@@ -48,7 +48,6 @@ Implemented:
 
 Still gated:
 - authenticated browsing;
-- owner-approved write/click automation;
 - owner-approved write/click automation remains a separate future capability.
 
 Implemented in branch:
