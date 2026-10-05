@@ -524,7 +524,11 @@ async function canonicalAuthCheck(){
 function showOwnerLogin(){
   const registering=coreHealth?.registration_open===true;
   ownerAuthTitle.textContent=registering?'Registrate':'Entrar a 0liviA';
-  ownerAuthCopy.textContent=registering?'Creá tu cuenta personal.':'Tu cuenta personal.';
+  ownerAuthCopy.textContent=registering
+    ?(coreHealth?.registration_protected&&!setupToken
+      ?'Abrí el enlace de instalación inicial para crear la cuenta.'
+      :'Creá tu cuenta personal.')
+    :'Tu cuenta personal.';
   ownerAuthSubmit.textContent=registering?'Registrate':'Entrar';
   ownerPassword.autocomplete=registering?'new-password':'current-password';
   ownerLogin.classList.add('open');
@@ -629,6 +633,7 @@ ownerLoginForm.onsubmit=async e=>{
       ownerLoginError.textContent=
         r.status===401?'Mail o contraseña incorrectos':
         r.status===409?'La registración ya está cerrada. Recargá e iniciá sesión.':
+        r.status===403&&registering?'Abrí el enlace de instalación inicial para registrarte.':
         r.status===429?'Demasiados intentos. Probá de nuevo en un minuto.':
         registering?'Usá un mail válido y una contraseña de al menos 10 caracteres.':
         'No se pudo iniciar sesión';
