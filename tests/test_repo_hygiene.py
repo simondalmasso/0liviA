@@ -128,3 +128,11 @@ def test_github_actions_are_pinned_to_immutable_commits():
             if not re.fullmatch(r"[0-9a-f]{40}", ref):
                 unpinned.append(f"{path.name}: {action}@{ref}")
     assert unpinned == []
+
+
+def test_browser_worker_examples_fail_closed_on_privacy_and_cost():
+    for path in (ROOT / ".env.example", ROOT / "deploy" / "olivia.env.example"):
+        text = path.read_text(encoding="utf-8")
+        assert "OLIVIA_BROWSER_ZERO_COST_VERIFIED=0" in text
+        assert "private" in text.lower()
+        assert "configured public repo" not in text.lower()
