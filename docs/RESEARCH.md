@@ -138,6 +138,28 @@ Sources:
 
 High-quality candidates for richer voice/cloning, but likely heavier than the smallest CPU-first options. Measure hardware requirements before considering them on the always-on A1 node.
 
+## Local frontier-quality model challengers
+
+### Meta Muse Glimmer
+Source: https://dev.meta.ai/models/muse-glimmer
+
+Official Meta documentation (checked 2026-10-04):
+- 30B dense multimodal model, text+image input and text output;
+- 128K default context, trained across 100+ languages;
+- Apache-2.0 weights;
+- designed for always-on local agents, tool use, long tasks and failure recovery;
+- supported through llama.cpp, vLLM, SGLang and ExecuTorch;
+- official published benchmarks include SWE-Bench Verified 76.0, SWE-Bench Pro 51.2, TerminalBench 2.1 51.7 and MCP Atlas 75.5.
+
+Fit for 0liviA:
+- **strong local-quality challenger** for a future GPU node / capable owner-supplied host;
+- can sit behind the existing OpenAI-compatible provider abstraction, so no core rewrite is required;
+- no API key is required after downloading the open weights;
+- not suitable as the default Oracle A1 2 OCPU / 12 GB model: the official Q4_K_M text checkpoint is ~16.8 GB and Meta reports ~19 GiB VRAM for text + vision projector + full 128K context;
+- do not replace a frontier hosted route with a tiny local model merely to claim availability. Quality floor remains a release gate.
+
+Decision: **benchmark candidate, not A1 default**. If a >=24 GB GPU node or equivalent free/self-owned hardware becomes available, evaluate Muse Glimmer before smaller local fallbacks.
+
 ## Agent / harness / orchestration candidates
 
 ### OmO
