@@ -364,7 +364,7 @@ async def test_coding_job_dispatch_is_authenticated_durable_and_refreshable(aioh
         "/api/jobs/code",
         json={
             "task": "Fix the failing tests without changing unrelated behavior.",
-            "base_ref": "arch/gpt-synthesis-v1",
+            "base_ref": "main",
             "publish_branch": False,
         },
         headers=auth(),
@@ -376,7 +376,7 @@ async def test_coding_job_dispatch_is_authenticated_durable_and_refreshable(aioh
     stored = store.get_job(job_id)
     assert stored["kind"] == "code"
     assert stored["status"] == "dispatched"
-    assert stored["checkpoint"]["base_ref"] == "arch/gpt-synthesis-v1"
+    assert stored["checkpoint"]["base_ref"] == "main"
     assert worker.dispatched[0][0] == job_id
 
     refreshed = await client.get(f"/api/jobs/{job_id}", headers=auth())
