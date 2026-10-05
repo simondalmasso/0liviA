@@ -80,6 +80,7 @@ class Gateway:
         auth_token: str | None = None,
         owner_password_verifier: str | None = None,
         owner_email: str | None = None,
+        registration_token: str | None = None,
         locale_validator: LocaleValidator = default_es_ar_validator,
         locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
         static_root: Path | None = None,
@@ -101,6 +102,11 @@ class Gateway:
             else os.getenv("OLIVIA_OWNER_EMAIL", "")
         )
         self.owner_email = str(configured_email or "").strip().casefold()
+        self.registration_token = (
+            registration_token
+            if registration_token is not None
+            else os.getenv("OLIVIA_REGISTRATION_TOKEN", "")
+        )
         if self.owner_email and self.owner_password_verifier:
             self.agent.store.seed_owner_if_absent(
                 self.owner_email,
@@ -242,6 +248,13 @@ class Gateway:
             return _json({"error": "owner_auth_unavailable"}, 503)
         if self.agent.store.get_owner_account() is not None:
             return _json({"error": "registration_closed"}, 409)
+        if self.registration_token:
+            supplied_setup = request.headers.get("X-Olivia-Setup-Token", "")
+            if not supplied_setup or not secrets.compare_digest(
+                supplied_setup,
+                self.registration_token,
+            ):
+                return _json({"error": "registration_forbidden"}, 403)
 
         payload = await self._read_json(request)
         email = payload.get("email")
@@ -409,6 +422,9 @@ class Gateway:
             ),
             "registration_open": bool(
                 self.auth_token and self.agent.store.get_owner_account() is None
+            ),
+            "registration_protected": bool(
+                self.registration_token and self.agent.store.get_owner_account() is None
             ),
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
             "web_read_configured": self.web_reader is not None,
@@ -1201,6 +1217,7 @@ def create_app(
     auth_token: str | None = None,
     owner_password_verifier: str | None = None,
     owner_email: str | None = None,
+    registration_token: str | None = None,
     locale_validator: LocaleValidator = default_es_ar_validator,
     locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
     static_root: Path | None = None,
@@ -1228,6 +1245,7 @@ def create_app(
         auth_token=auth_token,
         owner_password_verifier=owner_password_verifier,
         owner_email=owner_email,
+        registration_token=registration_token,
         locale_validator=locale_validator,
         locale_buffer_chars=locale_buffer_chars,
         static_root=static_root,
