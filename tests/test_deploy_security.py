@@ -53,7 +53,7 @@ def test_small_local_model_is_recovery_only_by_default():
 def test_chatgpt_plan_installer_is_fail_closed_and_never_echoes_tokens():
     assert "OLIVIA_CHATGPT_NO_CREDIT_OVERAGE_VERIFIED" in CHATGPT_INSTALLER
     assert "chatgpt.tokens.use.direct" in CHATGPT_INSTALLER
-    assert "chmod 0600" in CHATGPT_INSTALLER
+    assert 'install -o olivia -g olivia -m 0600' in CHATGPT_INSTALLER
     assert '"kind": "chatgpt_plan"' in CHATGPT_INSTALLER
     assert '"cost_mode": "plan_included"' in CHATGPT_INSTALLER
     assert '"no_credit_overage_verified": True' in CHATGPT_INSTALLER
