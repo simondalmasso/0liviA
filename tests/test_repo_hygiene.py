@@ -251,3 +251,13 @@ def test_mobile_ui_smoke_gates_relevant_pull_requests():
     assert '"scripts/ui_mobile_smoke.py"' in workflow
     assert '".github/workflows/ui-mobile-smoke.yml"' in workflow
 
+def test_static_security_audit_gates_relevant_pull_requests():
+    workflow = (ROOT / ".github" / "workflows" / "static-audit.yml").read_text(encoding="utf-8")
+
+    assert "pull_request:" in workflow
+    assert "- main" in workflow
+    assert '"olivia/**"' in workflow
+    assert '"scripts/**"' in workflow
+    assert '"deploy/**"' in workflow
+    assert '".github/workflows/static-audit.yml"' in workflow
+
