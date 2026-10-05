@@ -44,6 +44,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - authenticated canonical workspace API with Projects/Chats/Library/Memory durable server-side and IndexedDB used only as a browser cache/migration layer;
 - provider health/quota state with circuit breaker, half-open recovery and redacted telemetry;
 - native official ChatGPT-plan provider for eligible Plus/Pro owners: OAuth profile server-side only, Responses API `store:false`, automatic token refresh, and hard-zero-cost admission only after no-credit-overage is explicitly verified;
+- one-time local Sign in with ChatGPT OAuth helper with PKCE/state/nonce, OIDC/JWKS validation, stable host ID, account model discovery and protected 0600 credential handoff to the cloud Core;
 - pre-visible-output failover with cancellation/partial-answer safety;
 - aiohttp browser/API gateway with first-run single-owner registration, email+password login, Secure/HttpOnly/SameSite cookies, login throttling, revocable remembered devices, bounded request bodies and one active turn per session;
 - canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
@@ -64,7 +65,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - production smoke of the isolated `/browse` worker and any future owner-approved click/write automation;
 - a production `/search` provider only after its exact account/provider route is proven zero-cost;
 - production STT/VAD/TTS selection and es-AR voice acceptance;
-- one-time Sign in with ChatGPT OAuth onboarding helper and owner-side verification that app credit use cannot create overage;
+- a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
 - exact-SHA public deployment and production smoke;
 - any Cloudflare inference/search path whose account-level zero-cost behavior is not independently verified.
