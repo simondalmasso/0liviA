@@ -1842,3 +1842,13 @@ async def test_shell_keeps_keyboard_focus_and_accessible_navigation_contract(cli
     assert "setAttribute('aria-current'" in html
     assert "removeAttribute('aria-current')" in html
     assert "PostHog" not in html
+
+@pytest.mark.asyncio
+async def test_ui_distinguishes_public_shell_from_transitional_bridge(client):
+    response = await client.get("/")
+    html = await response.text()
+
+    assert "body.api_mode==='public_shell'" in html
+    assert "backendMode='public_shell'" in html
+    assert "Shell público · Core desconectado" in html
+
