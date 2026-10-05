@@ -88,7 +88,7 @@
 
 ## ADR-0010 — Native ChatGPT plan usage, not OpenClaw as a dependency
 - Date: 2026-10-05
-- Status: **accepted / onboarding gated**
+- Status: **accepted / live-connection gated**
 - Decision: support OpenAI's official Sign in with ChatGPT plan-usage flow directly behind the existing provider router instead of embedding OpenClaw or another full assistant framework.
 - Transport: OAuth bearer → official Responses API with streaming and `store:false`; credentials remain server-side.
 - Quality: the account's available model catalog determines eligible models; `gpt-6-astra` is the preferred configured slug only when actually available to the connected account.
