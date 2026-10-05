@@ -68,7 +68,7 @@ async def test_browser_worker_dispatches_bounded_workflow(monkeypatch):
     url, payload, headers = calls[0]
     assert url.endswith("/actions/workflows/browser-agent.yml/dispatches")
     assert payload["inputs"]["url"] == "https://example.com/path"
-    assert payload["inputs"]["objective"] == "Leé la página"
+    assert "objective" not in payload["inputs"]
     assert headers["authorization"] == "Bearer test-token"
 
 
@@ -169,3 +169,18 @@ async def test_browser_worker_status_matches_only_its_job(monkeypatch):
     result = await worker.status("0123456789abcdef")
     assert result["remote_run_id"] == 99
     assert result["remote_conclusion"] == "success"
+
+
+def test_public_browser_workflow_is_read_only_and_prompt_private():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "browser-agent.yml").read_text(encoding="utf-8")
+    runner = (root / "scripts" / "browser_snapshot.py").read_text(encoding="utf-8")
+
+    assert "inputs.objective" not in workflow
+    assert 'objective:' not in workflow
+    assert 'request.method not in {"GET", "HEAD"}' in runner
+    assert "accept_downloads=False" in runner
+    assert "127.0.0.0/8" in workflow
+    assert "::1/128" in workflow
+    assert "169.254.0.0/16" in workflow
