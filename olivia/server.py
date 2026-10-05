@@ -291,12 +291,13 @@ class Gateway:
         device_id = self.agent.store.create_trusted_device(
             device_name.strip() or "Este dispositivo",
             expires_at=expires_at,
+            remembered=remember,
         )
         response = _json({
             "authenticated": True,
             "email": email,
             "remembered": remember,
-            "device_id": device_id,
+            "device_id": device_id if remember else None,
             "expires_at": expires_at,
         })
         cookie_kwargs = {
