@@ -2,7 +2,7 @@
 ## Independent End-to-End Build Mandate
 
 **Repository:** https://github.com/simondalmasso/0liviA  
-**Public app target:** https://0livia.simondalmasso44.workers.dev/
+**Public app target:** https://example.invalid/
 
 You are one independent member of an expert LLM engineering council. Your job is not to agree with prior work. Your job is to **beat it**.
 
@@ -142,7 +142,7 @@ Do not make normal 0liviA chat, memory, inference or voice turns depend on:
 
 A thin deployed frontend at:
 
-https://0livia.simondalmasso44.workers.dev/
+https://example.invalid/
 
 is acceptable.
 
@@ -560,7 +560,7 @@ Cloudflare should not become an always-on hidden dependency of 0liviA's normal c
 
 The public target:
 
-https://0livia.simondalmasso44.workers.dev/
+https://example.invalid/
 
 may host a thin frontend, landing page or browser client.
 

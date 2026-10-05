@@ -42,6 +42,11 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     workflow = Path(".github/workflows/coding-agent.yml").read_text(encoding="utf-8")
     assert 'run-name: "0liviA code ${{ inputs.olivia_job_id }}"' in workflow
     assert "deepseek-ai/deepseek-v4.1-flash" in workflow
+    assert "OLIVIA_CODING_API_BASE" in workflow
+    assert "OLIVIA_CODING_MODEL" in workflow
+    assert "OLIVIA_CODING_API_KEY" in workflow
+    assert "OLIVIA_CODING_ZERO_COST_VERIFIED" in workflow
+    assert 'test "$ZERO_COST_VERIFIED" = "true"' in workflow
     assert "https://integrate.api.nvidia.com/v1" in workflow
     assert "test -n \"$AIDER_OPENAI_API_KEY\"" in workflow
     assert 'BRANCH="agent/coding-${GITHUB_RUN_ID}"' in workflow

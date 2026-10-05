@@ -2,7 +2,7 @@
 
 Snapshot source of truth: `arch/gpt-synthesis-v1`  
 Repo: https://github.com/simondalmasso/0liviA  
-Public URL (historical/stale until exact-SHA canonical release): https://0livia.simondalmasso44.workers.dev/
+Public URL (historical/stale until exact-SHA canonical release): https://example.invalid/
 
 ## Role lock
 
