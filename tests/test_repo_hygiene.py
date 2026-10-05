@@ -99,3 +99,18 @@ def test_coding_agent_never_receives_repository_admin_write_credentials():
     assert "github.token" not in code_segment
     assert "NVIDIA_API_KEY" not in publish_segment
     assert "contents: write" in publish_segment
+
+
+def test_chatgpt_plan_docs_match_implemented_onboarding():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    security = (ROOT / "docs" / "SECURITY_AUDIT.md").read_text(encoding="utf-8")
+    research = (ROOT / "docs" / "RESEARCH.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "CHATGPT_PLAN.md").read_text(encoding="utf-8")
+
+    assert "Implement the one-time local Sign in with ChatGPT OAuth onboarding helper" not in plan
+    assert "OAuth onboarding/JWKS validation is not yet integrated" not in security
+    assert "one-time OAuth onboarding remains a release gate" not in research
+    assert "one-time local Sign in with ChatGPT OAuth helper" in readme
+    assert "PKCE" in runbook and "JWKS" in runbook
+    assert "no_credit_overage_verified" in runbook
