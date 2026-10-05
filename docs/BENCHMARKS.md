@@ -145,3 +145,10 @@ Verified geometry:
 - zero browser `pageerror` events in both normal and auth pages.
 
 This certifies the current 360–430 px layout and auth/Voice geometry. It does not replace real-device keyboard, safe-area/notch or mobile-network soak testing on the eventual production host.
+
+Latest Live Voice client regression evidence:
+- source SHA: `c5dde9c00926f857056c2083f96889b9ae717dea`;
+- core CI: PASS;
+- mobile UI smoke run: `37273932907` PASS;
+- artifact: `olivia-mobile-ui-smoke`, ID `11328992551`;
+- this run includes the canonical direct-WSS UI client while preserving the same 360×800 / 430×900 layout gates.

@@ -19,7 +19,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Isolated GitHub Actions coding worker with durable job IDs, exact base refs, `implement/repair/review` modes and deterministic post-agent verification.
 - Isolated JS browser burst worker with `/browse`, JavaScript rendering, read-only GET/HEAD enforcement, public-network egress guards and bounded artifacts; `/inspect <job_id>` explicitly analyzes a finished render as ephemeral untrusted research context without persisting page text into chat/memory.
 - Review mode may only create/update `AGENT_REVIEW.md`; any product mutation fails the job.
-- Authenticated `/api/voice/ws` direct-WSS endpoint plus voice contracts/pipeline/sequence/cancel tests and benchmark recorder. The endpoint fails 503 until an approved speech backend factory is configured.
+- Authenticated `/api/voice/ws` direct-WSS endpoint plus a browser/mobile WSS client, voice contracts/pipeline/sequence/cancel tests and benchmark recorder. The UI selects canonical WSS only when `/healthz` reports `voice_backend_configured=true`; otherwise it keeps the existing browser speech path as a provisional fallback. The WSS endpoint itself still fails 503 until an approved speech backend factory is configured.
 - Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
 - Repository hygiene tests preventing stale build claims and active-doc duplication.
 - Public inert shell released from exact source `4ad53fdfd6e1664763c73ea5847582ba2ed99157`: core CI run `37266316863` PASS, mobile Playwright smoke run `37266316851` PASS at 360×800 and 430×900, public-shell deploy run `37266503642` PASS, Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, with `PUBLIC_SHELL_OK=YES` and `INFERENCE_DISABLED=YES`.
@@ -57,7 +57,7 @@ Implemented in branch:
 - `/browse`: opt-in GitHub Actions burst worker using a dedicated private GitHub repository, pinned Playwright, JavaScript rendering, reserved/private-network egress blocks, no third-party browser secrets, bounded requests/text/artifacts, Core-side repository-privacy preflight, and external page content kept out of durable chat/model context until explicitly requested.
 
 ### 5. Live Voice
-The UI, authenticated direct-WSS Gateway route and Python pipeline now exist; production speech engines do not. The route is capability-gated and returns 503 until a backend is configured. Benchmark direct WSS + candidate VAD/STT/TTS on the actual target host for es-AR quality, TTFT/TTFA, barge-in and 60-minute stability before promotion. LiveKit Agents and Pipecat remain challengers, not defaults.
+The UI, authenticated direct-WSS Gateway route, browser/mobile WSS client and Python pipeline now exist; production speech engines do not. The route is capability-gated and returns 503 until a backend is configured. Benchmark direct WSS + candidate VAD/STT/TTS on the actual target host for es-AR quality, TTFT/TTFA, barge-in and 60-minute stability before promotion. LiveKit Agents and Pipecat remain challengers, not defaults.
 
 ### 6. Coding worker
 The GitHub Actions worker is implemented and opt-in:

@@ -58,7 +58,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
 - review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
 - coding execution job has read-only repository permission; optional publication happens in a separate write-capable job after verification;
-- authenticated direct-WSS voice endpoint, transport/pipeline contracts, sequence/cancel/barge-in tests and benchmark recorder; speech engines remain capability-gated until benchmarked;
+- authenticated direct-WSS voice endpoint plus browser/mobile WSS client, transport/pipeline contracts, PCM16 streaming, sequence/cancel/barge-in handling and benchmark recorder; the UI uses canonical WSS when a server speech backend is configured and keeps browser speech only as a provisional fallback; speech engines remain capability-gated until benchmarked;
 - production bootstrap with immutable source SHA, pinned artifact SHA-256 verification and first-run owner registration;
 - CI on Python 3.11 and 3.12 plus shell, JS and Worker syntax gates.
 
