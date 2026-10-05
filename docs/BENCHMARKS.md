@@ -115,3 +115,21 @@ Durable evidence:
 - downloaded archive contained `browser-result.json` and a valid rendered screenshot.
 
 This closes the controlled public-page JS-rendering/artifact-retrieval gate only. It does not certify login flows, click/write actions, arbitrary-site compatibility or production browser credentials.
+
+
+## Mobile UI smoke
+
+Status: **PASS** for the current shell at the two required narrow viewports.
+
+Durable evidence:
+- workflow: `0liviA Mobile UI Smoke Once`;
+- run: `37258626574`;
+- source SHA: `afcdce10193e77cb91333fc314d9c27dcc431d8b`;
+- runtime: Python 3.12 + Playwright 1.55.0 + Google Chrome 154.0.8037.57;
+- viewports: `360x800` and `430x900`, mobile/touch context;
+- assertions: no horizontal document/body overflow, rail width within 44–54 px, composer flush to viewport bottom, Session rail button opens drawer, final drawer bounds remain within viewport;
+- artifact: `mobile-ui-smoke`, artifact ID `11323133397`;
+- artifact digest: `sha256:35a0b1deb570cb73c8125aa323935b0e2536ac24cc284a8838dd2caae2cf7290`;
+- artifact contains `mobile-ui-smoke.json` plus screenshots for both viewports.
+
+The first smoke exposed a real closed-drawer pointer interception bug; the UI was fixed with closed/open pointer-event isolation. A second smoke exposed only a test timing issue during the 220 ms drawer transition; the final stable-position smoke above passed.
