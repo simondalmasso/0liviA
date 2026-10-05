@@ -9,6 +9,7 @@ from olivia.browser_worker import (
     BrowserJobRequest,
     BrowserWorkerError,
     GitHubActionsBrowserWorker,
+    browser_worker_from_env,
 )
 
 
@@ -215,3 +216,26 @@ def test_browser_job_allows_ordinary_public_query_parameters():
             base_ref="arch/gpt-synthesis-v1",
         )
     )
+
+
+def test_browser_worker_hard_zero_cost_requires_explicit_actions_cost_verification(monkeypatch):
+    monkeypatch.setenv("OLIVIA_BROWSER_WORKER_ENABLED", "1")
+    monkeypatch.setenv("OLIVIA_BROWSER_REPO", "owner/private-browser")
+    monkeypatch.delenv("OLIVIA_BROWSER_ZERO_COST_VERIFIED", raising=False)
+
+    with pytest.raises(BrowserWorkerError, match="zero-cost"):
+        browser_worker_from_env(hard_zero_cost=True)
+
+    monkeypatch.setenv("OLIVIA_BROWSER_ZERO_COST_VERIFIED", "1")
+    worker = browser_worker_from_env(hard_zero_cost=True)
+    assert worker is not None
+    assert worker.repo == "owner/private-browser"
+
+
+def test_browser_worker_non_hard_zero_cost_can_be_enabled_without_cost_attestation(monkeypatch):
+    monkeypatch.setenv("OLIVIA_BROWSER_WORKER_ENABLED", "1")
+    monkeypatch.setenv("OLIVIA_BROWSER_REPO", "owner/private-browser")
+    monkeypatch.delenv("OLIVIA_BROWSER_ZERO_COST_VERIFIED", raising=False)
+
+    worker = browser_worker_from_env(hard_zero_cost=False)
+    assert worker is not None
