@@ -53,12 +53,12 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
 - replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
 - bounded `/research` tool: one search plus safe reads of up to three results, injected only as ephemeral untrusted context;
-- opt-in `/browse` GitHub Actions burst worker with JavaScript rendering, GET/HEAD-only navigation, reserved/private-network egress guards, bounded artifacts and no page-text persistence into chat/model context;
+- opt-in `/browse` GitHub Actions burst worker with JavaScript rendering, GET/HEAD-only navigation, reserved/private-network egress guards and bounded artifacts; `/inspect <job_id>` can explicitly analyze a completed render as ephemeral untrusted model context without persisting page text into chat/memory;
 - violet/blue/cyan rail UI with Chats, Projects, Library, Memory, Config and Session surfaces, plus fullscreen Live Voice; responsive gates cover 360–430 px mobile layouts;
 - isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
 - review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
 - coding execution job has read-only repository permission; optional publication happens in a separate write-capable job after verification;
-- authenticated direct-WSS voice endpoint, transport/pipeline contracts, sequence/cancel/barge-in tests and benchmark recorder; speech engines remain capability-gated until benchmarked;
+- authenticated direct-WSS voice endpoint plus browser/mobile WSS client, transport/pipeline contracts, PCM16 streaming, sequence/cancel/barge-in handling and benchmark recorder; the UI uses canonical WSS when a server speech backend is configured and keeps browser speech only as a provisional fallback; speech engines remain capability-gated until benchmarked;
 - production bootstrap with immutable source SHA, pinned artifact SHA-256 verification and first-run owner registration;
 - CI on Python 3.11 and 3.12 plus shell, JS and Worker syntax gates.
 
