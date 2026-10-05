@@ -57,6 +57,7 @@ async def main() -> None:
             service_workers="block",
             java_script_enabled=True,
             ignore_https_errors=False,
+            accept_downloads=False,
         )
         page = await context.new_page()
 
@@ -90,7 +91,7 @@ async def main() -> None:
                 return
             await route.continue_()
 
-        await page.route("**/*", guard)
+        await context.route("**/*", guard)
 
         try:
             response = await page.goto(
