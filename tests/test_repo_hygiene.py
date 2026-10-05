@@ -54,11 +54,10 @@ def test_production_bootstrap_requires_immutable_ref_and_hides_gateway_token():
     assert '^[0-9a-fA-F]{40}$' in cloud_init
 
 
-def test_env_examples_document_first_run_registration_without_plaintext_password():
+def test_env_examples_document_owner_cookie_auth_without_plaintext_password():
     for path in (ROOT / ".env.example", ROOT / "deploy" / "olivia.env.example"):
         content = path.read_text(encoding="utf-8")
-        assert "OLIVIA_REGISTRATION_TOKEN=" in content
-        assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" not in content
+        assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" in content
         assert "OLIVIA_OWNER_PASSWORD=" not in content
 
 
@@ -88,6 +87,63 @@ def test_product_docs_track_cloud_workspace_and_agent_tools():
     assert "/read" in plan and "/search" in plan
     assert "AGENT_REVIEW.md" in architecture
     assert "contents: read" in decisions
+
+
+def test_coding_agent_never_receives_repository_admin_write_credentials():
+    workflow = (ROOT / ".github" / "workflows" / "coding-agent.yml").read_text(encoding="utf-8")
+    code_segment = workflow.split("jobs:\n  code:", 1)[1].split("\n  publish:", 1)[0]
+    publish_segment = workflow.split("\n  publish:", 1)[1]
+
+    assert "contents: write" not in code_segment
+    assert "persist-credentials: false" in code_segment
+    assert "github.token" not in code_segment
+    assert "NVIDIA_API_KEY" not in publish_segment
+    assert "contents: write" in publish_segment
+
+
+def test_chatgpt_plan_docs_match_implemented_onboarding():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    security = (ROOT / "docs" / "SECURITY_AUDIT.md").read_text(encoding="utf-8")
+    research = (ROOT / "docs" / "RESEARCH.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "CHATGPT_PLAN.md").read_text(encoding="utf-8")
+
+    assert "Implement the one-time local Sign in with ChatGPT OAuth onboarding helper" not in plan
+    assert "OAuth onboarding/JWKS validation is not yet integrated" not in security
+    assert "one-time OAuth onboarding remains a release gate" not in research
+    assert "one-time local Sign in with ChatGPT OAuth helper" in readme
+    assert "PKCE" in runbook and "JWKS" in runbook
+    assert "no_credit_overage_verified" in runbook
+
+
+def test_github_actions_are_pinned_to_immutable_commits():
+    import re
+
+    workflows = ROOT / ".github" / "workflows"
+    action_ref = re.compile(r"^\s*(?:-\s*)?uses:\s+(actions/[^@\s]+)@([^\s#]+)", re.MULTILINE)
+    unpinned = []
+    for path in workflows.glob("*.yml"):
+        text = path.read_text(encoding="utf-8")
+        for action, ref in action_ref.findall(text):
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                unpinned.append(f"{path.name}: {action}@{ref}")
+    assert unpinned == []
+
+
+def test_browser_worker_docs_require_private_artifact_repo():
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    worker = (ROOT / "olivia" / "browser_worker.py").read_text(encoding="utf-8")
+
+    assert "OLIVIA_BROWSER_REPO=owner/private-browser" in env_example
+    assert "OLIVIA_BROWSER_ZERO_COST_VERIFIED=0" in env_example
+    assert "OLIVIA_BROWSER_REPO=simondalmasso/0liviA" not in env_example
+    assert "public-repo runner" not in architecture
+    assert "public-repo runner" not in plan
+    assert "private GitHub" in architecture
+    assert "private GitHub" in plan
+    assert "public GitHub Actions runner" not in worker
 
 
 def test_public_product_is_instance_isolated_and_has_no_personal_backend_defaults():

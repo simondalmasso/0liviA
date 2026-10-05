@@ -70,16 +70,19 @@ class WireCodec:
             meta: dict[str, Any] = json.loads(payload[_HEADER.size:end].decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("invalid audio header JSON") from exc
-        return AudioFrame(
-            turn_id=str(meta["turn_id"]),
-            seq=int(meta["seq"]),
-            sample_rate=int(meta.get("sample_rate", 16_000)),
-            channels=int(meta.get("channels", 1)),
-            client_ts_ms=(
-                None if meta.get("client_ts_ms") is None else float(meta["client_ts_ms"])
-            ),
-            pcm_s16le=payload[end:],
-        )
+        try:
+            return AudioFrame(
+                turn_id=str(meta["turn_id"]),
+                seq=int(meta["seq"]),
+                sample_rate=int(meta.get("sample_rate", 16_000)),
+                channels=int(meta.get("channels", 1)),
+                client_ts_ms=(
+                    None if meta.get("client_ts_ms") is None else float(meta["client_ts_ms"])
+                ),
+                pcm_s16le=payload[end:],
+            )
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("invalid audio header fields") from exc
 
     @staticmethod
     def encode_event(event: VoiceEvent) -> str:

@@ -407,8 +407,10 @@ async def test_coding_job_fails_closed_without_worker(aiohttp_client, tmp_path):
 async def test_ui_preserves_partial_stream_without_requeue(client):
     response = await client.get("/")
     html = await response.text()
-    assert "let buffer='',answer='',streamError=null,sawDone=false;" in html
+    assert "streamError=null" in html
+    assert "sawDone=false" in html
     assert "if(raw==='[DONE]'){sawDone=true;return}" in html
+    assert "if(answer.trim()&&(streamError||!sawDone))" in html
     assert "assistant.status='partial'" in html
     assert "userMessage.status='synced'" in html
     assert "if(streamError||!sawDone)throw new Error" in html
@@ -952,7 +954,7 @@ async def test_research_command_fails_closed_without_search_route(aiohttp_client
 
 
 @pytest.mark.asyncio
-async def test_owner_login_throttle_separates_forwarded_clients(aiohttp_client, tmp_path):
+async def test_owner_login_throttle_separates_trusted_proxy_clients(aiohttp_client, tmp_path):
     settings = Settings(data_dir=tmp_path)
     store = Store(tmp_path / "login-forwarded.sqlite3")
     agent = Agent(store, FakeRouter(), settings)
@@ -971,14 +973,14 @@ async def test_owner_login_throttle_separates_forwarded_clients(aiohttp_client, 
         response = await client.post(
             "/api/auth/login",
             json={"email": "owner@example.com", "password": "wrong"},
-            headers={"X-Forwarded-For": "203.0.113.10"},
+            headers={"X-Olivia-Client-IP": "203.0.113.10"},
         )
         assert response.status == 401
 
     owner = await client.post(
         "/api/auth/login",
         json={"email": "owner@example.com", "password": "owner-passphrase"},
-        headers={"X-Forwarded-For": "203.0.113.11"},
+        headers={"X-Olivia-Client-IP": "203.0.113.11"},
     )
     assert owner.status == 200
 
@@ -1309,6 +1311,515 @@ async def test_ui_consumes_setup_fragment_without_persisting_it(client):
 
 
 @pytest.mark.asyncio
+async def test_cross_origin_requests_fail_closed_without_cors_headers(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "cors.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": "x@example.com", "password": "irrelevant"},
+        headers={"Origin": "https://evil.example"},
+    )
+    assert response.status == 403
+    assert "Access-Control-Allow-Origin" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_security_headers_are_emitted_by_core(client):
+    response = await client.get("/")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Cross-Origin-Resource-Policy"] == "same-origin"
+    assert response.headers["Cross-Origin-Opener-Policy"] == "same-origin"
+
+
+@pytest.mark.asyncio
+async def test_no_public_password_reset_or_email_enumeration_endpoint(client):
+    for path in ("/api/auth/reset", "/api/auth/password-reset", "/api/auth/forgot-password"):
+        response = await client.post(path, json={"email": "owner@example.com"})
+        assert response.status == 404
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_client_cannot_read_arbitrary_session_id(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "authz-session.sqlite3")
+    sid = store.create_session("private")
+    store.append_message(sid, "user", "private message")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    response = await client.get(f"/api/sessions/{sid}/messages")
+    assert response.status == 401
+    assert "private message" not in await response.text()
+
+
+@pytest.mark.asyncio
+async def test_security_event_feed_is_owner_only_and_contains_no_credentials(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "security-events.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    denied = await client.get("/api/security/events")
+    assert denied.status == 401
+
+    failed = await client.post(
+        "/api/auth/login",
+        json={"email": "owner@example.com", "password": "wrong-password"},
+    )
+    assert failed.status == 401
+
+    response = await client.get(
+        "/api/security/events",
+        headers={"Authorization": "Bearer gateway-signing-secret"},
+    )
+    assert response.status == 200
+    payload = await response.json()
+    rendered = repr(payload)
+    assert "security.login_failed" in rendered
+    assert "owner@example.com" not in rendered
+    assert "wrong-password" not in rendered
+    assert "gateway-signing-secret" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_login_does_not_enumerate_owner_email(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "anti-enumeration.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    wrong_email = await client.post(
+        "/api/auth/login",
+        json={"email": "nobody@example.com", "password": "owner-passphrase"},
+    )
+    wrong_password = await client.post(
+        "/api/auth/login",
+        json={"email": "owner@example.com", "password": "wrong-password"},
+    )
+
+    assert wrong_email.status == wrong_password.status == 401
+    assert await wrong_email.json() == await wrong_password.json() == {"error": "unauthorized"}
+
+
+@pytest.mark.asyncio
+async def test_login_rate_key_ignores_spoofed_x_forwarded_for(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "xff.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    for i in range(5):
+        response = await client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "wrong"},
+            headers={"X-Forwarded-For": f"203.0.113.{i + 1}"},
+        )
+        assert response.status == 401
+
+    blocked = await client.post(
+        "/api/auth/login",
+        json={"email": "owner@example.com", "password": "owner-passphrase"},
+        headers={"X-Forwarded-For": "198.51.100.77"},
+    )
+    assert blocked.status == 429
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_current_remembered_device_cookie(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "logout-revoke.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": True,
+            "device_name": "Chrome · Windows",
+        },
+    )
+    payload = await login.json()
+    device_id = payload["device_id"]
+    cookie = login.cookies["olivia_owner"].value
+    assert store.trusted_device_active(device_id) is True
+
+    logout = await client.post(
+        "/api/auth/logout",
+        headers={"Cookie": f"olivia_owner={cookie}"},
+    )
+    assert logout.status == 200
+    assert store.trusted_device_active(device_id) is False
+    assert client.app["gateway"]._owner_cookie_valid(cookie) is False
+
+
+@pytest.mark.asyncio
+async def test_voice_wss_endpoint_is_authenticated_and_capability_gated(client, gateway):
+    _, store, _ = gateway
+    session_id = store.create_session()
+
+    health = await (await client.get("/healthz")).json()
+    assert health["voice_backend_configured"] is False
+    assert health["voice_transport"] == "direct-wss"
+    assert health["voice_locale"] == "es-AR"
+
+    unauthenticated = await client.get(f"/api/voice/ws?session_id={session_id}")
+    assert unauthenticated.status == 401
+
+    unavailable = await client.get(
+        f"/api/voice/ws?session_id={session_id}",
+        headers=auth(),
+    )
+    assert unavailable.status == 503
+    assert (await unavailable.json())["error"] == "voice_backend_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_voice_wss_rejects_bad_or_missing_session_before_handshake(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "voice-gate.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+
+    class DummyPipeline:
+        async def run(self):
+            return None
+
+    def factory(_transport, _session_id):
+        return DummyPipeline()
+
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="voice-token",
+            voice_pipeline_factory=factory,
+        )
+    )
+    headers={"Authorization": "Bearer voice-token"}
+
+    missing = await client.get("/api/voice/ws", headers=headers)
+    assert missing.status == 400
+
+    unknown = await client.get("/api/voice/ws?session_id=missing", headers=headers)
+    assert unknown.status == 404
+
+
+def test_login_throttle_state_is_bounded_under_many_client_ips(gateway):
+    app, _, _ = gateway
+    gw = app["gateway"]
+    gw._login_failures = {
+        f"203.0.113.{i}": [99.0 + (i / 10000)]
+        for i in range(2200)
+    }
+    gw._prune_login_failures(100.0)
+    assert len(gw._login_failures) == 2048
+
+    gw._login_failures["stale"] = [1.0]
+    gw._prune_login_failures(100.0)
+    assert "stale" not in gw._login_failures
+    assert len(gw._login_failures) <= 2048
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get", "/api/auth/session"),
+        ("get", "/api/auth/devices"),
+        ("delete", "/api/auth/devices/not-a-device"),
+        ("get", "/api/security/events"),
+        ("get", "/api/workspace"),
+        ("post", "/api/projects"),
+        ("post", "/api/library"),
+        ("post", "/api/memories"),
+        ("get", "/api/sessions"),
+        ("post", "/api/sessions"),
+        ("get", "/api/sessions/not-a-session/messages"),
+        ("post", "/api/chat/not-a-session"),
+        ("post", "/api/chat/not-a-session/cancel"),
+        ("get", "/api/voice/ws?session_id=not-a-session"),
+        ("post", "/api/jobs/code"),
+        ("get", "/api/jobs/not-a-job"),
+    ],
+)
+async def test_sensitive_api_surface_fails_closed_without_auth(client, method, path):
+    response = await getattr(client, method)(path)
+    assert response.status == 401
+    assert (await response.json())["error"] == "unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_agent_job_events_render_as_compact_chat_state(client):
+    html = await (await client.get("/")).text()
+    assert "job-pill" in html
+    assert "ev?.type==='job'" in html
+    assert "assistant.job=pendingJob" in html
+    assert "extractJobMeta" in html
+    assert "chooseJobStatus" in html
+
+
+@pytest.mark.asyncio
+async def test_health_catalog_reports_available_model_without_secret_metadata(aiohttp_client, tmp_path, monkeypatch):
+    from olivia.router import OpenAICompatibleProvider, ProviderPool, ProviderSpec
+
+    monkeypatch.setenv("SAFE_PROVIDER_KEY", "not-a-real-secret")
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "catalog-health.sqlite3")
+    provider = OpenAICompatibleProvider(
+        ProviderSpec(
+            name="frontier",
+            base_url="https://example.invalid/v1",
+            model="model-x",
+            api_key_env="SAFE_PROVIDER_KEY",
+            priority=1,
+            daily_limit=10,
+            cost_mode="free_hard_cap",
+            capabilities=("chat", "research"),
+        )
+    )
+    router = ProviderPool([provider], store, settings)
+    agent = Agent(store, router, settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    body = await (await client.get("/healthz")).json()
+    assert body["provider_ready"] is True
+    assert body["primary_model"] == "model-x"
+    assert body["provider_catalog"][0]["available"] is True
+    assert body["provider_catalog"][0]["capabilities"] == ["chat", "research"]
+    assert "SAFE_PROVIDER_KEY" not in repr(body)
+    assert "not-a-real-secret" not in repr(body)
+
+
+@pytest.mark.asyncio
+async def test_closed_mobile_drawer_cannot_intercept_rail_taps(client):
+    html = await (await client.get("/")).text()
+    assert ".drawer{" in html
+    assert "pointer-events:none" in html
+    assert ".drawer.open{transform:translateX(0);pointer-events:auto}" in html
+
+
+@pytest.mark.asyncio
+async def test_voice_wss_rejects_second_connection_for_same_session(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "voice-singleton.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class BlockingPipeline:
+        async def run(self):
+            started.set()
+            await release.wait()
+
+    def factory(_transport, _session_id):
+        return BlockingPipeline()
+
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="voice-token",
+            voice_pipeline_factory=factory,
+        )
+    )
+    session_id = store.create_session("voice")
+    headers = {"Authorization": "Bearer voice-token"}
+
+    first = await client.ws_connect(
+        f"/api/voice/ws?session_id={session_id}",
+        headers=headers,
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    second = await client.get(
+        f"/api/voice/ws?session_id={session_id}",
+        headers=headers,
+    )
+    assert second.status == 409
+    assert (await second.json())["error"] == "voice_session_busy"
+
+    release.set()
+    await first.close()
+    for _ in range(50):
+        if session_id not in client.app["gateway"]._voice_sessions:
+            break
+        await asyncio.sleep(0.01)
+    assert session_id not in client.app["gateway"]._voice_sessions
+
+
+@pytest.mark.asyncio
+async def test_owner_logout_revokes_non_remembered_cookie_server_side(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "logout-replay.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": False,
+        },
+    )
+    assert login.status == 200
+    cookie = login.cookies["olivia_owner"]
+    stolen_cookie = {"Cookie": f"olivia_owner={cookie.value}"}
+
+    assert (await client.get("/api/sessions", headers=stolen_cookie)).status == 200
+    assert (await client.post("/api/auth/logout", headers=stolen_cookie)).status == 200
+
+    replay = await client.get("/api/sessions", headers=stolen_cookie)
+    assert replay.status == 401
+
+
+@pytest.mark.asyncio
+async def test_read_rejects_sensitive_query_before_fetch_or_persistence(client, gateway):
+    _, store, _ = gateway
+    reader = FakeWebReader()
+    client.app["gateway"].web_reader = reader
+    session_id = store.create_session()
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/read https://example.com/private?token=abc123 resumí"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    events = [
+        json.loads(line[6:])
+        for line in (await response.text()).splitlines()
+        if line.startswith("data: ")
+    ]
+
+    assert reader.urls == []
+    assert any(event.get("code") == "sensitive_url" for event in events)
+    persisted = repr(store.recent_messages(session_id))
+    assert "abc123" not in persisted
+    assert "token=" not in persisted
+
+
+@pytest.mark.asyncio
+async def test_health_exposes_exact_build_sha(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path, build_sha="b" * 40)
+    store = Store(tmp_path / "build-sha.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    body = await (await client.get("/healthz")).json()
+    assert body["build_sha"] == "b" * 40
+
+
+@pytest.mark.asyncio
+async def test_session_only_login_is_revocable_but_not_listed_as_remembered(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "session-only-device.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": False,
+            "device_name": "Temporal",
+        },
+    )
+    assert login.status == 200
+    cookie = login.cookies["olivia_owner"]
+    headers = {"Cookie": f"olivia_owner={cookie.value}"}
+
+    assert (await client.get("/api/sessions", headers=headers)).status == 200
+    devices = await client.get("/api/auth/devices", headers=headers)
+    assert devices.status == 200
+    assert (await devices.json())["devices"] == []
+
+    assert (await client.post("/api/auth/logout", headers=headers)).status == 200
+    assert (await client.get("/api/sessions", headers=headers)).status == 401
+
+
+@pytest.mark.asyncio
+async def test_protected_registration_ui_explains_setup_link(client):
+    html = await (await client.get("/")).text()
+    assert "registration_protected" in html
+    assert "Abrí el enlace de instalación inicial" in html
+    assert "r.status===403&&registering" in html
+
+
+@pytest.mark.asyncio
+async def test_ui_surfaces_actual_zero_cost_route_per_answer(client):
+    html = await (await client.get("/")).text()
+    assert "providerPresentation" in html
+    assert "ChatGPT plan ·" in html
+    assert "Local ·" in html
+    assert " · $0" in html
+    assert "ev?.type==='route'" in html
+    assert "provider:item.provider||''" in html
+    assert "provider-pill" in html
+
+
+@pytest.mark.asyncio
 async def test_public_shell_has_product_metadata_without_personal_runtime_url(client):
     html = await (await client.get("/")).text()
     assert "<title>0liviA — Self-hosted agentic AI workspace</title>" in html
@@ -1318,6 +1829,9 @@ async def test_public_shell_has_product_metadata_without_personal_runtime_url(cl
     assert 'property="og:description"' in html
     assert 'name="application-name" content="0liviA"' in html
     assert "0livia.simondalmasso44.workers.dev" not in html
+
+
+@pytest.mark.asyncio
 
 
 @pytest.mark.asyncio

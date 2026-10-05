@@ -1,0 +1,86 @@
+name: 0liviA Static Audit Once
+
+on:
+  push:
+    branches:
+      - arch/gpt-synthesis-v1
+    paths:
+      - ".github/static-audit-trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: arch/gpt-synthesis-v1
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Install project and audit tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pip install 'ruff>=0.8,<1' 'bandit>=1.8,<2' 'pip-audit>=2.7,<3'
+
+      - id: deps
+        name: Dependency consistency
+        continue-on-error: true
+        run: python -m pip check
+
+      - id: ruff_prod
+        name: Ruff production correctness
+        continue-on-error: true
+        run: ruff check olivia scripts --select E9,F63,F7,F82
+
+      - id: ruff_tests
+        name: Ruff test correctness
+        continue-on-error: true
+        run: ruff check tests --select E9,F63,F7,F82
+
+      - id: bandit
+        name: Bandit security audit
+        continue-on-error: true
+        run: bandit -q -ll -r olivia scripts -x tests
+
+      - id: pip_audit
+        name: Runtime dependency vulnerability audit
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/runtime-requirements.txt
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          for requirement in data["project"].get("dependencies", []):
+              print(requirement)
+          PY
+          pip-audit --strict -r /tmp/runtime-requirements.txt
+
+      - name: Audit gate
+        shell: bash
+        env:
+          DEPS: ${{ steps.deps.outcome }}
+          RUFF_PROD: ${{ steps.ruff_prod.outcome }}
+          RUFF_TESTS: ${{ steps.ruff_tests.outcome }}
+          BANDIT: ${{ steps.bandit.outcome }}
+          PIP_AUDIT: ${{ steps.pip_audit.outcome }}
+        run: |
+          set -euo pipefail
+          printf 'deps=%s ruff_prod=%s ruff_tests=%s bandit=%s pip_audit=%s\n'             "$DEPS" "$RUFF_PROD" "$RUFF_TESTS" "$BANDIT" "$PIP_AUDIT"
+          test "$DEPS" = success
+          test "$RUFF_PROD" = success
+          test "$RUFF_TESTS" = success
+          test "$BANDIT" = success
+          test "$PIP_AUDIT" = success

@@ -95,6 +95,7 @@ async def test_cloudflare_search_sends_byok_alias_and_never_implicit_credits():
     assert payload["limit"] == 3
     assert "secret-token" not in repr(result)
     assert headers["Authorization"] == "Bearer secret-token"
+    assert headers["cf-aig-no-wholesale"] == "true"
 
 
 @pytest.mark.asyncio

@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # 0liviA cloud bootstrap.
-# Recurring-cost invariant: local inference only. No metered API can be reached
-# through the generated provider configuration.
+# Recurring-cost invariant: no unverified paid inference.
+# Small local models are recovery-only and disabled by default so production
+# never silently downgrades normal chat quality.
 
 REPO_URL="${REPO_URL:-https://github.com/simondalmasso/0liviA.git}"
 REF="${REF:-}"
@@ -15,6 +16,12 @@ LLAMA_ROOT="${LLAMA_ROOT:-/opt/llama}"
 LLAMA_BUILD="${LLAMA_BUILD:-b11388}"
 MODEL_ROOT="${MODEL_ROOT:-${STATE_ROOT}/models}"
 MODEL_PROFILE="${MODEL_PROFILE:-auto}"
+LOCAL_RECOVERY_ENABLED="${LOCAL_RECOVERY_ENABLED:-0}"
+
+case "${LOCAL_RECOVERY_ENABLED}" in
+  0|1) ;;
+  *) echo "LOCAL_RECOVERY_ENABLED must be 0 or 1" >&2; exit 2 ;;
+esac
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "run as root" >&2
@@ -76,14 +83,14 @@ esac
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends   ca-certificates curl git python3 python3-pip python3-venv zstd caddy libgomp1
+apt-get install -y --no-install-recommends   ca-certificates curl git python3 python3-pip python3-venv zstd caddy libgomp1 openssl
 
 if ! id olivia >/dev/null 2>&1; then
   useradd --system --home "${STATE_ROOT}" --shell /usr/sbin/nologin olivia
 fi
 
 install -d -o root -g root -m 0755 "${APP_ROOT}" "${LLAMA_ROOT}"
-install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}" "${MODEL_ROOT}"
+install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}" "${MODEL_ROOT}" "${STATE_ROOT}/private"
 install -d -o root -g olivia -m 0750 "${ETC_ROOT}"
 
 # The 1 GB micro fallback needs swap to survive model load. A1 does not.
@@ -121,31 +128,33 @@ python3 -m venv "${APP_ROOT}/venv"
 install -o root -g root -m 0644   "${APP_ROOT}/current/deploy/0livia.service"   /etc/systemd/system/olivia.service
 install -o root -g root -m 0644   "${APP_ROOT}/current/deploy/llama-local.service"   /etc/systemd/system/llama-local.service
 
-# llama.cpp prebuilt is ~tens of MB, not a multi-GB runtime.
-curl -fL --retry 3 --retry-delay 2   "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_BUILD}/${llama_asset}"   -o "${tmp}/llama.tar.gz"
-printf '%s  %s\n' "${llama_sha256}" "${tmp}/llama.tar.gz" | sha256sum -c -
-rm -rf "${LLAMA_ROOT:?}/"*
-tar -xzf "${tmp}/llama.tar.gz" -C "${LLAMA_ROOT}" --strip-components=1
-test -x "${LLAMA_ROOT}/llama-server"
-
-MODEL_PATH="${MODEL_ROOT}/${MODEL_NAME}"
-if [[ ! -s "${MODEL_PATH}" ]]; then
-  curl -fL --retry 3 --retry-delay 3 "${MODEL_URL}" -o "${MODEL_PATH}.part"
-  test "$(stat -c %s "${MODEL_PATH}.part")" -gt 100000000
-  printf '%s  %s\n' "${MODEL_SHA256}" "${MODEL_PATH}.part" | sha256sum -c -
-  mv "${MODEL_PATH}.part" "${MODEL_PATH}"
+if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
+  # llama.cpp prebuilt is ~tens of MB, not a multi-GB runtime.
+  curl -fL --retry 3 --retry-delay 2   "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_BUILD}/${llama_asset}"   -o "${tmp}/llama.tar.gz"
+  printf '%s  %s\n' "${llama_sha256}" "${tmp}/llama.tar.gz" | sha256sum -c -
+  rm -rf "${LLAMA_ROOT:?}/"*
+  tar -xzf "${tmp}/llama.tar.gz" -C "${LLAMA_ROOT}" --strip-components=1
+  test -x "${LLAMA_ROOT}/llama-server"
+  
+  MODEL_PATH="${MODEL_ROOT}/${MODEL_NAME}"
+  if [[ ! -s "${MODEL_PATH}" ]]; then
+    curl -fL --retry 3 --retry-delay 3 "${MODEL_URL}" -o "${MODEL_PATH}.part"
+    test "$(stat -c %s "${MODEL_PATH}.part")" -gt 100000000
+    printf '%s  %s\n' "${MODEL_SHA256}" "${MODEL_PATH}.part" | sha256sum -c -
+    mv "${MODEL_PATH}.part" "${MODEL_PATH}"
+  fi
+  printf '%s  %s\n' "${MODEL_SHA256}" "${MODEL_PATH}" | sha256sum -c -
+  chown olivia:olivia "${MODEL_PATH}"
+  chmod 0600 "${MODEL_PATH}"
+  
+  cat > "${ETC_ROOT}/llama.env" <<EOF
+  LLAMA_MODEL_PATH=${MODEL_PATH}
+  LLAMA_CTX=${LLAMA_CTX}
+  LLAMA_THREADS=${LLAMA_THREADS}
+  EOF
+  chown root:olivia "${ETC_ROOT}/llama.env"
+  chmod 0640 "${ETC_ROOT}/llama.env"
 fi
-printf '%s  %s\n' "${MODEL_SHA256}" "${MODEL_PATH}" | sha256sum -c -
-chown olivia:olivia "${MODEL_PATH}"
-chmod 0600 "${MODEL_PATH}"
-
-cat > "${ETC_ROOT}/llama.env" <<EOF
-LLAMA_MODEL_PATH=${MODEL_PATH}
-LLAMA_CTX=${LLAMA_CTX}
-LLAMA_THREADS=${LLAMA_THREADS}
-EOF
-chown root:olivia "${ETC_ROOT}/llama.env"
-chmod 0640 "${ETC_ROOT}/llama.env"
 
 TOKEN="$(python3 - <<'PY'
 import secrets
@@ -158,31 +167,41 @@ print(secrets.token_urlsafe(32))
 PY
 )"
 
+PROVIDERS_JSON='[]'
+if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
+  PROVIDERS_JSON='[{"name":"local-recovery-qwen","base_url":"http://127.0.0.1:11434/v1","model":"local-qwen","api_key_env":"","priority":1000,"daily_limit":0,"cost_mode":"local"}]'
+fi
+
 cat > "${ETC_ROOT}/olivia.env" <<EOF
 OLIVIA_DATA_DIR=${STATE_ROOT}
 OLIVIA_BIND=127.0.0.1
 OLIVIA_PORT=8080
+OLIVIA_BUILD_SHA=${REF}
 OLIVIA_HARD_ZERO_COST=1
 OLIVIA_GATEWAY_TOKEN=${TOKEN}
 OLIVIA_REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
 OLIVIA_MAX_HISTORY=24
 OLIVIA_TTFT_TIMEOUT_S=45
 OLIVIA_STREAM_IDLE_TIMEOUT_S=120
-OLIVIA_MAX_PROVIDER_ATTEMPTS=1
-OLIVIA_PROVIDERS_JSON=[{"name":"local-qwen","base_url":"http://127.0.0.1:11434/v1","model":"local-qwen","api_key_env":"","priority":10,"daily_limit":0,"cost_mode":"local"}]
+OLIVIA_MAX_PROVIDER_ATTEMPTS=3
+OLIVIA_PROVIDERS_JSON=${PROVIDERS_JSON}
 EOF
 chown root:olivia "${ETC_ROOT}/olivia.env"
 chmod 0640 "${ETC_ROOT}/olivia.env"
 
 systemctl daemon-reload
-systemctl enable --now llama-local
-for _ in $(seq 1 120); do
-  if curl -fsS http://127.0.0.1:11434/health >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
-curl -fsS http://127.0.0.1:11434/health >/dev/null
+if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
+  systemctl enable --now llama-local
+  for _ in $(seq 1 120); do
+    if curl -fsS http://127.0.0.1:11434/health >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+  curl -fsS http://127.0.0.1:11434/health >/dev/null
+else
+  systemctl disable --now llama-local >/dev/null 2>&1 || true
+fi
 
 systemctl enable --now olivia
 
@@ -204,6 +223,7 @@ ${HOST} {
   encode zstd gzip
   reverse_proxy 127.0.0.1:8080 {
     flush_interval -1
+    header_up X-Olivia-Client-IP {http.request.remote.host}
   }
   header {
     Strict-Transport-Security "max-age=31536000"
@@ -221,12 +241,13 @@ cat > "${STATE_ROOT}/bootstrap-info" <<EOF
 URL=https://${HOST}
 REGISTRATION=first-run
 SETUP_URL=https://${HOST}/#setup=${REGISTRATION_TOKEN}
+LOCAL_RECOVERY_ENABLED=${LOCAL_RECOVERY_ENABLED}
 MODEL_PROFILE=${MODEL_PROFILE}
 MODEL=${MODEL_NAME}
 MODEL_SHA256=${MODEL_SHA256}
 RUNTIME=llama.cpp-${LLAMA_BUILD}
 RUNTIME_SHA256=${llama_sha256}
-COST_MODE=local
+COST_MODE=$( [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]] && printf 'local-recovery' || printf 'no-provider' )
 SOURCE_REF=${REF}
 EOF
 chown root:root "${STATE_ROOT}/bootstrap-info"

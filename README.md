@@ -1,140 +1,88 @@
 # 0liviA 🎲
 
-**0liviA is a self-hosted agentic AI workspace for chat, coding agents, web research, durable memory, projects and live voice.** It is privacy-first, mobile-ready, multi-model and **zero-cost-first**: the runtime prefers local inference or provider routes with a verified hard-free boundary and fails closed instead of silently spending.
+**0liviA is a cloud-first personal AI for one owner and a self-hosted agentic AI workspace.** It combines conversation, coding, repositories, research, tools, durable memory, resumable jobs and live voice behind replaceable providers. Each installation owns its identity, runtime data and provider configuration; the public repository is not a shared hosted account.
 
-0liviA is public software, not a shared hosted account. Every installation owns its own identity, data, provider configuration, GitHub integration and optional infrastructure.
+0liviA is **zero-cost-first**: the runtime fails closed before unverified spending. That is an engineering policy, **not a guarantee** that third-party infrastructure or model providers will remain free forever.
 
-## Why 0liviA
+## Product invariants
 
-- **Private AI workspace** — Projects/Chats/Library/Memory durable server-side in the canonical Core.
-- **Agentic coding** — isolated `/code`, `/repair` and `/review` jobs with deterministic verification and no auto-merge.
-- **Live web research** — safe `/read`, fail-closed `/search`, and bounded `/research` with untrusted web content kept ephemeral.
-- **Multi-model routing** — replaceable OpenAI-compatible providers, quota admission, circuit breakers and pre-output failover.
-- **Live Voice architecture** — browser/mobile voice shell, barge-in/cancel contracts and benchmark-gated speech backends.
-- **Mobile-first UI** — Chats, Projects, Library, Memory, Config and Session in a responsive left rail; hardened for 360–430 px viewports.
-- **Self-hosted identity** — first-run registration, email + password, secure cookies and revocable remembered devices.
-- **No API keys in the UI** — provider credentials remain server-side.
-
-## Public-product isolation
-
-A public clone does **not** use the maintainer's Cloudflare account, model account, GitHub token, runtime database or private data.
-
-Each installation:
-
-1. creates its own runtime state outside the Git checkout;
-2. creates its own gateway/setup secrets;
-3. registers its own first owner;
-4. configures its own provider routes server-side;
-5. optionally configures its own coding repository/token;
-6. stores conversations, projects, library and memory in its own SQLite database.
-
-The transitional Cloudflare Worker is **disabled by default** for chat/read and is not the canonical backend. No public deployment should rely on another installation's Cloudflare bindings, Durable Objects, AI allocation or account credentials.
-
-See [Self-hosting](docs/SELF_HOSTING.md), [Privacy](docs/PRIVACY.md) and [Security](SECURITY.md).
-
-## About the "$0" claim
-
-0liviA is **zero-cost-first**, not "free forever" and not a guarantee that third-party services will never charge.
-
-The product can run with:
-
-- local/self-hosted inference (`cost_mode=local`);
-- provider routes whose upstream account has a verified hard-free boundary (`cost_mode=free_hard_cap`).
-
-With `OLIVIA_HARD_ZERO_COST=1`, routes marked `free_unverified` or `paid` are rejected before use. If verified-free routes are exhausted, the expected behavior is degraded/unavailable — not hidden overage.
-
-Cloud providers, domains, storage, network egress and model APIs have their own terms and can change. The "$0" posture is therefore an engineering policy and configuration gate, **not a guarantee** about external vendors.
+- normal operation does not depend on the owner's PC;
+- recurring infrastructure target: **USD 0**;
+- the product runtime cannot disable the hard-zero-cost guard through ENV;
+- if no verified-free route is available, fail/degrade before spending;
+- GitHub is the durable source of truth for code, architecture and checkpoints;
+- runtime conversation/memory/project state belongs server-side;
+- providers, browser workers, coding workers and voice engines remain replaceable;
+- no reverse-engineered consumer-session APIs;
+- no secrets in Git, prompts or durable memory;
+- default user-facing locale: **es-AR**.
 
 ## Canonical architecture
 
-```text
-browser / mobile
-      │ HTTPS / WSS
-      ▼
-0liviA Core (Python)
-      │
-      ├─ SQLite WAL + FTS5
-      ├─ provider router
-      ├─ research adapters
-      ├─ isolated coding worker
-      └─ voice transport / speech adapters
-```
+`browser / mobile`
+→ direct HTTPS/WSS
+→ **small Python 0liviA Core**
+→ SQLite WAL + FTS5
+→ direct provider router
+→ isolated on-demand workers for coding, research/browser and voice
+→ GitHub for durable engineering state.
 
-GitHub is the durable source of truth for code, architecture and engineering checkpoints. Runtime user data belongs to the installation, not to this public repository.
+Cloudflare may host a thin public shell or temporary bridge, but it is not the canonical chat/memory/voice backend. The current Worker bridge is disabled by default and remains deployment-gated; inference/read routes stay unavailable until identity and zero-cost/account guards are explicitly proven.
 
-Cloudflare may host a thin frontend or a temporary compatibility bridge, but it is not the canonical chat/memory/voice backend.
+## Repository map
+
+- `olivia/` — canonical Python control plane, router, memory/jobs, research contracts and voice contracts
+- `olivia/voice/` — transport/speech contracts and benchmark scaffolding
+- `web/` — current violet/blue/cyan browser product shell
+- `cloudflare/` — temporary public bridge; not durable product state
+- `deploy/` — Oracle A1 deployment/runtime material
+- `.github/workflows/coding-agent.yml` — isolated burst coding worker
+- `tests/` — behavioral, security and repository-hygiene gates
+- `docs/` — architecture, decisions, research and current implementation state
+- `docs/history/` — superseded council/build prompts preserved as evidence
 
 ## Implemented
 
 - SQLite WAL/FTS5 sessions, projects, library, memories, jobs, checkpoints and events;
-- authenticated workspace API with Projects/Chats/Library/Memory durable server-side;
-- IndexedDB used only as disposable browser cache/migration in canonical mode;
-- first-run single-owner registration protected by a setup token;
-- email/password login with Secure/HttpOnly/SameSite cookies;
-- remembered devices with server-side random IDs and revocation;
-- provider health/quota state, atomic admission and circuit-breaker recovery;
-- failover before visible output plus explicit partial-answer behavior;
-- centralized durable-store secret redaction;
-- SSRF-safe `/read`;
-- optional `/search` that stays disabled unless a verified zero-cost route is configured;
-- bounded `/research` (search + safe reads, ephemeral untrusted context);
-- coding jobs with `implement`, `repair`, `review` and durable status;
-- review reports constrained to `AGENT_REVIEW.md`;
-- responsive violet/blue/cyan UI with fullscreen Live Voice;
-- `olivia/voice/` transport, cancellation and benchmark contracts;
-- immutable production source refs and SHA-256-verified model/runtime artifacts;
-- Python 3.11/3.12 CI plus JS, Worker and shell syntax gates.
+- authenticated canonical workspace API with Projects/Chats/Library/Memory durable server-side and IndexedDB used only as a browser cache/migration layer;
+- provider health/quota state with circuit breaker, half-open recovery and redacted telemetry;
+- native official ChatGPT-plan provider for eligible Plus/Pro owners: OAuth profile server-side only, Responses API `store:false`, automatic token refresh, and hard-zero-cost admission only after no-credit-overage is explicitly verified;
+- one-time local Sign in with ChatGPT OAuth helper with PKCE/state/nonce, OIDC/JWKS validation, stable host ID, account model discovery and protected 0600 credential handoff to the cloud Core;
+- pre-visible-output failover with cancellation/partial-answer safety;
+- aiohttp browser/API gateway with first-run single-owner registration, email+password login, Secure/HttpOnly/SameSite cookies, login throttling, revocable remembered devices, bounded request bodies and one active turn per session;
+- canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
+- replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
+- bounded `/research` tool: one search plus safe reads of up to three results, injected only as ephemeral untrusted context;
+- opt-in `/browse` GitHub Actions burst worker with JavaScript rendering, GET/HEAD-only navigation, reserved/private-network egress guards, bounded artifacts and no page-text persistence into chat/model context;
+- violet/blue/cyan rail UI with Chats, Projects, Library, Memory, Config and Session surfaces, plus fullscreen Live Voice; responsive gates cover 360–430 px mobile layouts;
+- isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
+- review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
+- coding execution job has read-only repository permission; optional publication happens in a separate write-capable job after verification;
+- authenticated direct-WSS voice endpoint, transport/pipeline contracts, sequence/cancel/barge-in tests and benchmark recorder; speech engines remain capability-gated until benchmarked;
+- production bootstrap with immutable source SHA, pinned artifact SHA-256 verification and first-run owner registration;
+- CI on Python 3.11 and 3.12 plus shell, JS and Worker syntax gates.
 
-## Quick start — development
+## Still gated
+
+- Oracle A1 production availability and target-host benchmarks;
+- production smoke of the isolated `/browse` worker and any future owner-approved click/write automation;
+- a production `/search` provider only after its exact account/provider route is proven zero-cost;
+- production STT/VAD/TTS selection and es-AR voice acceptance;
+- a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
+- production entitlement for any retained DeepSeek NIM coding/model route;
+- exact-SHA public deployment and production smoke;
+- any Cloudflare inference/search path whose account-level zero-cost behavior is not independently verified.
+
+## Development
 
 ```bash
 python -m venv .venv
 . .venv/bin/activate
 pip install -e '.[dev]'
-cp .env.example .env
 pytest -q
-olivia
 ```
 
-Use unique random values for `OLIVIA_GATEWAY_TOKEN` and `OLIVIA_REGISTRATION_TOKEN`. Do not reuse credentials from another installation.
-
-Runtime state defaults to `~/.local/share/0livia`. Never commit runtime databases or secrets.
-
-## Self-hosting
-
-The reference deployment targets a small Linux host and includes an Oracle A1/ARM64 bootstrap because it is a useful zero-cost benchmark profile. It is a reference profile, not an account dependency.
-
-Start here:
-
-- [Self-hosting guide](docs/SELF_HOSTING.md)
-- [Reference deployment](deploy/README.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Security model](SECURITY.md)
-- [Privacy model](docs/PRIVACY.md)
-
-## Provider and coding configuration
-
-Providers are instance configuration, not product identity. Configure only routes you control.
-
-The coding worker is disabled by default. If enabled, set:
-
-```env
-OLIVIA_CODING_REPO=owner/your-repo
-OLIVIA_CODING_WORKFLOW=coding-agent.yml
-OLIVIA_CODING_BASE_REF=main
-```
-
-The public repository does not grant access to the maintainer's GitHub secrets or model-provider credentials.
-
-## Current release gates
-
-Before claiming a production installation is complete:
-
-- benchmark the actual target host;
-- verify the selected inference route and its billing boundary;
-- verify voice STT/VAD/TTS quality and stability;
-- run an exact-SHA deployment smoke;
-- keep the transitional Cloudflare inference bridge disabled unless separately audited.
+Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memory SQLite files inside the repository.
 
 ## Canonical documents
 
@@ -142,10 +90,8 @@ Before claiming a production installation is complete:
 - [Architecture decisions](docs/DECISIONS.md)
 - [Current implementation checkpoint](docs/IMPLEMENTATION_PLAN.md)
 - [Security audit reconciliation](docs/SECURITY_AUDIT.md)
+- [Security operations](docs/SECURITY_OPERATIONS.md)
+- [ChatGPT plan setup](docs/CHATGPT_PLAN.md)
 - [Research evidence](docs/RESEARCH.md)
 - [Benchmark gates](docs/BENCHMARKS.md)
 - [Canonical build mandate](SUPER_ORDER_END_TO_END.md)
-
----
-
-**Search terms:** self-hosted AI assistant, agentic AI workspace, private AI, coding agent, web research agent, durable AI memory, multi-model AI router, live voice AI, mobile AI assistant, zero-cost AI infrastructure.

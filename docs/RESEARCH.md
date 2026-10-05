@@ -257,6 +257,82 @@ Source: https://github.com/mobile-next/mobile-mcp
 
 Potential mobile automation tool, but not required for 0liviA core. ToolCheck snapshot: caution 72/100 at time checked; review permissions and attack surface before any use.
 
+## Training / publication workflow patterns
+
+### Homebrew AI
+Source: https://github.com/empero-org/homebrew-ai
+
+Useful patterns retained:
+- resumable long-running jobs with durable project state;
+- explicit confirmation before paid compute, software installation, data upload or publication;
+- hardware-aware planning before work starts;
+- evaluate the trained artifact before promotion;
+- credentials remain outside the chat transcript;
+- portable trace/data format for reproducible fine-tuning/evaluation.
+
+Fit for 0liviA:
+- **pattern source, not a runtime dependency**;
+- could inform a future optional fine-tuning/evaluation worker;
+- current training paths often need a capable local/rented GPU, so it does not satisfy the normal USD 0 runtime constraint by itself;
+- no reason to add its dependency surface to the always-on Core.
+
+### dev-to-publish
+Source: https://github.com/amirmushichge/dev-to-publish
+
+Useful patterns retained:
+- artifact → preview → human approval → publish/queue → durable receipt;
+- channel-specific packaging from one verified source;
+- dry-run first;
+- publishing adapter separated from editorial/creative agent logic;
+- no assumption of access to unrelated chats/accounts.
+
+Fit for 0liviA:
+- **optional future publishing skill/worker**, not core;
+- useful if 0liviA later publishes project demos/posts;
+- requires an external delivery account/API such as Buffer, so it is not a zero-cost core dependency;
+- the review/approval/receipt pattern is worth reusing for any irreversible external action.
+
+## Intern Discovery / InkStone GPU burst lane — 2026-10-04
+
+Sources:
+- https://discovery.intern-ai.org.cn/docs/workbench/developer/
+- https://discovery.intern-ai.org.cn/docs/workbench/reasoning/
+- https://dev.meta.ai/docs/muse-glimmer/llama-cpp
+
+Verified platform facts:
+- development machines offer CPU/GPU/NPU configurations, with NVIDIA A100 shown as an available resource family;
+- persistent files belong under `/data`; other development-machine storage is ephemeral;
+- running machines and inference services consume platform compute points and can be stopped/restarted;
+- a single configured runtime is capped at 7×24 hours;
+- Inference Service supports `Hugging Face - text-generation`, model folders from cloud storage, and exposes a callable POST endpoint plus per-service credential and usage statistics;
+- the outer call contract wraps the model payload with `call_api_path`, `call_api_credential`, and a JSON-string `payload`.
+
+Muse Glimmer fit:
+- Meta Muse Glimmer is a 30B Apache-2.0 agentic/coding model;
+- Meta publishes an official ~16.8 GB Q4_K_M GGUF text checkpoint for llama.cpp plus optional vision/speculative assets;
+- GGUF is a good fit for a GPU development machine using llama.cpp, but the managed Inference Service documentation currently advertises Hugging Face text-generation rather than GGUF/llama.cpp;
+- therefore a manually started llama.cpp server is useful for benchmarking, but must not be assumed externally reachable until ingress is proven;
+- for the managed API path, prefer a compatible Hugging Face-format Muse checkpoint/runtime and capture the service's actual request/response schema before implementing an adapter.
+
+0liviA role:
+- treat Intern Discovery as an **ephemeral GPU accelerator**, never the only brain;
+- keep the canonical Core/router independent so a stopped/expired GPU lane simply disappears from routing;
+- keep the service credential server-side only; never place it in browser storage, chat, Git, logs, Library or Memory;
+- never auto-start or auto-extend point-consuming resources without an explicit owner action;
+- do not guess the response envelope: implement the tiny adapter only after a real service smoke exposes its exact schema.
+
+Zero-cost status:
+- **free/unverified**, not `free_hard_cap`;
+- official docs prove compute-point accounting and quota management, but do not establish a no-money/no-overage contract;
+- 0liviA's hard-zero-cost router must therefore exclude this route until account-level exhaustion/billing behavior is verified.
+
+Experiment order:
+1. Read the platform's point/hour estimate for a short GPU development-machine run and inference-service run before creating anything.
+2. Benchmark official Muse GGUF on a short-lived GPU development machine if the selected GPU has enough VRAM.
+3. Prefer the managed Inference Service for 0liviA once a compatible Muse model format is available.
+4. Capture only the request/response **schema** from a successful service smoke; never record the credential in the repo.
+5. Add a disabled-by-default provider adapter and only promote it after latency, quality, uptime and strict no-overage gates pass.
+
 ## Required benchmarks before architecture freeze
 
 Measure on the actual Oracle A1 VM:
@@ -336,3 +412,37 @@ Result:
 - the audit records `ACCOUNT_ZERO_COST_VERIFIED=NO` and `REASON=billing_read_permission_unavailable`.
 
 Consequence: the latest inference bridge must not be deployed under a claim of account-wide zero-cost safety until billing-plan evidence is available. Production remains unchanged.
+
+
+### OpenClaw 2026.9.8 / GPT-6 Astra → official Sign in with ChatGPT route
+
+Sources:
+- owner-provided screenshots from 2026-10-05;
+- https://github.com/openclaw/openclaw
+- https://developers.openai.com/siwc/token-sharing-open-source
+- https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites
+- https://github.com/openai/sign-in-with-chatgpt-devkit
+
+Updated verification:
+- the screenshots are consistent with OpenClaw exposing `openai/gpt-6-astra` in a configured environment;
+- OpenAI now officially documents **Sign in with ChatGPT** plan usage for open-source tools, and lists OpenClaw among supported examples;
+- eligible Plus/Pro owners may authorize supported external tools to consume ChatGPT-plan usage without creating or sharing an OpenAI API key;
+- the requested OAuth permission includes `chatgpt.tokens.use.direct`;
+- eligible requests use the official Responses API; OpenAI's OSS docs require `store:false` and streaming;
+- app usage has owner-controlled limits. Paid ChatGPT credits after included usage are opt-in and are off by default; an app limit below 100% prevents credit use for that app;
+- if an app cannot use plan usage or allowed credits, it does not automatically switch to a different paid option.
+
+What the screenshots still do **not** prove:
+- that every listed OpenClaw slug is available to every ChatGPT account;
+- unlimited/free usage: plan usage is bounded by the connected account's allowance and app limit;
+- that 0liviA has completed its own OAuth connection; it has not.
+
+0liviA implementation/decision:
+- do **not** import OpenClaw as a runtime dependency;
+- use the documented OpenAI path directly behind the existing provider router;
+- a native `chatgpt_plan` provider now targets `https://api.openai.com/v1/responses`, keeps OAuth credentials server-side, refreshes them, and uses `store:false`;
+- `gpt-6-astra` is a preferred configured slug, not a hardcoded identity claim; actual availability must come from the signed-in account/model catalog;
+- under hard-zero-cost mode, this route is blocked unless `no_credit_overage_verified=true`; that remains an owner/account assertion until onboarding can inspect/guide the relevant ChatGPT Usage controls;
+- one-time OAuth onboarding mechanics are implemented independently from the DevKit; the remaining gate is a real owner connection, Usage-control verification, secure profile transfer and bounded live smoke. The OpenAI DevKit remains an implementation/security reference, but its noncommercial license means 0liviA does not copy it wholesale.
+
+

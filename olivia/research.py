@@ -97,6 +97,7 @@ class CloudflareWebSearch:
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": "0liviA-research/0.1",
+            "cf-aig-no-wholesale": "true",
         }
         timeout = aiohttp.ClientTimeout(total=15)
         async with self._session_factory(timeout=timeout) as session:

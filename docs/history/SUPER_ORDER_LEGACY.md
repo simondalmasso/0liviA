@@ -2,7 +2,7 @@
 ## Independent End-to-End Build Mandate
 
 **Repository:** https://github.com/simondalmasso/0liviA  
-**Public app target:** https://your-olivia.example/
+**Public app target:** https://example.invalid/
 
 You are one independent member of an expert LLM engineering council. Your job is not to agree with prior work. Your job is to **beat it**.
 
@@ -33,7 +33,7 @@ Do not optimize for what is fashionable. Optimize for:
 
 # 1. PRODUCT OUTCOME
 
-Build **0liviA**, a self-hosted **single-owner agentic AI workspace**: one persistent cloud intelligence that can converse, code, research, operate repositories and tools, remember, relearn, recover, deploy when authorized, and speak naturally in realtime without depending on the operator's PC.
+Build **0liviA**, the user's **personal super-AI**: one persistent cloud intelligence that can converse, code, research, operate repositories and tools, remember, relearn, recover, deploy when authorized, and speak naturally in realtime without depending on the user's PC.
 
 It must be capable of:
 
@@ -75,12 +75,12 @@ Do not imitate named model personalities. Translate the desired qualities into m
 
 Normal operation must be **100% cloud-based**.
 
-The operator's PC may be powered off. Do not make desktop remote access, local GPU, local browser automation or local background processes a dependency.
+The user's PC may be powered off. Do not make desktop remote access, local GPU, local browser automation or local background processes a dependency.
 
 Available always-on infrastructure currently verified:
 
-- a free/low-cost Linux host
-- region: operator-selected
+- Oracle Cloud Free Tier
+- region: `sa-saopaulo-1`
 - `VM.Standard.A1.Flex`
 - ARM64
 - maximum free allocation currently visible: **2 OCPU / 12 GB RAM**
@@ -88,7 +88,7 @@ Available always-on infrastructure currently verified:
 - approximately **20 GiB free Object Storage**
 - currently **0 compute instances**
 
-Treat the actual deployment host as the benchmark target.
+Treat the actual Oracle machine as the benchmark target.
 
 Do not design for imaginary hardware.
 
@@ -142,7 +142,7 @@ Do not make normal 0liviA chat, memory, inference or voice turns depend on:
 
 A thin deployed frontend at:
 
-https://your-olivia.example/
+https://example.invalid/
 
 is acceptable.
 
@@ -560,7 +560,7 @@ Cloudflare should not become an always-on hidden dependency of 0liviA's normal c
 
 The public target:
 
-https://your-olivia.example/
+https://example.invalid/
 
 may host a thin frontend, landing page or browser client.
 
@@ -790,7 +790,7 @@ If blocked, leave a precise checkpoint and continue on every independent path th
 
 0liviA should not be a wrapper around one chatbot, a generic multi-user platform, or a dashboard of disconnected agents.
 
-It should be a **single-owner agentic AI workspace**: one coherent persistent identity and working memory, backed by replaceable models and tools, capable of conversation, code, repositories, research, autonomous execution, recovery and live voice.
+It should be a **personal super-AI**: one coherent persistent identity and working memory, backed by replaceable models and tools, capable of conversation, code, repositories, research, autonomous execution, recovery and live voice.
 
 The design succeeds only if it remains:
 - fast;

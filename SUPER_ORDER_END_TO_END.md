@@ -17,7 +17,8 @@ The product is not a shared hosted account and not a wrapper around one provider
 - safe web research with untrusted-content boundaries;
 - zero-cost-first routing without hidden spend;
 - no user-entered API keys in the normal browser UI;
-- no dependency on a maintainer's Cloudflare, GitHub or model-provider account.
+- no dependency on a maintainer's Cloudflare, GitHub or model-provider account;
+- optional ChatGPT-plan inference only through the official Sign in with ChatGPT / Responses flow, with OAuth credentials server-side and no hidden credit overage.
 
 ## Cost policy
 

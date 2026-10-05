@@ -9,7 +9,7 @@ from olivia.coding import CodingJobRequest, GitHubActionsCodingWorker
 
 
 def test_coding_worker_validates_fixed_repo_and_refs(monkeypatch):
-    worker = GitHubActionsCodingWorker("owner/example-repo")
+    worker = GitHubActionsCodingWorker("simondalmasso/0liviA")
     monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "secret")
     assert worker.configured is True
 
@@ -31,7 +31,7 @@ def test_coding_worker_validates_fixed_repo_and_refs(monkeypatch):
 
 
 def test_coding_worker_headers_never_include_token_name(monkeypatch):
-    worker = GitHubActionsCodingWorker("owner/example-repo")
+    worker = GitHubActionsCodingWorker("simondalmasso/0liviA")
     monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "top-secret-value")
     headers = worker._headers()
     assert headers["authorization"] == "Bearer top-secret-value"
@@ -47,6 +47,7 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "OLIVIA_CODING_API_KEY" in workflow
     assert "OLIVIA_CODING_ZERO_COST_VERIFIED" in workflow
     assert 'test "$ZERO_COST_VERIFIED" = "true"' in workflow
+    assert "https://integrate.api.nvidia.com/v1" in workflow
     assert "test -n \"$AIDER_OPENAI_API_KEY\"" in workflow
     assert 'BRANCH="agent/coding-${GITHUB_RUN_ID}"' in workflow
     assert "persist-credentials: false" in workflow
@@ -56,7 +57,7 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "agent-series.patch" in workflow
     assert "BASE_REF: ${{ inputs.base_ref }}" in workflow
     assert "${{ inputs.base_ref }}..." not in workflow
-    assert "git check-ref-format --branch \"$BASE_REF\"" in workflow
+    assert "git check-ref-format --allow-onelevel \"$BASE_REF\"" in workflow
     assert "pytest -q" in workflow
     assert "MODE: ${{ inputs.mode }}" in workflow
     assert "--read AGENTS.md" in workflow
@@ -108,7 +109,7 @@ async def test_coding_worker_fetches_review_report_from_isolated_run_branch(monk
 
     monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
     worker = GitHubActionsCodingWorker(
-        "owner/example-repo",
+        "simondalmasso/0liviA",
         session_factory=lambda **_: FakeSession(),
     )
     report = await worker.review_report(123)
