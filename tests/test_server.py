@@ -1722,3 +1722,29 @@ async def test_owner_logout_revokes_non_remembered_cookie_server_side(aiohttp_cl
 
     replay = await client.get("/api/sessions", headers=stolen_cookie)
     assert replay.status == 401
+
+
+@pytest.mark.asyncio
+async def test_read_rejects_sensitive_query_before_fetch_or_persistence(client, gateway):
+    _, store, _ = gateway
+    reader = FakeWebReader()
+    client.app["gateway"].web_reader = reader
+    session_id = store.create_session()
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/read https://example.com/private?token=abc123 resumí"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    events = [
+        json.loads(line[6:])
+        for line in (await response.text()).splitlines()
+        if line.startswith("data: ")
+    ]
+
+    assert reader.urls == []
+    assert any(event.get("code") == "sensitive_url" for event in events)
+    persisted = repr(store.recent_messages(session_id))
+    assert "abc123" not in persisted
+    assert "token=" not in persisted
