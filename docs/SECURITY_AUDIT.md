@@ -38,12 +38,40 @@ The active Gateway has no `POST /api/memory` route. Durable explicit memory prom
 ### Worker SSE newline claim
 The active Worker uses JavaScript string/template escape sequences such as `\n\n`; those evaluate to real LF delimiters at runtime. Treat this as a false positive unless a runtime byte-level smoke shows otherwise.
 
+### SECURITY-BASELINE-CHECKLIST — ENFORCED IN BRANCH
+The owner security checklist is now represented by code/tests rather than UI assumptions:
+- scrypt password verifiers; no plaintext password storage;
+- parameterized SQL only in the durable Store;
+- bounded/typed JSON inputs;
+- login throttling and no public reset/email-recovery endpoint;
+- anti-enumeration: wrong email and wrong password return the same login error;
+- expiring Secure/HttpOnly/SameSite session cookies;
+- owner authorization is re-checked on every private server route;
+- API requests with a foreign Origin fail closed; no wildcard credentialed CORS;
+- browser message rendering uses text nodes for untrusted content;
+- coding-agent execution has repository read permission only; write permission exists only in a separate post-verification publish job without the model credential;
+- durable messages/events/checkpoints are redacted at the Store boundary;
+- literal-secret hygiene test covers runtime/deploy/workflow sources;
+- encrypted SQLite backup + integrity-checked restore round-trip runs in CI;
+- Dependabot is registered for Python and GitHub Actions;
+- sanitized owner-only `security.*` event feed exists for incident review.
+
+Operational controls that cannot be truthfully enforced from this repo remain external gates:
+- rotate any credential reported as leaked at the provider/account, then update encrypted secret stores;
+- enable MFA/2FA on GitHub, Oracle Cloud and any retained Cloudflare/provider control plane;
+- periodically rehearse restore on a disposable target;
+- investigate sanitized security events after anomalies.
+
+See `docs/SECURITY_OPERATIONS.md`.
+
 ## Remaining release blockers
 
 1. Replace/retire the stale public Worker only after an exact-SHA canonical target host passes smoke.
 2. Verify provider/account cost guarantees before enabling externally metered production inference or search routes.
 3. Verify Oracle A1 capacity plus install/restart/backup/latency/resource gates on the real host.
 4. Benchmark and accept a production voice stack on the real target; current Live Voice backend remains provisional.
-5. Perform an exact-release production smoke before declaring the public URL current.
+5. Verify account-level MFA/2FA on every production control plane and rotate any credential with a real exposure alert.
+6. Perform a disposable-host encrypted restore rehearsal and retain the evidence.
+7. Perform an exact-release production smoke before declaring the public URL current.
 
 The bootstrap now rejects mutable production refs, generates browser owner authentication without exposing the bearer, and verifies pinned SHA-256 digests for llama.cpp and GGUF artifacts.
