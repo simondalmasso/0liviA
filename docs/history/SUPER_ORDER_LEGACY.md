@@ -33,7 +33,7 @@ Do not optimize for what is fashionable. Optimize for:
 
 # 1. PRODUCT OUTCOME
 
-Build **0liviA**, the user's **personal super-AI**: one persistent cloud intelligence that can converse, code, research, operate repositories and tools, remember, relearn, recover, deploy when authorized, and speak naturally in realtime without depending on the user's PC.
+Build **0liviA**, a self-hosted **single-owner agentic AI workspace**: one persistent cloud intelligence that can converse, code, research, operate repositories and tools, remember, relearn, recover, deploy when authorized, and speak naturally in realtime without depending on the operator's PC.
 
 It must be capable of:
 
@@ -75,12 +75,12 @@ Do not imitate named model personalities. Translate the desired qualities into m
 
 Normal operation must be **100% cloud-based**.
 
-The user's PC may be powered off. Do not make desktop remote access, local GPU, local browser automation or local background processes a dependency.
+The operator's PC may be powered off. Do not make desktop remote access, local GPU, local browser automation or local background processes a dependency.
 
 Available always-on infrastructure currently verified:
 
-- Oracle Cloud Free Tier
-- region: `sa-saopaulo-1`
+- a free/low-cost Linux host
+- region: operator-selected
 - `VM.Standard.A1.Flex`
 - ARM64
 - maximum free allocation currently visible: **2 OCPU / 12 GB RAM**
@@ -88,7 +88,7 @@ Available always-on infrastructure currently verified:
 - approximately **20 GiB free Object Storage**
 - currently **0 compute instances**
 
-Treat the actual Oracle machine as the benchmark target.
+Treat the actual deployment host as the benchmark target.
 
 Do not design for imaginary hardware.
 
@@ -790,7 +790,7 @@ If blocked, leave a precise checkpoint and continue on every independent path th
 
 0liviA should not be a wrapper around one chatbot, a generic multi-user platform, or a dashboard of disconnected agents.
 
-It should be a **personal super-AI**: one coherent persistent identity and working memory, backed by replaceable models and tools, capable of conversation, code, repositories, research, autonomous execution, recovery and live voice.
+It should be a **single-owner agentic AI workspace**: one coherent persistent identity and working memory, backed by replaceable models and tools, capable of conversation, code, repositories, research, autonomous execution, recovery and live voice.
 
 The design succeeds only if it remains:
 - fast;
