@@ -241,3 +241,13 @@ def test_deepseek_nim_preset_stays_fail_closed_until_entitlement_proven():
         )
         assert '"cost_mode":"free_unverified"' in preset_line
         assert '"cost_mode":"free_hard_cap"' not in preset_line
+
+def test_mobile_ui_smoke_gates_relevant_pull_requests():
+    workflow = (ROOT / ".github" / "workflows" / "ui-mobile-smoke.yml").read_text(encoding="utf-8")
+
+    assert "pull_request:" in workflow
+    assert "- main" in workflow
+    assert '"web/**"' in workflow
+    assert '"scripts/ui_mobile_smoke.py"' in workflow
+    assert '".github/workflows/ui-mobile-smoke.yml"' in workflow
+
