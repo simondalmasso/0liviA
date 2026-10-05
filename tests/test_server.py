@@ -1841,7 +1841,7 @@ async def test_worker_base_ref_defaults_to_main_and_is_overridable(aiohttp_clien
         headers=auth(),
     )
     assert response.status == 200
-    assert worker.dispatched[-1].base_ref == "main"
+    assert worker.dispatched[-1][1].base_ref == "main"
 
     second_store = Store(tmp_path / "worker-base-ref-custom.sqlite3")
     second_agent = Agent(second_store, FakeRouter(), settings)
@@ -1862,4 +1862,4 @@ async def test_worker_base_ref_defaults_to_main_and_is_overridable(aiohttp_clien
         headers=auth(),
     )
     assert response.status == 200
-    assert second_worker.dispatched[-1].base_ref == "release"
+    assert second_worker.dispatched[-1][1].base_ref == "release"
