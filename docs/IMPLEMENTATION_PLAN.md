@@ -8,6 +8,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 
 - Python control plane with sessions, projects, library, memory, jobs, checkpoints and events.
 - Persistent provider-health state with quota admission, circuit breaker, half-open recovery, cancellation and redacted telemetry.
+- One-time Sign in with ChatGPT OAuth onboarding helper is implemented with PKCE/state/nonce, OIDC/JWKS validation, protected 0600 profiles, model discovery and transactional/reversible VM activation.
 - Failover only before validated visible output; partial answers are preserved rather than silently replayed through another provider.
 - Browser/API gateway with first-run single-owner registration, email/password login, remembered-device revocation, login throttling, bounded bodies and one active turn per session.
 - Authenticated server-side workspace API backed by SQLite; Projects/Chats/Library/Memory sync into browser cache when the canonical core is active.
@@ -114,7 +115,7 @@ Every meaningful mutation must preserve:
 2. Smoke the implemented JS browser worker against a controlled public page, verify artifact retrieval end-to-end, then consider owner-approved click/write automation as a separate capability; never embed a privileged Playwright browser inside the Core.
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
 4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/encrypted-backup/restore/latency/resource gates.
-5. Implement the one-time local Sign in with ChatGPT OAuth onboarding helper using the published OSS contract, including PKCE/state/nonce, issuer/JWKS identity validation, stable host ID, protected credential storage and secure transfer to the cloud Core. Do not place OAuth credentials in browser storage.
+5. Complete one real owner Sign in with ChatGPT connection, confirm the selected account/model catalog, verify ChatGPT Usage controls prevent credit overage, transfer the protected profile to the target Core, and smoke one bounded Responses turn.
 6. Evaluate the Intern Discovery GPU burst lane only as a challenger: read point/hour estimates before creating resources and implement an adapter only after a real no-overage/account gate exists.
 7. Verify production entitlement/cost for every retained model/coding route and account-level MFA/2FA.
 8. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
