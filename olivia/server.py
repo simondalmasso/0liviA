@@ -380,6 +380,18 @@ class Gateway:
         )
 
     async def logout(self, request: web.Request) -> web.Response:
+        cookie = request.cookies.get(OWNER_COOKIE, "")
+        if cookie and self._owner_cookie_valid(cookie):
+            try:
+                _version, _expires, device_id, _signature = cookie.split(":", 3)
+            except ValueError:
+                device_id = "-"
+            if device_id != "-":
+                self.agent.store.delete_trusted_device(device_id)
+                self.agent.store.record_event(
+                    "security.device_revoked",
+                    {"revoked": True, "reason": "logout"},
+                )
         response = _json({"authenticated": False})
         response.del_cookie(OWNER_COOKIE, path="/")
         return response
