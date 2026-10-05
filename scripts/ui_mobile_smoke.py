@@ -69,6 +69,21 @@ async def main() -> int:
                 assert composer["left"] >= -1 and composer["right"] <= width + 1, (name, "composer-x", composer)
                 assert composer["top"] >= 0 and composer["bottom"] <= height + 1, (name, "composer-y", composer)
 
+                for side in ("chats", "projects", "session"):
+                    await page.locator(f'.rail-btn[data-side="{side}"]').click()
+                    await page.wait_for_timeout(160)
+                    state = await page.evaluate(
+                        """() => ({
+                          classes: document.querySelector('#drawer')?.className || '',
+                          hidden: document.querySelector('#drawer')?.getAttribute('aria-hidden')
+                        })"""
+                    )
+                    assert "open" in state["classes"].split(), (name, side, state)
+                    selected = await page.locator(f'.side-tab[data-side="{side}"]').get_attribute("class")
+                    assert selected and "active" in selected.split(), (name, side, selected)
+                    await page.locator("#drawerClose").click()
+                    await page.wait_for_timeout(90)
+
                 await page.locator('.rail-btn[data-side="session"]').click()
                 await page.wait_for_timeout(240)
                 drawer_state = await page.evaluate(
@@ -95,6 +110,29 @@ async def main() -> int:
                 await page.screenshot(path=str(args.output / f"{name}-session.png"), full_page=False)
 
                 await page.locator("#drawerClose").click()
+                await page.evaluate("backendMode='canonical'")
+                await page.locator("#text").fill("/")
+                await page.locator("#text").dispatch_event("input")
+                await page.wait_for_timeout(100)
+                palette_state = await page.evaluate(
+                    """() => ({
+                      classes: document.querySelector('#slashPalette')?.className || '',
+                      hidden: document.querySelector('#slashPalette')?.getAttribute('aria-hidden'),
+                      htmlWidth: document.documentElement.scrollWidth,
+                      bodyWidth: document.body.scrollWidth
+                    })"""
+                )
+                assert "open" in palette_state["classes"].split(), (name, "slash palette", palette_state)
+                assert palette_state["hidden"] == "false", (name, "slash aria", palette_state)
+                assert palette_state["htmlWidth"] <= width + 1, (name, "slash html overflow", palette_state)
+                assert palette_state["bodyWidth"] <= width + 1, (name, "slash body overflow", palette_state)
+                option_text = await page.locator("#slashPalette").inner_text()
+                for command in ("/read", "/research", "/code", "/review"):
+                    assert command in option_text, (name, "slash command missing", command, option_text)
+                await page.screenshot(path=str(args.output / f"{name}-slash.png"), full_page=False)
+                await page.locator("#text").fill("")
+                await page.locator("#text").dispatch_event("input")
+
                 await page.locator("#voiceBtn").click()
                 await page.wait_for_timeout(180)
                 voice = await rect(page, "#voiceLive")
@@ -179,6 +217,7 @@ async def main() -> int:
                         "rail": rail,
                         "composer": composer,
                         "drawer": drawer,
+                        "slash_palette": palette_state,
                         "voice": voice,
                         "auth": {
                             "card": auth_card,
