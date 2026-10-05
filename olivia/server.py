@@ -509,12 +509,20 @@ class Gateway:
                 not provider.daily_limit or daily < provider.daily_limit
             ):
                 available += 1
+        catalog_fn = getattr(self.agent.router, "catalog", None)
+        provider_catalog = catalog_fn() if callable(catalog_fn) else []
+        primary_model = ""
+        if provider_catalog:
+            primary_model = str(provider_catalog[0].get("model") or "")
+
         return _json({
             "process_alive": True,
             "provider_configured": bool(configured),
             "provider_ready": bool(available),
             "providers_configured": configured,
             "providers_available": available,
+            "primary_model": primary_model,
+            "provider_catalog": provider_catalog,
             "hard_zero_cost": bool(self.settings.hard_zero_cost),
             "api_mode": "canonical",
             "owner_auth_configured": bool(
