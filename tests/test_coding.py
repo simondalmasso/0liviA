@@ -51,6 +51,9 @@ def test_coding_workflow_is_isolated_verified_and_deepseek_backed():
     assert "contents: write" in workflow
     assert "agent-series.patch" in workflow
     assert "BASE_REF: ${{ inputs.base_ref }}" in workflow
+    assert "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in workflow
+    assert "refs/heads/arch/gpt-synthesis-v1" not in workflow
+    assert 'default: "main"' in workflow
     assert "${{ inputs.base_ref }}..." not in workflow
     assert "git check-ref-format --allow-onelevel \"$BASE_REF\"" in workflow
     assert "pytest -q" in workflow
