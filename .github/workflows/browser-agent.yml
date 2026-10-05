@@ -31,6 +31,7 @@ jobs:
     timeout-minutes: 8
     env:
       BASE_REF: ${{ inputs.base_ref }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       TARGET_URL: ${{ inputs.url }}
       REPO_PRIVATE: ${{ github.event.repository.private }}
 
