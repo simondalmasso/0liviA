@@ -93,6 +93,7 @@ python -m venv .venv
 pip install -e '.[dev]'
 cp .env.example .env
 pytest -q
+olivia
 ```
 
 Use unique random values for `OLIVIA_GATEWAY_TOKEN` and `OLIVIA_REGISTRATION_TOKEN`. Do not reuse credentials from another installation.
