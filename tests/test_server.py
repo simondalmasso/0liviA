@@ -1630,3 +1630,11 @@ async def test_health_catalog_reports_available_model_without_secret_metadata(ai
     assert body["provider_catalog"][0]["capabilities"] == ["chat", "research"]
     assert "SAFE_PROVIDER_KEY" not in repr(body)
     assert "not-a-real-secret" not in repr(body)
+
+
+@pytest.mark.asyncio
+async def test_closed_mobile_drawer_cannot_intercept_rail_taps(client):
+    html = await (await client.get("/")).text()
+    assert ".drawer{" in html
+    assert "pointer-events:none" in html
+    assert ".drawer.open{transform:translateX(0);pointer-events:auto}" in html
