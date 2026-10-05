@@ -54,10 +54,11 @@ def test_production_bootstrap_requires_immutable_ref_and_hides_gateway_token():
     assert '^[0-9a-fA-F]{40}$' in cloud_init
 
 
-def test_env_examples_document_owner_cookie_auth_without_plaintext_password():
+def test_env_examples_document_first_run_registration_without_plaintext_password():
     for path in (ROOT / ".env.example", ROOT / "deploy" / "olivia.env.example"):
         content = path.read_text(encoding="utf-8")
-        assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" in content
+        assert "OLIVIA_REGISTRATION_TOKEN=" in content
+        assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" not in content
         assert "OLIVIA_OWNER_PASSWORD=" not in content
 
 
@@ -87,3 +88,37 @@ def test_product_docs_track_cloud_workspace_and_agent_tools():
     assert "/read" in plan and "/search" in plan
     assert "AGENT_REVIEW.md" in architecture
     assert "contents: read" in decisions
+
+
+def test_public_product_is_instance_isolated_and_has_no_personal_backend_defaults():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    env = (ROOT / ".env.example").read_text(encoding="utf-8")
+    deploy_env = (ROOT / "deploy" / "olivia.env.example").read_text(encoding="utf-8")
+    worker = (ROOT / "cloudflare" / "worker.mjs").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "coding-agent.yml").read_text(encoding="utf-8")
+    server = (ROOT / "olivia" / "server.py").read_text(encoding="utf-8")
+
+    public_blob = "\n".join([readme, env, deploy_env, worker, workflow, server]).lower()
+    assert "simondalmasso44@gmail.com" not in public_blob
+    assert "0livia.simondalmasso44.workers.dev" not in public_blob
+    assert "olivia_coding_repo=simondalmasso/0livia" not in public_blob
+
+    assert "OLIVIA_CODING_REPO=owner/your-repo" in env
+    assert "OLIVIA_CODING_REPO=owner/your-repo" in deploy_env
+    assert 'default: "main"' in workflow
+    assert 'os.getenv("OLIVIA_CODING_BASE_REF", "main")' in server
+    assert "const TRANSITIONAL_BRIDGE_ENABLED = false;" in worker
+
+
+def test_public_product_docs_define_privacy_self_hosting_and_claims_policy():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    privacy = (ROOT / "docs" / "PRIVACY.md").read_text(encoding="utf-8")
+    self_hosting = (ROOT / "docs" / "SELF_HOSTING.md").read_text(encoding="utf-8")
+
+    assert "self-hosted agentic AI workspace" in readme
+    assert "zero-cost-first" in readme
+    assert "not a guarantee" in readme.lower()
+    assert "separate runtime state" in privacy.lower()
+    assert "your own provider" in self_hosting.lower()
+    assert "private vulnerability" in security.lower()
