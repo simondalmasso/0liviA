@@ -1,1 +1,1 @@
-static audit run 2026-10-05
+static audit rerun production+security gates
