@@ -140,3 +140,52 @@ def test_local_provider_allows_no_api_key(tmp_path):
     assert provider.name == "ollama-local"
     assert provider.spec.api_key_env == ""
     assert provider.cost_mode == "local"
+
+
+def test_chatgpt_plan_route_requires_no_credit_overage_verification(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        hard_zero_cost=True,
+        providers=(
+            {
+                "name": "chatgpt-plan",
+                "kind": "chatgpt_plan",
+                "model": "gpt-6-astra",
+                "profile_path": str(tmp_path / "chatgpt-plan.json"),
+                "priority": 1,
+                "cost_mode": "plan_included",
+                "no_credit_overage_verified": False,
+            },
+        ),
+    )
+    store = Store(tmp_path / "db.sqlite3")
+    pool = ProviderPool.from_settings(settings, store)
+    assert pool.providers == []
+    assert pool.zero_cost_blocked == [
+        {"provider": "chatgpt-plan", "cost_mode": "plan_included"}
+    ]
+
+
+def test_chatgpt_plan_route_is_eligible_after_no_credit_overage_verification(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        hard_zero_cost=True,
+        providers=(
+            {
+                "name": "chatgpt-plan",
+                "kind": "chatgpt_plan",
+                "model": "gpt-6-astra",
+                "profile_path": str(tmp_path / "chatgpt-plan.json"),
+                "priority": 1,
+                "cost_mode": "plan_included",
+                "no_credit_overage_verified": True,
+            },
+        ),
+    )
+    store = Store(tmp_path / "db.sqlite3")
+    pool = ProviderPool.from_settings(settings, store)
+    assert len(pool.providers) == 1
+    provider = pool.providers[0]
+    assert provider.name == "chatgpt-plan"
+    assert provider.model == "gpt-6-astra"
+    assert provider.cost_mode == "plan_included"
