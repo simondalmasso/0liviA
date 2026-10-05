@@ -15,7 +15,7 @@ on:
       base_ref:
         description: "Exact trusted branch/SHA containing the runner"
         required: true
-        default: "arch/gpt-synthesis-v1"
+        default: "main"
         type: string
 
 permissions:
@@ -54,8 +54,9 @@ jobs:
         run: |
           set -euo pipefail
           git check-ref-format --allow-onelevel "$BASE_REF"
-          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
-          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
+          test -n "$DEFAULT_BRANCH"
+          git fetch --no-tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
