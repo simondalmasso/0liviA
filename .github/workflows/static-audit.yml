@@ -39,6 +39,8 @@ jobs:
           set -euo pipefail
           python -m pip install -e '.[dev]'
           python -m pip install 'ruff>=0.8,<1' 'bandit>=1.8,<2' 'pip-audit>=2.7,<3'
+          sudo apt-get update -y
+          sudo apt-get install -y shellcheck
 
       - id: deps
         name: Dependency consistency
@@ -54,6 +56,21 @@ jobs:
         name: Ruff test correctness
         continue-on-error: true
         run: ruff check tests --select E9,F63,F7,F82
+
+      - id: secret_tree
+        name: Tracked-tree secret scan
+        continue-on-error: true
+        run: python scripts/scan_secret_tree.py
+
+      - id: secret_history
+        name: Git-history secret scan
+        continue-on-error: true
+        run: python scripts/scan_secret_history.py
+
+      - id: shellcheck
+        name: ShellCheck deployment and setup scripts
+        continue-on-error: true
+        run: shellcheck deploy/*.sh scripts/*.sh
 
       - id: bandit
         name: Bandit security audit
@@ -82,13 +99,20 @@ jobs:
           DEPS: ${{ steps.deps.outcome }}
           RUFF_PROD: ${{ steps.ruff_prod.outcome }}
           RUFF_TESTS: ${{ steps.ruff_tests.outcome }}
+          SECRET_TREE: ${{ steps.secret_tree.outcome }}
+          SECRET_HISTORY: ${{ steps.secret_history.outcome }}
+          SHELLCHECK: ${{ steps.shellcheck.outcome }}
           BANDIT: ${{ steps.bandit.outcome }}
           PIP_AUDIT: ${{ steps.pip_audit.outcome }}
         run: |
           set -euo pipefail
-          printf 'deps=%s ruff_prod=%s ruff_tests=%s bandit=%s pip_audit=%s\n'             "$DEPS" "$RUFF_PROD" "$RUFF_TESTS" "$BANDIT" "$PIP_AUDIT"
+          printf 'deps=%s ruff_prod=%s ruff_tests=%s secret_tree=%s secret_history=%s shellcheck=%s bandit=%s pip_audit=%s\n' \
+            "$DEPS" "$RUFF_PROD" "$RUFF_TESTS" "$SECRET_TREE" "$SECRET_HISTORY" "$SHELLCHECK" "$BANDIT" "$PIP_AUDIT"
           test "$DEPS" = success
           test "$RUFF_PROD" = success
           test "$RUFF_TESTS" = success
+          test "$SECRET_TREE" = success
+          test "$SECRET_HISTORY" = success
+          test "$SHELLCHECK" = success
           test "$BANDIT" = success
           test "$PIP_AUDIT" = success
