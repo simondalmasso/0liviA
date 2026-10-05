@@ -221,3 +221,31 @@ def test_store_rejects_future_schema_version(tmp_path: Path):
         ).fetchone() is None
     finally:
         conn.close()
+
+
+def test_legacy_session_migration_enforces_project_reference(tmp_path: Path):
+    path = tmp_path / "legacy-fk.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL, updated_at REAL NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO sessions(id,title,created_at,updated_at) VALUES('legacy','Viejo',1,1)"
+    )
+    conn.commit()
+    conn.close()
+
+    store = Store(path)
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            store._conn.execute(
+                "INSERT INTO sessions(id,title,project_id,created_at,updated_at) VALUES(?,?,?,?,?)",
+                ("orphan", "Huérfana", "missing-project", 2, 2),
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            store._conn.execute(
+                "UPDATE sessions SET project_id=? WHERE id='legacy'",
+                ("missing-project",),
+            )
+    finally:
+        store.close()
