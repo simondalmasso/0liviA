@@ -29,3 +29,11 @@ def test_bootstrap_uses_first_run_registration_without_exposing_gateway_token():
     assert "REGISTRATION=first-run" in BOOTSTRAP
     info_block = BOOTSTRAP.split('cat > "${STATE_ROOT}/bootstrap-info"', 1)[1]
     assert "TOKEN=${TOKEN}" not in info_block
+
+
+def test_bootstrap_protects_first_registration_with_setup_link():
+    assert "OLIVIA_REGISTRATION_TOKEN=" in BOOTSTRAP
+    assert "SETUP_URL=https://${HOST}/#setup=${REGISTRATION_TOKEN}" in BOOTSTRAP
+    assert "chmod 0600" in BOOTSTRAP
+    assert 'echo "0liviA bootstrap complete: https://${HOST}"' in BOOTSTRAP
+    assert 'echo "0liviA bootstrap complete: https://${HOST}/#setup=' not in BOOTSTRAP
