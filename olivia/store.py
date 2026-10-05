@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -172,6 +173,7 @@ class Store:
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
+        os.chmod(self.path, 0o600)
         self._migrate_workspace_schema()
 
     def _migrate_workspace_schema(self) -> None:
