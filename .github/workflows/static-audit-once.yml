@@ -1,0 +1,45 @@
+name: 0liviA Static Audit Once
+
+on:
+  push:
+    branches:
+      - arch/gpt-synthesis-v1
+    paths:
+      - ".github/static-audit-trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: arch/gpt-synthesis-v1
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install project and audit tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pip install 'ruff>=0.8,<1' 'bandit>=1.8,<2' 'pip-audit>=2.7,<3'
+
+      - name: Dependency consistency
+        run: python -m pip check
+
+      - name: Ruff correctness audit
+        run: ruff check olivia tests scripts
+
+      - name: Bandit security audit
+        run: bandit -q -r olivia scripts -x tests
+
+      - name: Dependency vulnerability audit
+        run: pip-audit --strict
