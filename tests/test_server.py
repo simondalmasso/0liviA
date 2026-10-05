@@ -1598,3 +1598,35 @@ async def test_agent_job_events_render_as_compact_chat_state(client):
     assert "assistant.job=pendingJob" in html
     assert "extractJobMeta" in html
     assert "chooseJobStatus" in html
+
+
+@pytest.mark.asyncio
+async def test_health_catalog_reports_available_model_without_secret_metadata(aiohttp_client, tmp_path, monkeypatch):
+    from olivia.router import OpenAICompatibleProvider, ProviderPool, ProviderSpec
+
+    monkeypatch.setenv("SAFE_PROVIDER_KEY", "not-a-real-secret")
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "catalog-health.sqlite3")
+    provider = OpenAICompatibleProvider(
+        ProviderSpec(
+            name="frontier",
+            base_url="https://example.invalid/v1",
+            model="model-x",
+            api_key_env="SAFE_PROVIDER_KEY",
+            priority=1,
+            daily_limit=10,
+            cost_mode="free_hard_cap",
+            capabilities=("chat", "research"),
+        )
+    )
+    router = ProviderPool([provider], store, settings)
+    agent = Agent(store, router, settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    body = await (await client.get("/healthz")).json()
+    assert body["provider_ready"] is True
+    assert body["primary_model"] == "model-x"
+    assert body["provider_catalog"][0]["available"] is True
+    assert body["provider_catalog"][0]["capabilities"] == ["chat", "research"]
+    assert "SAFE_PROVIDER_KEY" not in repr(body)
+    assert "not-a-real-secret" not in repr(body)
