@@ -95,6 +95,17 @@ The canonical Core is a single-owner installation:
 
 Existing deployments may seed a legacy owner from environment variables once; new bootstrap flow uses first-run registration.
 
+## Voice transport gate
+
+The canonical Gateway registers authenticated `GET /api/voice/ws?session_id=...` using the direct-WSS wire format. The route:
+- requires the same owner auth boundary as chat;
+- validates that the target chat session exists;
+- remains unavailable with HTTP 503 unless a server-side `VoicePipeline` factory is explicitly configured;
+- uses bounded binary frames and the existing sequencing/cancel/barge-in pipeline;
+- does not pretend that browser SpeechRecognition/SpeechSynthesis are the production speech backend.
+
+Production VAD/STT/TTS promotion still requires target-host es-AR quality, latency and 60-minute stability evidence.
+
 ## Research/browser
 
 Implemented in the canonical core:
