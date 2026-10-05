@@ -1,2 +1,1 @@
-mobile smoke retry after drawer pointer fix
-retry=2
+mobile ui smoke retry after transition wait
