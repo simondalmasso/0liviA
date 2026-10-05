@@ -292,6 +292,36 @@ Fit for 0liviA:
 - requires an external delivery account/API such as Buffer, so it is not a zero-cost core dependency;
 - the review/approval/receipt pattern is worth reusing for any irreversible external action.
 
+## Intern Discovery / InkStone GPU burst lane — 2026-10-04
+
+Public platform evidence:
+- Scientific Computing dev machines expose CPU, Ascend 910B and Nvidia A100 resources, including **NvidiaA100-1-80G**.
+- Each dev-machine or inference-service run is time-bounded; a single run can be configured for at most **7×24 hours** and consumes platform compute points while running.
+- The platform exposes a dedicated **Inference Service** surface that returns a request URL, call credential and call statistics for running services.
+- Inference Service currently advertises a **Hugging Face - text-generation** model format. Model source can be a folder in the user's cloud disk or a small local upload package.
+- The user's visible account snapshot showed **5,000 compute points** and **30 GB cloud disk**. Public docs confirm the cloud disk can request expansion.
+
+Muse Glimmer fit:
+- Meta Muse Glimmer is a 30B dense multimodal agentic model, Apache-2.0, with a 128K default context and published local serving paths.
+- Official BF16 weights are about **59.6 GB**. They fit in A100 80 GB VRAM but do **not** fit the current 30 GB persistent cloud disk.
+- Meta's official GGUF Q4_K_M is about **16.8 GB** (+ vision projector if needed) and fits the current disk, but the documented InkStone Inference Service runtime is Hugging Face text-generation rather than llama.cpp/GGUF.
+- A third-party Red Hat INT4 safetensors build is about **22.2 GB**, which fits the current cloud disk and is structurally closer to vLLM/Transformers serving. It is a challenger only; quality/runtime compatibility must be benchmarked before production use.
+
+Recommended 0liviA role:
+- Treat Intern Discovery as an **ephemeral frontier accelerator**, never the only brain.
+- Keep the canonical Core/model router elsewhere. When an Intern service is up and explicitly marked `free_hard_cap`, 0liviA may route agentic/coding-heavy turns to Muse; when it stops or points are exhausted, fail over to another verified-free route.
+- Do not persist the platform call credential in browser storage, chat, Git, logs or Library/Memory. Store it only server-side.
+- Do not auto-start/extend point-consuming GPU sessions from 0liviA until the exact point/hour rate and account policy are known and explicitly approved.
+- Prefer the platform Inference Service over an ad-hoc public tunnel from a dev machine because the service provides a documented API endpoint and credential boundary.
+
+Experiment order:
+1. In the UI, inspect the A100-1-80G point/hour estimate for a 1-hour dev machine and a 1-hour inference service. Do not create anything yet if the estimate is not clearly covered by the existing 5,000-point grant.
+2. Request cloud-disk expansion to >=70 GB if available; this is the cleanest path to official BF16 weights.
+3. If expansion is not granted, benchmark the 22.2 GB INT4 safetensors challenger against official Muse on a small fixed coding/agentic set.
+4. Create a short-lived inference service and capture only the documented request/response **schema** (never the credential) so 0liviA can implement the exact adapter without guessing.
+5. After a successful live smoke, add the provider as disabled-by-default `free_hard_cap` and expose it to the router health/circuit-breaker system.
+6. Add automatic provider removal from routing when the service is stopped/expired, so chat never hangs waiting for a dead GPU lane.
+
 ## Required benchmarks before architecture freeze
 
 Measure on the actual Oracle A1 VM:
