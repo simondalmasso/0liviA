@@ -70,6 +70,7 @@ MODEL="${META[0]}"
 
 backup_dir="$(mktemp -d)"
 had_target=0
+# shellcheck disable=SC2317  # invoked indirectly by the EXIT trap below
 cleanup() { rm -rf "${backup_dir}"; }
 trap cleanup EXIT
 
