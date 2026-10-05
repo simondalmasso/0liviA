@@ -1542,3 +1542,19 @@ async def test_voice_wss_rejects_bad_or_missing_session_before_handshake(aiohttp
 
     unknown = await client.get("/api/voice/ws?session_id=missing", headers=headers)
     assert unknown.status == 404
+
+
+def test_login_throttle_state_is_bounded_under_many_client_ips(gateway):
+    app, _, _ = gateway
+    gw = app["gateway"]
+    gw._login_failures = {
+        f"203.0.113.{i}": [99.0 + (i / 10000)]
+        for i in range(2200)
+    }
+    gw._prune_login_failures(100.0)
+    assert len(gw._login_failures) == 2048
+
+    gw._login_failures["stale"] = [1.0]
+    gw._prune_login_failures(100.0)
+    assert "stale" not in gw._login_failures
+    assert len(gw._login_failures) <= 2048
