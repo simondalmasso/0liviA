@@ -261,3 +261,24 @@ def test_static_security_audit_gates_relevant_pull_requests():
     assert '"deploy/**"' in workflow
     assert '".github/workflows/static-audit.yml"' in workflow
 
+
+
+def test_active_code_and_tests_do_not_target_historical_arch_branch():
+    forbidden = "arch/gpt-synthesis-v1"
+    active_paths = [
+        ROOT / "olivia",
+        ROOT / ".github" / "workflows",
+        ROOT / "deploy",
+    ]
+    offenders = []
+    for base in active_paths:
+        for path in base.rglob("*"):
+            if not path.is_file() or path.suffix in {".pyc"}:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if forbidden in text:
+                offenders.append(str(path.relative_to(ROOT)))
+    assert offenders == []
