@@ -247,5 +247,13 @@ def test_legacy_session_migration_enforces_project_reference(tmp_path: Path):
                 "UPDATE sessions SET project_id=? WHERE id='legacy'",
                 ("missing-project",),
             )
+        default_project = next(
+            row["project_id"] for row in store.list_sessions() if row["id"] == "legacy"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            store._conn.execute(
+                "DELETE FROM projects WHERE id=?",
+                (default_project,),
+            )
     finally:
         store.close()
