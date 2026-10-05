@@ -19,6 +19,12 @@ from aiohttp import web
 
 from .agent import Agent
 from .config import Settings
+from .browser_worker import (
+    BrowserJobRequest,
+    BrowserWorkerError,
+    GitHubActionsBrowserWorker,
+    browser_worker_from_env,
+)
 from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWorker, coding_worker_from_env
 from .router import ProviderPool
 from .research import SearchUnavailable, WebSearch, web_search_from_env
@@ -113,6 +119,7 @@ class Gateway:
         locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
         static_root: Path | None = None,
         coding_worker: GitHubActionsCodingWorker | None = None,
+        browser_worker: GitHubActionsBrowserWorker | None = None,
         web_reader: SafeWebReader | None = None,
         web_search: WebSearch | None = None,
     ):
@@ -144,6 +151,7 @@ class Gateway:
         self.locale_buffer_chars = max(1, locale_buffer_chars)
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
         self.coding_worker = coding_worker
+        self.browser_worker = browser_worker
         self.web_reader = web_reader or SafeWebReader()
         self.web_search = web_search
         self._turns: dict[str, ActiveTurn] = {}
@@ -490,6 +498,7 @@ class Gateway:
                 self.registration_token and self.agent.store.get_owner_account() is None
             ),
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
+            "browser_worker_configured": bool(self.browser_worker and self.browser_worker.configured),
             "web_read_configured": self.web_reader is not None,
             "web_search_configured": bool(self.web_search and self.web_search.configured),
         })
@@ -715,6 +724,111 @@ class Gateway:
             **remote,
         }
 
+    async def _dispatch_browser_job(
+        self,
+        *,
+        url: str,
+        objective: str,
+        base_ref: str,
+    ) -> dict[str, Any]:
+        if self.browser_worker is None or not self.browser_worker.configured:
+            raise BrowserWorkerError("browser_worker_unavailable")
+        if redact_secrets(url) != url:
+            raise ValueError("browser URL appears to contain a secret")
+        safe_objective = redact_secrets(objective)
+        request = BrowserJobRequest(
+            url=url,
+            objective=safe_objective,
+            base_ref=base_ref,
+        )
+        self.browser_worker.validate_request(request)
+        job_id = self.agent.store.create_job("browser", repo=self.browser_worker.repo)
+        checkpoint = {
+            "base_ref": base_ref,
+            "url": url,
+            "objective": safe_objective,
+            "workflow": self.browser_worker.workflow,
+        }
+        self.agent.store.checkpoint_job(job_id, "dispatching", checkpoint)
+        try:
+            remote = await self.browser_worker.dispatch(job_id, request)
+        except BrowserWorkerError as exc:
+            self.agent.store.checkpoint_job(
+                job_id,
+                "failed",
+                {**checkpoint, "error": str(exc)[:500]},
+            )
+            raise
+        checkpoint = {**checkpoint, **remote}
+        self.agent.store.checkpoint_job(job_id, "dispatched", checkpoint)
+        return {
+            "job_id": job_id,
+            "status": "dispatched",
+            **remote,
+        }
+
+    @staticmethod
+    def _bounded_browser_result(payload: dict[str, Any]) -> dict[str, Any]:
+        links = []
+        for item in (payload.get("links") or [])[:40]:
+            if not isinstance(item, dict):
+                continue
+            links.append({
+                "text": redact_secrets(str(item.get("text") or ""))[:200],
+                "url": str(item.get("url") or "")[:2048],
+            })
+        return {
+            "final_url": str(payload.get("final_url") or "")[:2048],
+            "title": redact_secrets(str(payload.get("title") or ""))[:300],
+            "text": redact_secrets(str(payload.get("text") or ""))[:30_000],
+            "links": links,
+            "request_count": int(payload.get("request_count") or 0),
+            "truncated": bool(payload.get("truncated")),
+        }
+
+    async def _refresh_browser_job(self, job_id: str) -> dict[str, Any] | None:
+        job = self.agent.store.get_job(job_id)
+        if job is None:
+            return None
+        if job.get("kind") != "browser":
+            return job
+        if self.browser_worker is None or not self.browser_worker.configured:
+            return job
+        try:
+            remote = await self.browser_worker.status(job_id)
+        except BrowserWorkerError:
+            remote = None
+        if remote:
+            status = str(remote.get("remote_status") or job["status"])
+            conclusion = remote.get("remote_conclusion")
+            if status == "completed":
+                status = "succeeded" if conclusion == "success" else "failed"
+            checkpoint = {**job.get("checkpoint", {}), **remote}
+            if (
+                status == "succeeded"
+                and checkpoint.get("remote_run_id")
+                and not checkpoint.get("browser_result")
+            ):
+                try:
+                    payload = await self.browser_worker.result(
+                        checkpoint["remote_run_id"]
+                    )
+                except (BrowserWorkerError, ValueError):
+                    payload = None
+                if payload:
+                    checkpoint["browser_result"] = self._bounded_browser_result(payload)
+            self.agent.store.checkpoint_job(job_id, status, checkpoint)
+            job = self.agent.store.get_job(job_id) or job
+        return job
+
+    async def _refresh_job(self, job_id: str) -> dict[str, Any] | None:
+        job = self.agent.store.get_job(job_id)
+        if job is None:
+            return None
+        if job.get("kind") == "browser":
+            return await self._refresh_browser_job(job_id)
+        return await self._refresh_code_job(job_id)
+
     async def _refresh_code_job(self, job_id: str) -> dict[str, Any] | None:
         job = self.agent.store.get_job(job_id)
         if job is None:
@@ -789,7 +903,7 @@ class Gateway:
         denied = await self._require_auth(request)
         if denied:
             return denied
-        job = await self._refresh_code_job(request.match_info["job_id"])
+        job = await self._refresh_job(request.match_info["job_id"])
         if job is None:
             return _json({"error": "job not found"}, 404)
         return _json({"job": job})
@@ -798,7 +912,7 @@ class Gateway:
     def _parse_chat_command(text: str) -> tuple[str, str] | None:
         command, separator, argument = text.partition(" ")
         command = command.lower()
-        if command in {"/code", "/repair", "/review", "/read", "/search", "/research"}:
+        if command in {"/code", "/repair", "/review", "/read", "/search", "/research", "/browse"}:
             if not separator or not argument.strip():
                 return command, ""
             return command, argument.strip()
@@ -1017,6 +1131,75 @@ class Gateway:
             )
             return
 
+        if name == "/browse":
+            if not argument:
+                assistant = "Usá /browse seguido de una URL pública y, opcionalmente, un objetivo."
+                self.agent.store.append_message(session_id, "user", safe_user)
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="browser-worker"
+                )
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+
+            target_url, separator, objective = argument.partition(" ")
+            self.agent.store.append_message(session_id, "user", safe_user)
+            try:
+                result = await self._dispatch_browser_job(
+                    url=target_url,
+                    objective=objective.strip() if separator else "",
+                    base_ref="arch/gpt-synthesis-v1",
+                )
+            except (ValueError, BrowserWorkerError) as exc:
+                assistant = (
+                    "El browser worker no está disponible ahora."
+                    if str(exc) == "browser_worker_unavailable"
+                    else "No pude despachar el navegador aislado."
+                )
+                self.agent.store.append_message(
+                    session_id,
+                    "assistant",
+                    assistant,
+                    provider="browser-worker",
+                    status="complete",
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "browser_job_unavailable",
+                    "retryable": True,
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+
+            assistant = (
+                f"Job {result['job_id']} de navegador JS despachado. "
+                f"Consultalo con /job {result['job_id']}."
+            )
+            self.agent.store.append_message(
+                session_id,
+                "assistant",
+                assistant,
+                provider="browser-worker",
+                status="complete",
+            )
+            await self._write_event(response, {
+                "type": "job",
+                "job_id": result["job_id"],
+                "status": result["status"],
+                "kind": "browser",
+                "repo": result.get("repo"),
+                "workflow": result.get("workflow"),
+                "turn_id": turn_id,
+            })
+            await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+            await self._write_event(response, {"type": "done", "turn_id": turn_id})
+            await response.write_eof()
+            return
+
         self.agent.store.append_message(session_id, "user", safe_user)
 
         if name in {"/code", "/repair", "/review"}:
@@ -1106,7 +1289,7 @@ class Gateway:
                 await self._write_event(response, {"type": "done", "turn_id": turn_id})
                 await response.write_eof()
                 return
-            job = await self._refresh_code_job(job_id)
+            job = await self._refresh_job(job_id)
             if job is None:
                 assistant = f"No existe el job {job_id}."
                 self.agent.store.append_message(session_id, "assistant", assistant, provider="coding-worker")
@@ -1121,11 +1304,23 @@ class Gateway:
             if remote_url:
                 assistant += f" {remote_url}"
             review_report = checkpoint.get("review_report")
+            browser_result = checkpoint.get("browser_result")
+            persist_assistant = True
             if status == "succeeded" and isinstance(review_report, str) and review_report.strip():
                 assistant += "\n\n" + review_report[:12_000]
-            self.agent.store.append_message(
-                session_id, "assistant", assistant, provider="coding-worker", status="complete"
-            )
+            if status == "succeeded" and isinstance(browser_result, dict):
+                title = str(browser_result.get("title") or "")
+                final_url = str(browser_result.get("final_url") or "")
+                rendered_text = str(browser_result.get("text") or "")
+                assistant += (
+                    f"\n\nRender JS no confiable — {title or '(sin título)'}\n"
+                    f"{final_url}\n\n{rendered_text[:12_000]}"
+                )
+                persist_assistant = False
+            if persist_assistant:
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="coding-worker", status="complete"
+                )
             await self._write_event(response, {
                 "type": "job",
                 "job_id": job_id,
@@ -1293,6 +1488,7 @@ def create_app(
     locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
     static_root: Path | None = None,
     coding_worker: GitHubActionsCodingWorker | None = None,
+    browser_worker: GitHubActionsBrowserWorker | None = None,
     web_reader: SafeWebReader | None = None,
     web_search: WebSearch | None = None,
 ) -> web.Application:
@@ -1305,6 +1501,11 @@ def create_app(
             coding_worker = coding_worker_from_env()
         except (CodingWorkerError, ValueError):
             coding_worker = None
+    if browser_worker is None:
+        try:
+            browser_worker = browser_worker_from_env()
+        except (BrowserWorkerError, ValueError):
+            browser_worker = None
     if web_search is None:
         try:
             web_search = web_search_from_env()
@@ -1321,6 +1522,7 @@ def create_app(
         locale_buffer_chars=locale_buffer_chars,
         static_root=static_root,
         coding_worker=coding_worker,
+        browser_worker=browser_worker,
         web_reader=web_reader,
         web_search=web_search,
     )
