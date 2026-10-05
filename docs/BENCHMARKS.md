@@ -96,3 +96,19 @@ For an always-on local model to become the normal chat/coding route, record:
 - RAM/VRAM footprint and 60-minute stability.
 
 The Oracle A1 2 OCPU / 12 GB profile must not claim Muse Glimmer compatibility unless an actual quantized build fits and passes the same quality/latency gates.
+
+
+## Browser worker smoke
+
+Verified 2026-10-05 on a standard public-repository GitHub-hosted `ubuntu-latest` runner.
+
+Evidence:
+- workflow run: `37257844129`;
+- head: `1a2ec658f3142795e53bf522399b5d56bc98ece9`;
+- target: `https://example.com/`;
+- result: HTTP 200, title `Example Domain`, bounded text, one public link, request_count=2;
+- artifact: `browser-smoke-result` / artifact id `11323124125`;
+- artifact digest: `sha256:677f7d9a0bc00e4cf71565863cd6b6f96853f50e04bb89a977118acd7554779a`;
+- downloaded archive contained `browser-result.json` and a valid rendered screenshot.
+
+This closes the read-only JS-rendering/artifact-retrieval smoke gate. It does **not** authorize click/write/browser-login automation.
