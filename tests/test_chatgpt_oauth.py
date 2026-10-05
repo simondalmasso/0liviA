@@ -129,6 +129,7 @@ def test_profile_scope_and_mode_0600(tmp_path):
         "id_token": id_token,
         "token_type": "Bearer",
         "expires_in": 3600,
+        "earliest_refresh_at": 1234567890,
         "scope": (
             "openid profile email offline_access resource.invoke "
             "chatgpt.tokens.use.direct"
@@ -145,6 +146,7 @@ def test_profile_scope_and_mode_0600(tmp_path):
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     stored = json.loads(path.read_text(encoding="utf-8"))
     assert stored["subject"] == "subject-123"
+    assert stored["earliest_refresh_at"] == 1234567890
 
     bad = dict(response)
     bad["scope"] = "openid profile email offline_access"
