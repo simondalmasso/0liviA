@@ -21,6 +21,21 @@ class CaptureRouter:
         yield RouteEvent(type="delta", provider="fake", text="respuesta")
 
 
+class CapabilityRouter(CaptureRouter):
+    def __init__(self):
+        super().__init__()
+        self.capability_calls = []
+
+    def providers_for(self, capability):
+        return [object()] if capability == "research" else []
+
+    async def stream(self, messages, *, capability="chat") -> AsyncIterator[RouteEvent]:
+        self.calls.append(messages)
+        self.capability_calls.append(capability)
+        yield RouteEvent(type="route", provider="specialized")
+        yield RouteEvent(type="delta", provider="specialized", text="grounded")
+
+
 @pytest.mark.asyncio
 async def test_explicit_memory_command_is_local_and_durable(tmp_path):
     store = Store(tmp_path / "state.sqlite3")
@@ -232,3 +247,43 @@ async def test_minimum_context_budget_keeps_maximum_user_message(tmp_path):
     user_messages = [m["content"] for m in outbound if m["role"] == "user"]
     assert current in user_messages
     assert sum(len(m["content"]) for m in outbound) <= settings.max_context_chars
+
+
+@pytest.mark.asyncio
+async def test_agent_prefers_specialized_capability_when_router_exposes_it(tmp_path):
+    store = Store(tmp_path / "capability.sqlite3")
+    sid = store.create_session()
+    router = CapabilityRouter()
+    agent = Agent(store, router, Settings(data_dir=tmp_path))
+
+    events = [
+        event
+        async for event in agent.stream_turn(
+            sid,
+            "investigá esto",
+            ephemeral_context="dato externo",
+            capability="research",
+        )
+    ]
+    assert router.capability_calls == ["research"]
+    assert any(event.get("provider") == "specialized" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_agent_falls_back_to_legacy_chat_router_when_capability_api_is_absent(tmp_path):
+    store = Store(tmp_path / "legacy-capability.sqlite3")
+    sid = store.create_session()
+    router = CaptureRouter()
+    agent = Agent(store, router, Settings(data_dir=tmp_path))
+
+    events = [
+        event
+        async for event in agent.stream_turn(
+            sid,
+            "investigá esto",
+            ephemeral_context="dato externo",
+            capability="research",
+        )
+    ]
+    assert router.calls
+    assert any(event.get("provider") == "fake" for event in events)
