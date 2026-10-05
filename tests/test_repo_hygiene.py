@@ -227,3 +227,17 @@ def test_main_is_the_only_canonical_integration_branch():
     assert "Branch new work from `main`" in governance
     assert "Do not base new work on `arch/gpt-synthesis-v1`" in governance
 
+
+
+def test_deepseek_nim_preset_stays_fail_closed_until_entitlement_proven():
+    for relative in (".env.example", "deploy/olivia.env.example"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        assert "deepseek-v4.1-flash-nim" in text
+        assert "https://integrate.api.nvidia.com/v1" in text
+        assert '"model":"deepseek-ai/deepseek-v4.1-flash"' in text
+        preset_line = next(
+            line for line in text.splitlines()
+            if "deepseek-v4.1-flash-nim" in line and line.lstrip().startswith("# [")
+        )
+        assert '"cost_mode":"free_unverified"' in preset_line
+        assert '"cost_mode":"free_hard_cap"' not in preset_line
