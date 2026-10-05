@@ -61,6 +61,29 @@ The GitHub Actions worker is implemented and opt-in:
 - review is read-only with respect to product paths and may only write `AGENT_REVIEW.md`;
 - provider entitlement/cost must be verified before enabling a model route.
 
+### 7. Security baseline
+Implemented and CI-gated:
+- first-owner setup token + single-owner registration;
+- scrypt password verifiers;
+- expiring Secure/HttpOnly/SameSite cookies and remembered-device revocation;
+- login throttling with proxy-spoof resistance;
+- closed cross-origin API boundary and security headers;
+- no public password-reset/email-enumeration endpoint;
+- server-side authorization on private resources;
+- parameterized Store SQL;
+- redaction at durable persistence/log boundaries;
+- current-tree and full-history high-confidence secret scans;
+- coding agent least privilege;
+- encrypted online SQLite backup + integrity-checked restore proven in CI;
+- bounded sanitized security-event retention and owner-only Session visibility;
+- Dependabot for Python/GitHub Actions, with official Actions moved off deprecated Node 20 majors.
+
+External gates still required before a production-security claim:
+- MFA/2FA verified on GitHub/Oracle/any retained Cloudflare/provider account;
+- provider-side rotation for any real credential exposure alert;
+- disposable-host restore rehearsal;
+- exact production smoke.
+
 ## Repository discipline
 
 - Work on `arch/gpt-synthesis-v1`; do not overwrite `main` user changes.
@@ -82,9 +105,9 @@ Every meaningful mutation must preserve:
 
 ## Exact next engineering gates
 
-1. Re-audit the current green branch for stale docs/dead paths and keep repository hygiene green.
-2. Add the isolated JS-capable browser worker only if a zero-cost runtime path is available.
+1. Keep the branch green and do not regress the security baseline.
+2. Add a JS-capable browser worker only with real process/network isolation and a zero-cost runtime path; do not embed a privileged Playwright browser inside the Core.
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
-4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/backup/latency/resource gates.
-5. Verify production entitlement/cost for the preferred model/coding routes.
+4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/encrypted-backup/restore/latency/resource gates.
+5. Verify production entitlement/cost for the preferred model/coding routes and account-level MFA/2FA.
 6. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
