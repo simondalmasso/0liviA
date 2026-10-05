@@ -76,7 +76,7 @@ esac
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends   ca-certificates curl git python3 python3-pip python3-venv zstd caddy libgomp1
+apt-get install -y --no-install-recommends   ca-certificates curl git python3 python3-pip python3-venv zstd caddy libgomp1 openssl
 
 if ! id olivia >/dev/null 2>&1; then
   useradd --system --home "${STATE_ROOT}" --shell /usr/sbin/nologin olivia
