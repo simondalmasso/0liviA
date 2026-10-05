@@ -1832,9 +1832,6 @@ async def test_public_shell_has_product_metadata_without_personal_runtime_url(cl
 
 
 @pytest.mark.asyncio
-
-
-@pytest.mark.asyncio
 async def test_shell_keeps_keyboard_focus_and_accessible_navigation_contract(client):
     html = await (await client.get("/")).text()
     assert ":focus-visible" in html
