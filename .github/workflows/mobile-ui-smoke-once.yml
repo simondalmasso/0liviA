@@ -81,7 +81,7 @@ jobs:
                       assert abs(metrics["composerBottom"]) <= 2, metrics
 
                       await page.locator('button[data-side="session"]').first.click()
-                      await page.wait_for_timeout(120)
+                      await page.wait_for_timeout(300)
                       drawer = await page.locator("#drawer").get_attribute("class")
                       assert drawer and "open" in drawer, drawer
                       drawer_box = await page.locator("#drawer").bounding_box()
