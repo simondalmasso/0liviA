@@ -1,12 +1,12 @@
 # 0liviA architecture — synthesis v1
 
 Status: **accepted core / provisional voice components**  
-Target: one user, Oracle A1 ARM64 (2 OCPU / 12 GB), recurring infrastructure target USD 0.
+Target: one self-hosted single-owner instance. Reference low-cost benchmark: ~2 CPU / 12 GB RAM. Recurring infrastructure posture: zero-cost-first.
 
 ## Final shape
 
 `Browser / mobile PWA`
-→ direct HTTPS/WSS to Oracle
+→ direct HTTPS/WSS to the self-hosted Core
 → **0liviA Core (Python, one small control plane)**
 → SQLite WAL + FTS5 for operational state
 → curated Markdown/Git for durable human-readable truth
@@ -173,7 +173,7 @@ Voice target:
 - perceived barge-in silence <150 ms client-side and <300 ms pipeline cancellation;
 - 60-minute session without meaningful RSS growth/drift.
 
-These are gates to measure on the actual Oracle A1, not current PASS claims.
+These are gates to measure on the actual target host, not current PASS claims.
 
 ## Explicit exclusions for v1
 
@@ -204,4 +204,4 @@ Language is a kernel policy, not a model preference:
 - unexpected language drift causes cancellation/retry, not German/English text leaking into the session;
 - a user request for another language overrides the guard for that turn.
 
-The owner's PC is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access. Browser persistence, where present in the temporary bridge UI, is disposable cache and never durable truth.
+The operator's desktop/laptop is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access. Browser persistence, where present in the temporary bridge UI, is disposable cache and never durable truth.
