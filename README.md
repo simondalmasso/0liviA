@@ -1,6 +1,8 @@
 # 0liviA 🎲
 
-**0liviA is a cloud-first personal AI for one owner.** It combines conversation, coding, repositories, research, tools, durable memory, resumable jobs and live voice behind replaceable providers. It is not a generic SaaS workspace and not a wrapper around one model.
+**0liviA is a cloud-first personal AI for one owner and a self-hosted agentic AI workspace.** It combines conversation, coding, repositories, research, tools, durable memory, resumable jobs and live voice behind replaceable providers. Each installation owns its identity, runtime data and provider configuration; the public repository is not a shared hosted account.
+
+0liviA is **zero-cost-first**: the runtime fails closed before unverified spending. That is an engineering policy, **not a guarantee** that third-party infrastructure or model providers will remain free forever.
 
 ## Product invariants
 
