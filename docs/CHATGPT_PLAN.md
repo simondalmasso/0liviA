@@ -91,7 +91,7 @@ The provider:
 - may fail over only before visible output to another eligible provider;
 - never accepts an OpenAI API key.
 
-The configured model slug must exist in the connected account's model catalog. `gpt-6-astra` is preferred only when the account actually exposes it.
+The configured model slug must exist in the connected account's model catalog. `gpt-6-astra` is the default preference only when the account actually exposes it. 0liviA never silently falls back to the first visible model: if Astra is unavailable, installation stops until the owner supplies an explicit model override from the signed-in catalog.
 
 ## Disconnect / recovery
 
