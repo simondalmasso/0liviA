@@ -70,7 +70,15 @@ async def main() -> int:
                 assert composer["top"] >= 0 and composer["bottom"] <= height + 1, (name, "composer-y", composer)
 
                 await page.locator('.rail-btn[data-side="session"]').click()
-                await page.wait_for_timeout(180)
+                await page.wait_for_function(
+                    """() => {
+                      const el = document.querySelector("#drawer");
+                      if (!el || el.getAttribute("aria-hidden") !== "false") return false;
+                      const box = el.getBoundingClientRect();
+                      return box.left >= -1 && box.right <= window.innerWidth + 1;
+                    }""",
+                    timeout=2_000,
+                )
                 drawer = await rect(page, "#drawer")
                 assert drawer["left"] >= -1 and drawer["right"] <= width + 1, (name, "drawer-x", drawer)
                 assert drawer["top"] >= -1 and drawer["bottom"] <= height + 1, (name, "drawer-y", drawer)
