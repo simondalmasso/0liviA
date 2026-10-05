@@ -8,7 +8,7 @@ class SpeechTargets:
     """Benchmark candidates, not mandatory runtime dependencies."""
 
     transport_default: str = "direct-wss"
-    transport_challengers: tuple[str, ...] = ("pipecat-smallwebrtc", "streamcore")
+    transport_challengers: tuple[str, ...] = ("pipecat-smallwebrtc", "livekit-agents", "streamcore")
     vad_default: str = "silero-onnx"
     stt_preferred: str = "moonshine"
     stt_fallback: str = "whisper.cpp"

@@ -32,7 +32,10 @@ Record success, retries, wall time, tool calls, human intervention and regressio
 Compare on the actual A1:
 1. direct WSS;
 2. Pipecat SmallWebRTC;
-3. StreamCore.
+3. LiveKit Agents/WebRTC;
+4. StreamCore.
+
+LiveKit is a challenger only: benchmark its media reliability, reconnect/turn handling and resource footprint without making LiveKit Cloud or any paid service a runtime requirement.
 
 Use the exact same STT/turn/LLM/TTS adapters so the transport is the only variable.
 
