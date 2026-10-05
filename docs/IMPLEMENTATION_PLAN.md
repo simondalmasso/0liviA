@@ -12,7 +12,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Failover only before validated visible output; partial answers are preserved rather than silently replayed through another provider.
 - Browser/API gateway with first-run single-owner registration, email/password login, remembered-device revocation, login throttling, bounded bodies and one active turn per session.
 - Authenticated server-side workspace API backed by SQLite; Projects/Chats/Library/Memory sync into browser cache when the canonical core is active.
-- Current browser product shell with Chats/Projects/Library/Memory/Config/Session rail navigation, first-run auth UI, remembered-device management, fullscreen Live Voice, 360–430 px responsive hardening, contextual slash commands and compact in-chat durable job state.
+- Current browser product shell with Chats/Projects/Library/Memory/Config/Session rail navigation, first-run auth UI, remembered-device management, fullscreen Live Voice, contextual slash commands and compact in-chat durable job state. Mobile layouts are smoke-verified at 360×800 and 430×900 with no horizontal overflow, stable composer placement and functional Session drawer.
 - Canonical SSRF-safe `/read` tool with page content kept ephemeral and explicitly untrusted.
 - Replaceable `/search` adapter contract, disabled unless an exact route is configured and zero-cost verified.
 - Capability-aware provider catalog (`chat/research/vision/code/review`) with backwards-compatible chat defaults; research tools prefer a research-capable route and safely fall back to chat when none is configured.
