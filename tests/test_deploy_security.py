@@ -67,3 +67,9 @@ def test_caddy_overwrites_client_ip_header_for_login_throttling():
     expected = "header_up X-Olivia-Client-IP {http.request.remote.host}"
     assert expected in caddy
     assert expected in bootstrap
+
+
+def test_bootstrap_validates_discovered_public_ipv4_before_caddy():
+    assert 'ipaddress.ip_address(sys.argv[1])' in BOOTSTRAP
+    assert 'ip.version != 4 or not ip.is_global' in BOOTSTRAP
+    assert 'invalid public IPv4' in BOOTSTRAP
