@@ -33,7 +33,8 @@ Provider routing must remain catalog-driven and fail closed:
 - never move to a paid/unverified route silently;
 - DeepSeek V4.1 Flash/NVIDIA NIM remains development/evaluation-only unless explicit production entitlement exists;
 - the transitional Cloudflare bridge is disabled by default; Workers AI/read routes remain unavailable until both identity and account-wide zero-cost behavior are independently verified;
-- local inference is allowed as a zero-cost fallback but is not the quality target for normal chat.
+- local inference is allowed as a zero-cost fallback but is not the quality target for normal chat;
+- Intern Discovery / Intern InkStone is a promising GPU burst lane for Muse Glimmer, but remains `free_unverified` until its account-level point exhaustion/no-overage behavior and a real service response contract are proven.
 
 ### 4. Research/browser
 Implemented:
@@ -42,10 +43,12 @@ Implemented:
 - `/research`: bounded search+read orchestration (max 3 results) using the same fail-closed search gate and SSRF-safe reader; external content remains ephemeral.
 
 Still gated:
-- JS-heavy browsing;
 - authenticated browsing;
-- browser automation;
-- isolated Playwright-class worker and prompt-injection containment beyond text ingestion.
+- owner-approved write/click automation;
+- production smoke of the isolated JS browser worker.
+
+Implemented in branch:
+- `/browse`: opt-in GitHub Actions burst worker using a standard public-repo runner, pinned Playwright, JavaScript rendering, reserved/private-network egress blocks, no third-party browser secrets, bounded requests/text/artifacts, and external page content kept out of durable chat/model context until explicitly requested.
 
 ### 5. Live Voice
 The UI and Python contracts exist; production speech engines do not. Benchmark direct WSS + candidate VAD/STT/TTS on the actual target host for es-AR quality, TTFT/TTFA, barge-in and 60-minute stability before promotion. LiveKit Agents and Pipecat remain challengers, not defaults.
