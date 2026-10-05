@@ -9,6 +9,7 @@ from olivia.browser_worker import (
     BrowserJobRequest,
     BrowserWorkerError,
     GitHubActionsBrowserWorker,
+    browser_worker_from_env,
 )
 
 
@@ -41,6 +42,14 @@ async def test_browser_worker_dispatches_bounded_workflow(monkeypatch):
             return None
 
     class FakeSession:
+        def get(self, url, *, headers):
+            calls.append((url, None, headers))
+            response = FakeResponse()
+            response.status = 200
+            async def private_repo():
+                return {"private": True}
+            response.json = private_repo
+            return response
         def post(self, url, *, json, headers):
             calls.append((url, json, headers))
             return FakeResponse()
@@ -64,8 +73,11 @@ async def test_browser_worker_dispatches_bounded_workflow(monkeypatch):
     )
 
     assert result["remote_status"] == "dispatched"
-    assert len(calls) == 1
-    url, payload, headers = calls[0]
+    assert len(calls) == 2
+    repo_url, _, repo_headers = calls[0]
+    assert repo_url.endswith("/repos/simondalmasso/0liviA")
+    assert repo_headers["authorization"] == "Bearer test-token"
+    url, payload, headers = calls[1]
     assert url.endswith("/actions/workflows/browser-agent.yml/dispatches")
     assert payload["inputs"]["url"] == "https://example.com/path"
     assert "objective" not in payload["inputs"]
@@ -215,3 +227,74 @@ def test_browser_job_allows_ordinary_public_query_parameters():
             base_ref="arch/gpt-synthesis-v1",
         )
     )
+
+
+def test_browser_worker_hard_zero_cost_requires_explicit_actions_cost_verification(monkeypatch):
+    monkeypatch.setenv("OLIVIA_BROWSER_WORKER_ENABLED", "1")
+    monkeypatch.setenv("OLIVIA_BROWSER_REPO", "owner/private-browser")
+    monkeypatch.delenv("OLIVIA_BROWSER_ZERO_COST_VERIFIED", raising=False)
+
+    with pytest.raises(BrowserWorkerError, match="zero-cost"):
+        browser_worker_from_env(hard_zero_cost=True)
+
+    monkeypatch.setenv("OLIVIA_BROWSER_ZERO_COST_VERIFIED", "1")
+    worker = browser_worker_from_env(hard_zero_cost=True)
+    assert worker is not None
+    assert worker.repo == "owner/private-browser"
+
+
+def test_browser_worker_non_hard_zero_cost_can_be_enabled_without_cost_attestation(monkeypatch):
+    monkeypatch.setenv("OLIVIA_BROWSER_WORKER_ENABLED", "1")
+    monkeypatch.setenv("OLIVIA_BROWSER_REPO", "owner/private-browser")
+    monkeypatch.delenv("OLIVIA_BROWSER_ZERO_COST_VERIFIED", raising=False)
+
+    worker = browser_worker_from_env(hard_zero_cost=False)
+    assert worker is not None
+
+
+@pytest.mark.asyncio
+async def test_browser_worker_rejects_public_repo_before_dispatch(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status, body=None):
+            self.status = status
+            self._body = body or {}
+        async def json(self):
+            return self._body
+        async def text(self):
+            return ""
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+
+    class FakeSession:
+        def get(self, url, *, headers):
+            calls.append(("get", url))
+            return FakeResponse(200, {"private": False})
+        def post(self, url, *, json, headers):
+            calls.append(("post", url))
+            return FakeResponse(204)
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsBrowserWorker(
+        "simondalmasso/0liviA",
+        session_factory=lambda **_: FakeSession(),
+    )
+
+    with pytest.raises(BrowserWorkerError, match="private"):
+        await worker.dispatch(
+            "0123456789abcdef",
+            BrowserJobRequest(
+                url="https://example.com/",
+                objective="",
+                base_ref="arch/gpt-synthesis-v1",
+            ),
+        )
+
+    assert [kind for kind, _ in calls] == ["get"]

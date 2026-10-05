@@ -49,6 +49,7 @@ openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -md sha256 \
   -pass env:OLIVIA_BACKUP_PASSPHRASE \
   -in "${snapshot}" -out "${OUT}"
 chmod 0600 "${OUT}"
-sha256sum "${OUT}" > "${OUT}.sha256"
+checksum="$(sha256sum "${OUT}" | awk '{print $1}')"
+printf '%s  %s\n' "${checksum}" "$(basename "${OUT}")" > "${OUT}.sha256"
 chmod 0600 "${OUT}.sha256"
 printf '%s\n' "${OUT}"

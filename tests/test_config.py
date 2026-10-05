@@ -117,3 +117,11 @@ def test_context_budget_is_bounded_from_env(monkeypatch, tmp_path):
     monkeypatch.setenv("OLIVIA_MAX_CONTEXT_CHARS", "1")
     settings = Settings.from_env()
     assert settings.max_context_chars == 16_000
+
+
+def test_from_env_reads_build_sha(monkeypatch, tmp_path):
+    sha = "a" * 40
+    monkeypatch.setenv("OLIVIA_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("OLIVIA_BUILD_SHA", sha)
+    settings = Settings.from_env()
+    assert settings.build_sha == sha

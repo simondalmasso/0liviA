@@ -7,33 +7,15 @@ import re
 import zipfile
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import urlsplit
 
 import aiohttp
 
-from .web import WebReadError, validate_public_url
+from .web import WebReadError, has_sensitive_query_parameters, validate_public_url
 
 
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
-_SENSITIVE_QUERY_KEYS = frozenset({
-    "access_token",
-    "api_key",
-    "apikey",
-    "auth",
-    "authorization",
-    "code",
-    "credential",
-    "key",
-    "password",
-    "secret",
-    "session",
-    "sessionid",
-    "sig",
-    "signature",
-    "token",
-})
-
 
 class BrowserWorkerError(RuntimeError):
     pass
@@ -47,7 +29,7 @@ class BrowserJobRequest:
 
 
 class GitHubActionsBrowserWorker:
-    """Dispatches bounded JS-browser jobs to a public GitHub Actions runner."""
+    """Dispatches bounded JS-browser jobs through a private GitHub Actions repository."""
 
     def __init__(
         self,
@@ -92,11 +74,7 @@ class GitHubActionsBrowserWorker:
             normalized = validate_public_url(request.url)
         except WebReadError as exc:
             raise ValueError(f"invalid browser URL: {exc}") from exc
-        query_keys = {
-            key.strip().lower()
-            for key, _ in parse_qsl(urlsplit(normalized).query, keep_blank_values=True)
-        }
-        if query_keys & _SENSITIVE_QUERY_KEYS:
+        if has_sensitive_query_parameters(normalized):
             raise ValueError("browser URL contains a sensitive query parameter")
         if len(request.objective) > 4_000:
             raise ValueError("objective must be at most 4000 characters")
@@ -124,8 +102,22 @@ class GitHubActionsBrowserWorker:
             },
         }
         timeout = aiohttp.ClientTimeout(total=20)
+        headers = self._headers()
         async with self._session_factory(timeout=timeout) as session:
-            async with session.post(url, json=payload, headers=self._headers()) as response:
+            repo_url = f"{self.api_base}/repos/{self.repo}"
+            async with session.get(repo_url, headers=headers) as response:
+                if response.status != 200:
+                    detail = (await response.text())[:500]
+                    raise BrowserWorkerError(
+                        f"github browser repository check HTTP {response.status}: {detail}"
+                    )
+                metadata = await response.json()
+            if not isinstance(metadata, dict) or metadata.get("private") is not True:
+                raise BrowserWorkerError(
+                    "browser worker requires a private GitHub repository for result artifacts"
+                )
+
+            async with session.post(url, json=payload, headers=headers) as response:
                 if response.status != 204:
                     detail = (await response.text())[:500]
                     raise BrowserWorkerError(
@@ -226,10 +218,18 @@ class GitHubActionsBrowserWorker:
         return payload
 
 
-def browser_worker_from_env() -> GitHubActionsBrowserWorker | None:
+def browser_worker_from_env(*, hard_zero_cost: bool = True) -> GitHubActionsBrowserWorker | None:
     enabled = os.getenv("OLIVIA_BROWSER_WORKER_ENABLED", "").strip().lower()
     if enabled not in {"1", "true", "yes", "on"}:
         return None
+    zero_cost_verified = (
+        os.getenv("OLIVIA_BROWSER_ZERO_COST_VERIFIED", "").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+    if hard_zero_cost and not zero_cost_verified:
+        raise BrowserWorkerError(
+            "browser worker zero-cost boundary is not verified"
+        )
     repo = os.getenv("OLIVIA_BROWSER_REPO", "").strip()
     if not repo:
         raise BrowserWorkerError(
