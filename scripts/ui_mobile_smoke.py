@@ -70,9 +70,19 @@ async def main() -> int:
                 assert composer["top"] >= 0 and composer["bottom"] <= height + 1, (name, "composer-y", composer)
 
                 await page.locator('.rail-btn[data-side="session"]').click()
-                await page.wait_for_timeout(180)
+                await page.wait_for_timeout(240)
+                drawer_state = await page.evaluate(
+                    """() => ({
+                      classes: document.querySelector('#drawer')?.className || '',
+                      hidden: document.querySelector('#drawer')?.getAttribute('aria-hidden'),
+                      pageErrorsReady: true
+                    })"""
+                )
+                if page_errors:
+                    raise AssertionError((name, "page-errors", page_errors, drawer_state))
                 drawer = await rect(page, "#drawer")
-                assert drawer["left"] >= -1 and drawer["right"] <= width + 1, (name, "drawer-x", drawer)
+                assert "open" in drawer_state["classes"].split(), (name, "drawer-class", drawer_state)
+                assert drawer["left"] >= -1 and drawer["right"] <= width + 1, (name, "drawer-x", drawer, drawer_state)
                 assert drawer["top"] >= -1 and drawer["bottom"] <= height + 1, (name, "drawer-y", drawer)
                 drawer_widths = await page.evaluate(
                     """() => ({
