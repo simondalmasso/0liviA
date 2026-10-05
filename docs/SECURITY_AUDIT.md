@@ -1,13 +1,15 @@
-# Security audit reconciliation — 2026-10-04
+# Security audit reconciliation — refreshed 2026-10-05
 
 Source: adversarial read-only Arena Agent report supplied by the owner.
 
-This document records which findings apply to the active integration branch `arch/gpt-synthesis-v1`. Historical branches/prototypes are evidence only and are not production contracts.
+This document records which findings apply to canonical `main`. Historical branches/prototypes are evidence only and are not production contracts.
 
 ## Applies to the active branch
 
-### PUBLIC-PROD-STALE — OPEN / deployment gate
-The public Worker was observed serving an older UI/Worker generation. Its exact live SHA and billing plan are not independently verified here. The branch Worker is now a public-shell-only runtime: it contains no model/search backend and all API routes fail closed. This does not change the unknown state of any already-live historical Worker. Do not claim the public deployment is current, private or guaranteed USD 0 until an exact-SHA canonical deploy and smoke are performed.
+### PUBLIC-SHELL-STALE — FIXED / canonical backend still gated
+The historical public Worker was stale and model-capable. It has now been replaced by an exact-SHA **inert public shell** built from `4ad53fdfd6e1664763c73ea5847582ba2ed99157`. Core CI run `37266316863` and mobile Playwright run `37266316851` passed. Public-shell deploy run `37266503642` passed with Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, `PUBLIC_SHELL_OK=YES`, `INFERENCE_DISABLED=YES`, `bridge_enabled:false`, `provider_ready:false`, and `/api/chat` verified as `503 bridge_disabled`.
+
+This fixes the stale/shared-inference exposure of the **public shell**. It does **not** mean the canonical Python Core is deployed; authenticated durable chat/memory/voice still require the canonical host.
 
 ### OWNER-REGISTRATION — FIXED IN BRANCH
 The canonical Core now uses first-run single-owner registration: email + scrypt password verifier are stored server-side, registration closes after the first owner, remembered sessions are bound to random server-side device IDs, and those devices are revocable from the Session UI. Session-only login leaves no durable trusted-device record. Internet-facing bootstrap also generates a one-shot registration token; it is delivered through a URL fragment from root-only bootstrap state, consumed in-memory by the browser and immediately removed from the address bar, so it is not sent in HTTP requests or access logs. No API key or bearer is entered into the browser UI.
@@ -81,13 +83,13 @@ See `docs/SECURITY_OPERATIONS.md`.
 
 ## Remaining release blockers
 
-1. Replace/retire the stale public Worker only after an exact-SHA canonical target host passes smoke.
+1. Deploy the canonical Python Core only after an exact-SHA target host passes install/restart/backup/latency/resource smoke; the public shell is already current and inert.
 2. Complete a real owner Sign in with ChatGPT connection, verify the app cannot consume paid credits, and smoke the included-plan route on the target Core; separately verify provider/account cost guarantees for any other external inference/search route.
 3. Verify Oracle A1 capacity plus install/restart/backup/latency/resource gates on the real host.
 4. Benchmark and accept a production voice stack on the real target; current Live Voice backend remains provisional.
 5. Verify account-level MFA/2FA on every production control plane and rotate any credential with a real exposure alert.
 6. Perform a disposable-host encrypted restore rehearsal and retain the evidence.
-7. Perform an exact-release production smoke before declaring the public URL current.
+7. Perform an exact-release **canonical Core** smoke before declaring authenticated chat/memory/voice production-ready; the public URL shell itself is already exact-SHA verified.
 
 The bootstrap now rejects mutable production refs, generates browser owner authentication without exposing the bearer, and verifies pinned SHA-256 digests for llama.cpp and GGUF artifacts.
 
