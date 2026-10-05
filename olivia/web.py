@@ -7,7 +7,7 @@ import re
 import socket
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urljoin, urlsplit, urlunsplit
 
 import aiohttp
 from aiohttp.abc import AbstractResolver
@@ -24,6 +24,35 @@ ALLOWED_TYPES = (
     "application/xml",
     "text/xml",
 )
+SENSITIVE_QUERY_KEYS = frozenset({
+    "access_token",
+    "api_key",
+    "apikey",
+    "auth",
+    "authorization",
+    "code",
+    "credential",
+    "key",
+    "password",
+    "secret",
+    "session",
+    "sessionid",
+    "sig",
+    "signature",
+    "token",
+})
+
+
+def has_sensitive_query_parameters(value: str) -> bool:
+    try:
+        query = urlsplit(str(value or "")).query
+    except ValueError:
+        return False
+    keys = {
+        key.strip().lower()
+        for key, _ in parse_qsl(query, keep_blank_values=True)
+    }
+    return bool(keys & SENSITIVE_QUERY_KEYS)
 
 
 class WebReadError(RuntimeError):
