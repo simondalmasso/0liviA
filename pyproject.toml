@@ -19,7 +19,7 @@ chatgpt = [
   "PyJWT[crypto]>=2.10,<3",
 ]
 dev = [
-  "pytest>=8.3,<9",
+  "pytest>=8.3,<10",
   "pytest-asyncio>=0.24,<1",
   "pytest-aiohttp>=1.0,<2",
   "PyJWT[crypto]>=2.10,<3",
