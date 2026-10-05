@@ -26,6 +26,7 @@ def _scrub_value(value: Any) -> Any:
 
 
 DEFAULT_PROJECT_ID = "default"
+SCHEMA_VERSION = 1
 
 
 _SCHEMA = """
@@ -167,6 +168,16 @@ class Store:
             isolation_level=None,
             check_same_thread=False,
         )
+        current_version = int(
+            self._conn.execute("PRAGMA user_version").fetchone()[0]
+        )
+        if current_version > SCHEMA_VERSION:
+            self._conn.close()
+            raise ValueError(
+                f"database uses newer schema version {current_version}; "
+                f"this build supports up to {SCHEMA_VERSION}"
+            )
+
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
@@ -174,7 +185,9 @@ class Store:
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
         os.chmod(self.path, 0o600)
-        self._migrate_workspace_schema()
+        if current_version < SCHEMA_VERSION:
+            self._migrate_workspace_schema()
+            self._conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     def _migrate_workspace_schema(self) -> None:
         with self._lock:
