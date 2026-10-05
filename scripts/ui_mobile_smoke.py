@@ -101,6 +101,66 @@ async def main() -> int:
                 assert voice_widths["bodyWidth"] <= width + 1, (name, "voice body overflow", voice_widths)
                 await page.screenshot(path=str(args.output / f"{name}-voice.png"), full_page=False)
 
+                auth_page = await context.new_page()
+                auth_errors: list[str] = []
+                auth_page.on("pageerror", lambda exc: auth_errors.append(str(exc)))
+
+                async def route_health(route):
+                    await route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps(
+                            {
+                                "process_alive": True,
+                                "api_mode": "canonical",
+                                "provider_ready": False,
+                                "registration_open": True,
+                                "registration_protected": True,
+                            }
+                        ),
+                    )
+
+                async def route_sessions(route):
+                    await route.fulfill(
+                        status=401,
+                        content_type="application/json",
+                        body=json.dumps({"error": "unauthorized"}),
+                    )
+
+                await auth_page.route("**/healthz", route_health)
+                await auth_page.route("**/api/sessions?limit=1", route_sessions)
+                await auth_page.goto(
+                    args.url + "#setup=mobile-smoke-one-shot",
+                    wait_until="domcontentloaded",
+                )
+                await auth_page.wait_for_timeout(800)
+                assert await auth_page.locator("#ownerLogin").get_attribute("aria-hidden") == "false"
+                assert await auth_page.locator("#ownerAuthTitle").inner_text() == "Registrate"
+                assert await auth_page.locator("#ownerRemember").is_checked()
+                assert await auth_page.evaluate("location.hash") == ""
+
+                auth_card = await rect(auth_page, ".auth-card")
+                email = await rect(auth_page, "#ownerEmail")
+                password = await rect(auth_page, "#ownerPassword")
+                submit = await rect(auth_page, "#ownerAuthSubmit")
+                for label, box in (
+                    ("auth-card", auth_card),
+                    ("auth-email", email),
+                    ("auth-password", password),
+                    ("auth-submit", submit),
+                ):
+                    assert box["left"] >= -1 and box["right"] <= width + 1, (name, label, box)
+                    assert box["top"] >= -1 and box["bottom"] <= height + 1, (name, label, box)
+                auth_widths = await auth_page.evaluate(
+                    """() => ({
+                      htmlWidth: document.documentElement.scrollWidth,
+                      bodyWidth: document.body.scrollWidth
+                    })"""
+                )
+                assert auth_widths["htmlWidth"] <= width + 1, (name, "auth html overflow", auth_widths)
+                assert auth_widths["bodyWidth"] <= width + 1, (name, "auth body overflow", auth_widths)
+                await auth_page.screenshot(path=str(args.output / f"{name}-register.png"), full_page=False)
+
                 report["viewports"].append(
                     {
                         "name": name,
@@ -110,7 +170,14 @@ async def main() -> int:
                         "composer": composer,
                         "drawer": drawer,
                         "voice": voice,
+                        "auth": {
+                            "card": auth_card,
+                            "email": email,
+                            "password": password,
+                            "submit": submit,
+                        },
                         "page_errors": page_errors,
+                        "auth_page_errors": auth_errors,
                     }
                 )
                 await context.close()
