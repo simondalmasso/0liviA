@@ -90,3 +90,7 @@ See `docs/SECURITY_OPERATIONS.md`.
 7. Perform an exact-release production smoke before declaring the public URL current.
 
 The bootstrap now rejects mutable production refs, generates browser owner authentication without exposing the bearer, and verifies pinned SHA-256 digests for llama.cpp and GGUF artifacts.
+
+
+### RUNTIME-ZERO-COST-GUARD — FIXED IN BRANCH
+The product runtime now forces hard-zero-cost mode on even if an environment variable attempts to disable it. `plan_included` is accepted only for the official `chatgpt_plan` provider kind, where `no_credit_overage_verified=true` is mandatory. Generic OpenAI-compatible routes cannot self-label as subscription-included to bypass the zero-cost filter.
