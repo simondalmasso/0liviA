@@ -1,116 +1,79 @@
 # Self-hosting 0liviA
 
-0liviA is designed so every installation owns its own identity, data and provider configuration.
+0liviA is designed so each installation owns its identity, data and providers.
 
-There is no shared 0liviA backend that public users should connect to.
+## 1. Clone or fork
 
-## 1. Create instance secrets
+Clone the repository into infrastructure you control.
 
-Generate unique secrets for your installation:
+Do not reuse another person's environment file, runtime database, Cloudflare account or provider credentials.
 
-```bash
-openssl rand -hex 32
-openssl rand -hex 32
-```
+## 2. Configure your own provider routes
 
-Use separate values for:
+Start from `.env.example`.
 
-```env
-OLIVIA_GATEWAY_TOKEN=...
-OLIVIA_REGISTRATION_TOKEN=...
-```
+Every external model/search route must use **your own provider** account and credentials.
 
-Never reuse another installation's setup token, gateway token or provider credentials.
+Provider secrets stay server-side. `OLIVIA_PROVIDERS_JSON` references environment-variable names; it does not contain the secret itself.
 
-## 2. Configure your own provider
+## 3. First-run registration
 
-You may use local inference or **your own provider** account.
+Production bootstrap creates:
+- a unique internal gateway token;
+- a one-time registration setup token.
 
-Example server-side provider registry:
+Open the root-only `SETUP_URL`, choose **Registrate**, create the owner email/password, and optionally enable **Recordarme**.
+
+After the first owner is created, registration closes automatically.
+
+## 4. Zero-cost-first mode
+
+Keep:
 
 ```env
 OLIVIA_HARD_ZERO_COST=1
-OLIVIA_PROVIDERS_JSON=[{"name":"local","base_url":"http://127.0.0.1:11434/v1","model":"local-model","api_key_env":"","priority":10,"daily_limit":0,"cost_mode":"local"}]
 ```
 
-For a remote provider, store its key in the server environment and reference the environment-variable name from `OLIVIA_PROVIDERS_JSON`.
+Allowed route classes:
+- `local`;
+- `free_hard_cap` only when that deployment has verified the upstream cannot bill beyond its free boundary.
 
-Do not put provider keys in the browser UI.
+Blocked route classes:
+- `free_unverified`;
+- `paid`.
 
-## 3. First-owner registration
+If all eligible routes are exhausted or unavailable, 0liviA degrades/fails rather than silently paying.
 
-A new installation has no owner account.
+This is not a guarantee that third-party services remain free forever.
 
-Open the protected setup URL containing the one-time registration token, register an email/password, then stop sharing that setup URL. After the first owner is created, registration closes.
+## 5. Optional Cloudflare
 
-Passwords are represented by a scrypt verifier in the installation's SQLite database. Remembered devices use random server-side IDs and can be revoked from the Session panel.
+The canonical Python Core does not require Cloudflare.
 
-## 4. Runtime data
+If you choose Cloudflare features, connect your own account. The transitional inference/read Worker in this repository is disabled by default.
 
-Keep runtime state outside the Git checkout:
+## 6. Optional coding worker
 
-```env
-OLIVIA_DATA_DIR=/var/lib/0livia
-```
-
-That directory contains installation-specific data such as:
-
-- chats;
-- projects;
-- library items;
-- memory;
-- jobs/checkpoints;
-- account/device state.
-
-Back it up as private application data. Do not commit it.
-
-## 5. Coding worker
-
-The coding worker is optional and disabled by default.
-
-Configure it only against a repository/token you control:
+Configure your own repository:
 
 ```env
 OLIVIA_CODING_WORKER_ENABLED=1
-OLIVIA_CODING_REPO=owner/your-repo
-OLIVIA_CODING_WORKFLOW=coding-agent.yml
+OLIVIA_CODING_REPO=YOUR_GITHUB_USER/YOUR_REPO
 OLIVIA_CODING_BASE_REF=main
-OLIVIA_GITHUB_TOKEN=...
 ```
 
-A public clone does not inherit the maintainer's GitHub Actions secrets.
+The workflow uses secrets from that repository only.
 
-## 6. Web search
+## 7. Runtime data
 
-`/read` is a direct safe URL reader.
+Durable state belongs outside the Git checkout under `OLIVIA_DATA_DIR`.
 
-`/search` and `/research` require a separately configured search adapter. Search is disabled unless the route is explicitly marked as zero-cost verified.
+Back up the SQLite database using an online-safe method or a clean service stop.
 
-Do not point a public installation at somebody else's Cloudflare AI Gateway, BYOK alias or provider account.
+## 8. Public deployment rule
 
-## 7. Cloudflare
-
-Cloudflare is not required for the canonical Core.
-
-The repository contains a transitional Worker implementation, but its chat/read runtime is disabled by default. A fork must provide its own Cloudflare account/bindings if it deliberately chooses to use that bridge.
-
-## 8. Reference Linux deployment
-
-The `deploy/` directory contains a reference Linux/Oracle A1 profile. It installs:
-
-- Python Core;
-- SQLite state;
-- llama.cpp local inference;
-- Caddy HTTPS;
-- a protected first-run setup link.
-
-It is a reference zero-cost profile, not a dependency on the maintainer's Oracle or Cloudflare accounts.
-
-## Cost policy
-
-"Zero-cost-first" means the software prefers:
-
-- local inference; or
-- a provider route with an externally verified hard-free boundary.
-
-It does not mean every host/provider/domain is guaranteed to remain free. If `OLIVIA_HARD_ZERO_COST=1`, unverified or paid routes are blocked rather than used silently.
+Do not expose a new installation before:
+- HTTPS is active;
+- first-owner registration is protected by the setup token;
+- port 8080 remains private;
+- only deployment-owned provider accounts are configured.
