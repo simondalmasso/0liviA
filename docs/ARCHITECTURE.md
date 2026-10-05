@@ -48,7 +48,20 @@ Router requirements:
 - after the first token, a provider failure returns an explicit partial/error instead of duplicating text through a second model;
 - route/model/latency/error telemetry without chain-of-thought or secrets.
 
-A free quota disappearing must cause degradation, rerouting or pause — never hidden spend.
+A free quota or included-plan allowance disappearing must cause degradation, rerouting or pause — never hidden spend.
+
+### ChatGPT plan lane
+
+For eligible Plus/Pro owners, the router supports the official **Sign in with ChatGPT** plan-usage path as a first-class provider:
+- `kind=chatgpt_plan`;
+- official `https://api.openai.com/v1/responses` transport only;
+- `store:false` and streaming Responses;
+- OAuth access/refresh credentials live in a server-side profile file mode 0600;
+- no OpenAI API key is accepted or exposed in the browser;
+- system/developer policy is sent through `instructions`, not as unsupported system input items;
+- the provider is eligible under hard-zero-cost policy only when `no_credit_overage_verified=true`.
+
+That flag is an owner/account assertion, not a billing API proof. It must only be set after the owner verifies ChatGPT app credit use cannot create overage—for example by leaving app credit use disabled and/or setting this app's usage limit below 100%. If the plan/app limit is exhausted, the route fails and the normal provider failover policy applies before visible output.
 
 ## Coding and repository work
 
