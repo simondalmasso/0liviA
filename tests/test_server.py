@@ -364,7 +364,7 @@ async def test_coding_job_dispatch_is_authenticated_durable_and_refreshable(aioh
         "/api/jobs/code",
         json={
             "task": "Fix the failing tests without changing unrelated behavior.",
-            "base_ref": "arch/gpt-synthesis-v1",
+            "base_ref": "main",
             "publish_branch": False,
         },
         headers=auth(),
@@ -376,7 +376,7 @@ async def test_coding_job_dispatch_is_authenticated_durable_and_refreshable(aioh
     stored = store.get_job(job_id)
     assert stored["kind"] == "code"
     assert stored["status"] == "dispatched"
-    assert stored["checkpoint"]["base_ref"] == "arch/gpt-synthesis-v1"
+    assert stored["checkpoint"]["base_ref"] == "main"
     assert worker.dispatched[0][0] == job_id
 
     refreshed = await client.get(f"/api/jobs/{job_id}", headers=auth())
@@ -1852,3 +1852,24 @@ async def test_ui_distinguishes_public_shell_from_transitional_bridge(client):
     assert "backendMode='public_shell'" in html
     assert "Shell público · Core desconectado" in html
 
+
+
+@pytest.mark.asyncio
+async def test_live_voice_prefers_canonical_wss_when_backend_exists(client):
+    html = await (await client.get("/")).text()
+    assert "coreHealth?.voice_backend_configured===true" in html
+    assert "function voiceWsUrl(" in html
+    assert "/api/voice/ws?session_id=" in html
+    assert "new WebSocket(voiceWsUrl(" in html
+    assert "function encodeCanonicalAudio(" in html
+    assert "type:'turn_started'" in html
+    assert "type:'cancelled'" in html
+    assert "stt_partial" in html
+    assert "stt_final" in html
+    assert "llm_delta" in html
+    assert "turn_completed" in html
+    assert "hydrateCanonicalChat" in html
+    assert "voiceMuted||voiceSpeaking||!voiceTurnId" not in html
+    # Browser speech remains a graceful fallback while the server voice backend is gated.
+    assert "SpeechRecognition" in html
+    assert "speechSynthesis" in html
