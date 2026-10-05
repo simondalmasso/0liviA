@@ -446,3 +446,31 @@ What the screenshots still do **not** prove:
 - one-time OAuth onboarding mechanics are implemented independently from the DevKit; the remaining gate is a real owner connection, Usage-control verification, secure profile transfer and bounded live smoke. The OpenAI DevKit remains an implementation/security reference, but its noncommercial license means 0liviA does not copy it wholesale.
 
 
+
+
+## 2026-10-05 — Muse Glimmer challenger
+
+Official Meta documentation describes Muse Glimmer as an Apache-2.0, 30B dense multimodal model with a default 128K context, strong tool-use/agentic benchmarks and OpenAI-compatible serving through supported runtimes.
+
+Fit for 0liviA:
+- **yes** as a replaceable self-hosted/high-end challenger behind the existing OpenAI-compatible provider contract;
+- **no** as the Oracle A1 default: the recommended llama.cpp Q4_K_M text GGUF is ~17 GB before the optional vision projector, so a 12 GB A1 does not provide a safe production fit;
+- current llama.cpp bootstrap build b11388 is newer than Meta's documented Muse Glimmer support floor b10353, so no new provider module is required when suitable GPU/RAM hosting becomes available;
+- hosted providers remain subject to their own pricing/overage controls and are therefore not admitted to the hard-zero-cost route without account-level proof.
+
+Conclusion: keep Muse Glimmer in the challenger catalog; do not inflate the Core with Muse-specific logic.
+
+## 2026-10-05 — OpenClaw / GPT-6 Astra evidence supplied by owner
+
+The owner supplied screenshots showing an OpenClaw model catalog containing OpenAI model slugs including openai/gpt-6-astra, and a successful response reading “GPT-6 Astra funcionando correctamente.”
+
+What this establishes:
+- that the displayed OpenClaw environment can enumerate that model name;
+- that a request in that environment returned a successful text response.
+
+What it does **not** establish:
+- that the route is official OpenAI plan usage rather than another provider/credential path;
+- that the route is recurring-free, no-overage, production-stable or transferable to 0liviA;
+- that 0liviA should depend on OpenClaw.
+
+0liviA therefore keeps the native official ChatGPT-plan transport as the preferred plan-included path and treats OpenClaw only as external interoperability evidence.
