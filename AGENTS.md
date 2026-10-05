@@ -31,6 +31,14 @@ Each installation is isolated and owns its own identity, runtime data, provider 
 - A clone must not silently call a maintainer-controlled backend.
 - Any optional cloud adapter must fail closed if its identity/cost boundary is unverified.
 
+## Branch governance
+
+- `main` is the only canonical integration branch.
+- `arch/gpt-synthesis-v1` is a compatibility mirror, not an active development line.
+- Branch new work from `main`; do not target or revive historical integration branches as product truth.
+- If a compatibility mirror diverges, reconcile it back to the exact canonical `main` tree before continuing work.
+- Repository rulesets / branch protection are the preferred enforcement layer when administration access is available.
+
 ## Engineering behavior
 
 - Inspect current repo state before edits.
