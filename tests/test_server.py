@@ -1638,3 +1638,52 @@ async def test_closed_mobile_drawer_cannot_intercept_rail_taps(client):
     assert ".drawer{" in html
     assert "pointer-events:none" in html
     assert ".drawer.open{transform:translateX(0);pointer-events:auto}" in html
+
+
+@pytest.mark.asyncio
+async def test_voice_wss_rejects_second_connection_for_same_session(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "voice-singleton.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class BlockingPipeline:
+        async def run(self):
+            started.set()
+            await release.wait()
+
+    def factory(_transport, _session_id):
+        return BlockingPipeline()
+
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="voice-token",
+            voice_pipeline_factory=factory,
+        )
+    )
+    session_id = store.create_session("voice")
+    headers = {"Authorization": "Bearer voice-token"}
+
+    first = await client.ws_connect(
+        f"/api/voice/ws?session_id={session_id}",
+        headers=headers,
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    second = await client.get(
+        f"/api/voice/ws?session_id={session_id}",
+        headers=headers,
+    )
+    assert second.status == 409
+    assert (await second.json())["error"] == "voice_session_busy"
+
+    release.set()
+    await first.close()
+    for _ in range(50):
+        if session_id not in client.app["gateway"]._voice_sessions:
+            break
+        await asyncio.sleep(0.01)
+    assert session_id not in client.app["gateway"]._voice_sessions
