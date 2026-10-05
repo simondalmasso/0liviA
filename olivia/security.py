@@ -11,7 +11,6 @@ REDACTED = "[REDACTED_SECRET]"
 _PATTERNS = (
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE),
     re.compile(r"\bgh(?:p|o|u|s|r)_[A-Za-z0-9]{20,}\b"),
-    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{40,}\b"),
     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
