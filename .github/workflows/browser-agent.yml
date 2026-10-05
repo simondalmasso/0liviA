@@ -35,11 +35,11 @@ jobs:
       REPO_PRIVATE: ${{ github.event.repository.private }}
 
     steps:
-      - name: Fail closed unless standard public-repo runner is eligible
+      - name: Fail closed unless browser artifacts stay inside a private repository
         shell: bash
         run: |
           set -euo pipefail
-          test "$REPO_PRIVATE" = "false"
+          test "$REPO_PRIVATE" = "true"
 
       - name: Checkout trusted base without persisted credentials
         uses: actions/checkout@v7
