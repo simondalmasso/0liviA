@@ -264,3 +264,13 @@ async def test_chatgpt_plan_fails_closed_if_expired_before_refresh_floor(tmp_pat
 
     with pytest.raises(ProviderConfigError, match="expired before refresh"):
         await provider._access_token()
+
+
+def test_chatgpt_plan_never_silently_downgrades_from_astra():
+    installer = Path("scripts/install_chatgpt_plan_profile.sh").read_text(encoding="utf-8")
+    oauth = Path("olivia/chatgpt_oauth.py").read_text(encoding="utf-8")
+
+    assert 'models[0] if models else ""' not in installer
+    assert 'models[0]["slug"] if models else ""' not in oauth
+    assert "gpt-6-astra" in installer
+    assert "explicit model override" in installer
