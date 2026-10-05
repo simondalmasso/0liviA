@@ -13,7 +13,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,17 +32,44 @@ jobs:
           python -m pip install -e '.[dev]'
           python -m pip install 'ruff>=0.8,<1' 'bandit>=1.8,<2' 'pip-audit>=2.7,<3'
 
-      - name: Dependency consistency
+      - id: deps
+        name: Dependency consistency
+        continue-on-error: true
         run: python -m pip check
 
-      - name: Ruff production correctness
+      - id: ruff_prod
+        name: Ruff production correctness
+        continue-on-error: true
         run: ruff check olivia scripts
 
-      - name: Ruff test correctness
+      - id: ruff_tests
+        name: Ruff test correctness
+        continue-on-error: true
         run: ruff check tests --select E9,F63,F7,F82
 
-      - name: Bandit security audit
+      - id: bandit
+        name: Bandit security audit
+        continue-on-error: true
         run: bandit -q -r olivia scripts -x tests
 
-      - name: Dependency vulnerability audit
+      - id: pip_audit
+        name: Dependency vulnerability audit
+        continue-on-error: true
         run: pip-audit --strict
+
+      - name: Audit gate
+        shell: bash
+        env:
+          DEPS: ${{ steps.deps.outcome }}
+          RUFF_PROD: ${{ steps.ruff_prod.outcome }}
+          RUFF_TESTS: ${{ steps.ruff_tests.outcome }}
+          BANDIT: ${{ steps.bandit.outcome }}
+          PIP_AUDIT: ${{ steps.pip_audit.outcome }}
+        run: |
+          set -euo pipefail
+          printf 'deps=%s ruff_prod=%s ruff_tests=%s bandit=%s pip_audit=%s\n'             "$DEPS" "$RUFF_PROD" "$RUFF_TESTS" "$BANDIT" "$PIP_AUDIT"
+          test "$DEPS" = success
+          test "$RUFF_PROD" = success
+          test "$RUFF_TESTS" = success
+          test "$BANDIT" = success
+          test "$PIP_AUDIT" = success
