@@ -364,7 +364,7 @@ async def test_coding_job_dispatch_is_authenticated_durable_and_refreshable(aioh
         "/api/jobs/code",
         json={
             "task": "Fix the failing tests without changing unrelated behavior.",
-            "base_ref": "arch/gpt-synthesis-v1",
+            "base_ref": "main",
             "publish_branch": False,
         },
         headers=auth(),
@@ -376,7 +376,7 @@ async def test_coding_job_dispatch_is_authenticated_durable_and_refreshable(aioh
     stored = store.get_job(job_id)
     assert stored["kind"] == "code"
     assert stored["status"] == "dispatched"
-    assert stored["checkpoint"]["base_ref"] == "arch/gpt-synthesis-v1"
+    assert stored["checkpoint"]["base_ref"] == "main"
     assert worker.dispatched[0][0] == job_id
 
     refreshed = await client.get(f"/api/jobs/{job_id}", headers=auth())
@@ -1817,3 +1817,49 @@ async def test_ui_surfaces_actual_zero_cost_route_per_answer(client):
     assert "ev?.type==='route'" in html
     assert "provider:item.provider||''" in html
     assert "provider-pill" in html
+
+
+@pytest.mark.asyncio
+async def test_worker_base_ref_defaults_to_main_and_is_overridable(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "worker-base-ref.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="test-token",
+            coding_worker=worker,
+        )
+    )
+    session_id = store.create_session("worker-ref")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/code reparar algo"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    assert worker.dispatched[-1].base_ref == "main"
+
+    second_store = Store(tmp_path / "worker-base-ref-custom.sqlite3")
+    second_agent = Agent(second_store, FakeRouter(), settings)
+    second_worker = FakeCodingWorker()
+    second = await aiohttp_client(
+        create_app(
+            second_agent,
+            settings,
+            auth_token="test-token",
+            coding_worker=second_worker,
+            worker_base_ref="release",
+        )
+    )
+    second_session = second_store.create_session("worker-ref-custom")
+    response = await second.post(
+        f"/api/chat/{second_session}",
+        json={"text": "/repair reparar algo"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    assert second_worker.dispatched[-1].base_ref == "release"
