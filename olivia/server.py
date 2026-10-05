@@ -30,7 +30,7 @@ from .router import ProviderPool
 from .research import SearchUnavailable, WebSearch, web_search_from_env
 from .security import make_password_verifier, redact_secrets, verify_password
 from .store import Store
-from .web import SafeWebReader, WebReadError
+from .web import SafeWebReader, WebReadError, has_sensitive_query_parameters
 from .voice.adapters.transport import AiohttpWebSocketTransport, DirectWssConfig
 from .voice.pipeline import VoicePipeline
 
@@ -995,6 +995,33 @@ class Gateway:
                 return
 
             url, separator, question = argument.partition(" ")
+            if has_sensitive_query_parameters(url):
+                safe_question = redact_secrets(question.strip())
+                persisted_user = "/read [REDACTED_SENSITIVE_URL]"
+                if safe_question:
+                    persisted_user += f" {safe_question}"
+                assistant = (
+                    "No puedo leer una URL que incluya parámetros sensibles "
+                    "como tokens, credenciales o firmas."
+                )
+                self.agent.store.append_message(session_id, "user", persisted_user)
+                self.agent.store.append_message(
+                    session_id,
+                    "assistant",
+                    assistant,
+                    provider="web-reader",
+                    status="complete",
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "sensitive_url",
+                    "retryable": False,
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
             try:
                 document = await self.web_reader.read(url)
             except WebReadError as exc:
