@@ -404,6 +404,7 @@ let coreHealth=null;
 let backendMode='bridge';
 let ownerAuthReady=false;
 let trustedDevices=[];
+let securityEvents=[];
 let ownerSessionEmail='';
 let setupToken='';
 if(location.hash.startsWith('#setup=')){
@@ -548,6 +549,16 @@ async function loadSessionProfile(){
     if(activeSide==='session')renderSession();
   }catch(e){}
 }
+async function loadSecurityEvents(){
+  if(backendMode!=='canonical'||!ownerAuthReady){securityEvents=[];return}
+  try{
+    const r=await fetch('/api/security/events',{cache:'no-store',credentials:'same-origin'});
+    if(r.status===401){ownerAuthReady=false;securityEvents=[];showOwnerLogin();return}
+    if(!r.ok)return;
+    securityEvents=(await r.json()).events||[];
+    if(activeSide==='session')renderSession();
+  }catch(e){}
+}
 async function loadTrustedDevices(){
   if(backendMode!=='canonical'||!ownerAuthReady){trustedDevices=[];return}
   try{
@@ -579,7 +590,7 @@ async function probeCore(){
     backendMode=body.api_mode==='canonical'?'canonical':'bridge';
     const authOk=await canonicalAuthCheck();
     setCoreState(body.provider_ready&&authOk?'online':body.provider_ready?'locked':'locked');
-    if(authOk){await loadSessionProfile();await loadTrustedDevices()}
+    if(authOk){await loadSessionProfile();await loadTrustedDevices();await loadSecurityEvents()}
     if(workspace){renderConfig();renderSession()}
     return body.provider_ready===true&&authOk;
   }catch(e){
@@ -848,13 +859,24 @@ function renderSession(){
     revoke.textContent='Revocar';revoke.onclick=()=>revokeTrustedDevice(device.id);
     row.append(copy,revoke);el.appendChild(row);
   }
+  const securityHeading=document.createElement('div');securityHeading.className='side-section-head';
+  securityHeading.textContent='Actividad de seguridad';el.appendChild(securityHeading);
+  for(const event of securityEvents.slice(0,5)){
+    const row=document.createElement('div');row.className='side-card';
+    const title=document.createElement('strong');
+    title.textContent=String(event.type||'security').replace('security.','').replaceAll('_',' ');
+    const small=document.createElement('small');
+    const stamp=Number(event.created_at||0)*1000;
+    small.textContent=stamp?new Date(stamp).toLocaleString('es-AR'):'';
+    row.append(title,small);el.appendChild(row);
+  }
   const actions=document.createElement('div');actions.className='side-actions';
   const logout=document.createElement('button');logout.type='button';logout.textContent='Cerrar sesión';
   logout.onclick=logoutOwnerSession;actions.appendChild(logout);el.appendChild(actions);
 }
 async function logoutOwnerSession(){
   try{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'})}catch(e){}
-  ownerAuthReady=false;ownerSessionEmail='';trustedDevices=[];
+  ownerAuthReady=false;ownerSessionEmail='';trustedDevices=[];securityEvents=[];
   closeDrawer();await probeCore();
 }
 
