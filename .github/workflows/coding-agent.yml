@@ -44,21 +44,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      AIDER_OPENAI_API_BASE: "https://integrate.api.nvidia.com/v1"
-      AIDER_MODEL: "openai/deepseek-ai/deepseek-v4.1-flash"
+      AIDER_OPENAI_API_BASE: ${{ vars.OLIVIA_CODING_API_BASE || 'https://integrate.api.nvidia.com/v1' }}
+      AIDER_MODEL: ${{ vars.OLIVIA_CODING_MODEL || 'openai/deepseek-ai/deepseek-v4.1-flash' }}
       AIDER_ANALYTICS_DISABLE: "true"
+      ZERO_COST_VERIFIED: ${{ vars.OLIVIA_CODING_ZERO_COST_VERIFIED || 'false' }}
       PYTHONUNBUFFERED: "1"
       BASE_REF: ${{ inputs.base_ref }}
       MODE: ${{ inputs.mode }}
       MAX_AGENT_PASSES: "2"
 
     steps:
-      - name: Fail closed without the development-only NIM key
+      - name: Fail closed without operator-owned verified-free coding route
         shell: bash
         env:
-          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
+          test "$ZERO_COST_VERIFIED" = "true"
           test -n "$AIDER_OPENAI_API_KEY"
 
       - name: Checkout exact base
@@ -106,7 +108,7 @@ jobs:
         shell: bash
         env:
           TASK: ${{ inputs.task }}
-          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           if [ "$MODE" = "repair" ]; then
@@ -189,7 +191,7 @@ jobs:
         if: steps.verify1.outputs.needs_repair == 'true' && inputs.mode != 'review'
         shell: bash
         env:
-          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           test "$MAX_AGENT_PASSES" = "2"
