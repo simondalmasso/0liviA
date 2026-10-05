@@ -957,12 +957,12 @@ function renderAll(){renderChats();renderTree();renderLibrary();renderMemory();r
 function sideTitle(name){return({chats:'CHATS',projects:'PROYECTOS',library:'BIBLIOTECA',memory:'MEMORIA',config:'CONFIG',session:'SESIÓN'})[name]||'0LIVIA'}
 function activateSide(name,open=true){
   activeSide=name;
-  $('.side-tab').forEach(b=>{
+  $$('.side-tab').forEach(b=>{
     const selected=b.dataset.side===name;
     b.classList.toggle('active',selected);
     if(selected)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
   });
-  $('.rail-btn[data-side]').forEach(b=>{
+  $$('.rail-btn[data-side]').forEach(b=>{
     const selected=b.dataset.side===name;
     b.classList.toggle('active',selected);
     if(selected)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
