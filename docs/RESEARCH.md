@@ -443,6 +443,6 @@ What the screenshots still do **not** prove:
 - a native `chatgpt_plan` provider now targets `https://api.openai.com/v1/responses`, keeps OAuth credentials server-side, refreshes them, and uses `store:false`;
 - `gpt-6-astra` is a preferred configured slug, not a hardcoded identity claim; actual availability must come from the signed-in account/model catalog;
 - under hard-zero-cost mode, this route is blocked unless `no_credit_overage_verified=true`; that remains an owner/account assertion until onboarding can inspect/guide the relevant ChatGPT Usage controls;
-- one-time OAuth onboarding remains a release gate. The OpenAI DevKit is an implementation/security reference, but its noncommercial license means 0liviA should not copy it wholesale without a separate license decision.
+- one-time OAuth onboarding mechanics are implemented independently from the DevKit; the remaining gate is a real owner connection, Usage-control verification, secure profile transfer and bounded live smoke. The OpenAI DevKit remains an implementation/security reference, but its noncommercial license means 0liviA does not copy it wholesale.
 
 
