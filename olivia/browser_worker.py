@@ -226,10 +226,18 @@ class GitHubActionsBrowserWorker:
         return payload
 
 
-def browser_worker_from_env() -> GitHubActionsBrowserWorker | None:
+def browser_worker_from_env(*, hard_zero_cost: bool = True) -> GitHubActionsBrowserWorker | None:
     enabled = os.getenv("OLIVIA_BROWSER_WORKER_ENABLED", "").strip().lower()
     if enabled not in {"1", "true", "yes", "on"}:
         return None
+    zero_cost_verified = (
+        os.getenv("OLIVIA_BROWSER_ZERO_COST_VERIFIED", "").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+    if hard_zero_cost and not zero_cost_verified:
+        raise BrowserWorkerError(
+            "browser worker zero-cost boundary is not verified"
+        )
     repo = os.getenv("OLIVIA_BROWSER_REPO", "").strip()
     if not repo:
         raise BrowserWorkerError(
