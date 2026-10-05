@@ -417,6 +417,7 @@ let workspace=null;
 let coreOnline=false;
 let coreHealth=null;
 let backendMode='bridge';
+// Runtime states: canonical | public_shell | bridge. Health probing selects the active state.
 let ownerAuthReady=false;
 let trustedDevices=[];
 let securityEvents=[];
@@ -606,7 +607,9 @@ async function probeCore(){
     const body=await r.json();
     if(body.process_alive!==true)throw new Error('offline');
     coreHealth=body;
-    backendMode=body.api_mode==='canonical'?'canonical':'bridge';
+    if(body.api_mode==='canonical')backendMode='canonical';
+    else if(body.api_mode==='public_shell')backendMode='public_shell';
+    else backendMode='bridge';
     const authOk=await canonicalAuthCheck();
     setCoreState(body.provider_ready&&authOk?'online':body.provider_ready?'locked':'locked');
     if(authOk){await loadSessionProfile();await loadTrustedDevices();await loadSecurityEvents()}
@@ -886,7 +889,7 @@ function renderConfig(){
     ['Modelo activo',active],
     ['Preferido',preferred],
     ['Ruta',route],
-    ['Backend',backendMode==='canonical'?'Core durable':'Bridge temporal'],
+    ['Backend',backendMode==='canonical'?'Core durable':backendMode==='public_shell'?'Shell público · Core desconectado':'Bridge temporal'],
     ['Idioma','es-AR'],
     ['Modo','$0 estricto · fail-closed'],
     ['Navegación','URLs públicas · solo lectura']
