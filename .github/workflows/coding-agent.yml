@@ -15,7 +15,7 @@ on:
       base_ref:
         description: "Exact branch/SHA to start from"
         required: true
-        default: "arch/gpt-synthesis-v1"
+        default: "main"
         type: string
       mode:
         description: "Bounded coding mode"
@@ -44,8 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      AIDER_OPENAI_API_BASE: "https://integrate.api.nvidia.com/v1"
-      AIDER_MODEL: "openai/deepseek-ai/deepseek-v4.1-flash"
+      AIDER_OPENAI_API_BASE: ${{ vars.OLIVIA_CODING_API_BASE || 'https://integrate.api.nvidia.com/v1' }}
+      AIDER_MODEL: ${{ vars.OLIVIA_CODING_MODEL || 'openai/deepseek-ai/deepseek-v4.1-flash' }}
+      ZERO_COST_VERIFIED: ${{ vars.OLIVIA_CODING_ZERO_COST_VERIFIED }}
       AIDER_ANALYTICS_DISABLE: "true"
       PYTHONUNBUFFERED: "1"
       BASE_REF: ${{ inputs.base_ref }}
@@ -53,12 +54,13 @@ jobs:
       MAX_AGENT_PASSES: "2"
 
     steps:
-      - name: Fail closed without the development-only NIM key
+      - name: Fail closed unless coding route is explicitly zero-cost verified
         shell: bash
         env:
-          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
+          test "$ZERO_COST_VERIFIED" = "true"
           test -n "$AIDER_OPENAI_API_KEY"
 
       - name: Checkout exact base
@@ -74,8 +76,6 @@ jobs:
           set -euo pipefail
           git check-ref-format --allow-onelevel "$BASE_REF"
           test -n "$(git rev-parse --verify HEAD^{commit})"
-          git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
-          git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         env:
           TASK: ${{ inputs.task }}
-          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           if [ "$MODE" = "repair" ]; then
@@ -192,7 +192,7 @@ jobs:
         if: steps.verify1.outputs.needs_repair == 'true' && inputs.mode != 'review'
         shell: bash
         env:
-          AIDER_OPENAI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.OLIVIA_CODING_API_KEY || secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
           test "$MAX_AGENT_PASSES" = "2"
