@@ -294,45 +294,44 @@ Fit for 0liviA:
 
 ## Intern Discovery / InkStone GPU burst lane — 2026-10-04
 
-Source: https://discovery.intern-ai.org.cn/docs/workbench/reasoning/
+Sources:
+- https://discovery.intern-ai.org.cn/docs/workbench/developer/
+- https://discovery.intern-ai.org.cn/docs/workbench/reasoning/
+- https://dev.meta.ai/docs/muse-glimmer/llama-cpp
 
-Public platform evidence:
-- Scientific Computing exposes CPU, Ascend 910B and Nvidia A100 resources, including **NvidiaA100-1-80G**.
-- Development machines and inference services consume platform compute points while running; a single run can be configured for at most **7×24 hours**.
-- Stopped resources stop consuming compute points and can later be restarted.
-- The platform exposes a dedicated **Inference Service** with request URL, call credential, request schema and call statistics.
-- Inference Service currently advertises **Hugging Face - text-generation**. Model source can be a folder in cloud disk or a small local upload package.
-- The user's visible account snapshot showed **5,000 compute points** and **30 GB cloud disk**. Public docs confirm cloud-disk expansion can be requested.
+Verified platform facts:
+- development machines offer CPU/GPU/NPU configurations, with NVIDIA A100 shown as an available resource family;
+- persistent files belong under `/data`; other development-machine storage is ephemeral;
+- running machines and inference services consume platform compute points and can be stopped/restarted;
+- a single configured runtime is capped at 7×24 hours;
+- Inference Service supports `Hugging Face - text-generation`, model folders from cloud storage, and exposes a callable POST endpoint plus per-service credential and usage statistics;
+- the outer call contract wraps the model payload with `call_api_path`, `call_api_credential`, and a JSON-string `payload`.
 
 Muse Glimmer fit:
-- Meta Muse Glimmer is a 30B dense multimodal agentic model, Apache-2.0, with a 128K default context and local serving paths through llama.cpp/vLLM/SGLang.
-- Official BF16 weights are about **59.6 GB**. They fit in A100 80 GB VRAM but do **not** fit the current 30 GB persistent cloud disk.
-- Meta's official Q4_K_M GGUF is about **16.8 GB** (+ vision projector when needed) and fits the current disk, but the documented managed Inference Service format is Hugging Face text-generation rather than llama.cpp/GGUF.
-- A third-party Red Hat INT4 safetensors build is about **22.2 GB** and fits the current disk; it is a challenger only and must be benchmarked before promotion.
-- A llama.cpp/vLLM server started manually in a development machine must **not** be assumed externally reachable until ingress is proven.
+- Meta Muse Glimmer is a 30B Apache-2.0 agentic/coding model;
+- Meta publishes an official ~16.8 GB Q4_K_M GGUF text checkpoint for llama.cpp plus optional vision/speculative assets;
+- GGUF is a good fit for a GPU development machine using llama.cpp, but the managed Inference Service documentation currently advertises Hugging Face text-generation rather than GGUF/llama.cpp;
+- therefore a manually started llama.cpp server is useful for benchmarking, but must not be assumed externally reachable until ingress is proven;
+- for the managed API path, prefer a compatible Hugging Face-format Muse checkpoint/runtime and capture the service's actual request/response schema before implementing an adapter.
 
-Recommended 0liviA role:
-- Treat Intern Discovery as an **ephemeral frontier accelerator**, never the only brain.
-- Prefer the documented Inference Service over an ad-hoc public tunnel from a dev machine because it provides an explicit API and credential boundary.
-- Keep the canonical Core/router elsewhere. When a service is live and its exhaustion/no-overage behavior is proven, 0liviA may route heavy coding/agentic turns to Muse; when stopped/expired/exhausted, the lane must disappear from routing immediately.
-- The outer Inference Service request uses `call_api_path`, `call_api_credential` and a JSON-string `payload`. Do not guess the inner response schema before a real Muse service is created and tested.
-- Service credentials belong only in server-side environment/configuration, never browser storage, chat, Git, logs, Library or Memory.
-- Do not auto-start or auto-extend point-consuming GPU sessions until the exact point/hour rate and account policy are known and explicitly approved.
+0liviA role:
+- treat Intern Discovery as an **ephemeral GPU accelerator**, never the only brain;
+- keep the canonical Core/router independent so a stopped/expired GPU lane simply disappears from routing;
+- keep the service credential server-side only; never place it in browser storage, chat, Git, logs, Library or Memory;
+- never auto-start or auto-extend point-consuming resources without an explicit owner action;
+- do not guess the response envelope: implement the tiny adapter only after a real service smoke exposes its exact schema.
 
 Zero-cost status:
-- **free/unverified**, not `free_hard_cap` yet;
-- public docs prove compute-point accounting and quota requests, but not a no-money/no-overage contract;
-- therefore the lane remains opt-in and excluded by 0liviA's hard-zero-cost router until account-level exhaustion behavior is proven.
+- **free/unverified**, not `free_hard_cap`;
+- official docs prove compute-point accounting and quota management, but do not establish a no-money/no-overage contract;
+- 0liviA's hard-zero-cost router must therefore exclude this route until account-level exhaustion/billing behavior is verified.
 
 Experiment order:
-1. Inspect the A100-1-80G point/hour estimate for a 1-hour development machine and a 1-hour inference service **without creating either resource**.
-2. Request cloud-disk expansion to >=70 GB if available; that is the cleanest route to official BF16 weights.
-3. If expansion is not granted, benchmark the 22.2 GB INT4 safetensors challenger against official Muse on a fixed coding/agentic set.
-4. Create one short-lived inference service and capture only its documented request/response **schema**; never copy the credential into chat or Git.
-5. After a successful smoke, implement the exact adapter as disabled-by-default and wire it into the existing health/circuit-breaker catalog.
-6. Verify stopped/expired service behavior so dead GPU lanes fail fast instead of hanging chat.
-
-Decision: **prepare for InternAI, do not auto-route yet**. It is one of the strongest current $0-burst opportunities for Muse, but it is not an always-on production guarantee.
+1. Read the platform's point/hour estimate for a short GPU development-machine run and inference-service run before creating anything.
+2. Benchmark official Muse GGUF on a short-lived GPU development machine if the selected GPU has enough VRAM.
+3. Prefer the managed Inference Service for 0liviA once a compatible Muse model format is available.
+4. Capture only the request/response **schema** from a successful service smoke; never record the credential in the repo.
+5. Add a disabled-by-default provider adapter and only promote it after latency, quality, uptime and strict no-overage gates pass.
 
 ## Required benchmarks before architecture freeze
 
