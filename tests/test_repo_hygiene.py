@@ -210,3 +210,10 @@ def test_package_exposes_public_olivia_cli_entrypoint():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert '[project.scripts]' in pyproject
     assert 'olivia = "olivia.server:main"' in pyproject
+
+
+def test_active_workflows_do_not_depend_on_maintainer_branch():
+    for name in ("coding-agent.yml", "browser-agent.yml"):
+        workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        assert "arch/gpt-synthesis-v1" not in workflow
+        assert "github.event.repository.default_branch" in workflow
