@@ -1025,6 +1025,7 @@ class Gateway:
                 prompt,
                 turn_id,
                 ephemeral_context=context,
+                capability="research",
             )
             return
 
@@ -1088,6 +1089,7 @@ class Gateway:
                 safe_user,
                 turn_id,
                 ephemeral_context=context,
+                capability="research",
             )
             return
 
@@ -1168,6 +1170,7 @@ class Gateway:
                 safe_user,
                 turn_id,
                 ephemeral_context=context,
+                capability="research",
             )
             return
 
@@ -1499,11 +1502,13 @@ class Gateway:
         turn_id: str,
         *,
         ephemeral_context: str | None = None,
+        capability: str = "chat",
     ) -> None:
         events = self.agent.stream_turn(
             session_id,
             text,
             ephemeral_context=ephemeral_context,
+            capability=capability,
         )
         pending: list[dict[str, Any]] = []
         first_text = ""
