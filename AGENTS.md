@@ -33,6 +33,8 @@ Each installation is isolated and owns its own identity, runtime data, provider 
 
 ## Branch governance
 
+main is the only canonical integration branch. arch/gpt-synthesis-v1 is a compatibility mirror.
+
 - `main` is the only canonical integration branch.
 - `arch/gpt-synthesis-v1` is a compatibility mirror, not an active development line.
 - Branch new work from `main`; do not target or revive historical integration branches as product truth.
