@@ -1,6 +1,6 @@
 # Implementation plan — productization checkpoint
 
-Branch: `arch/gpt-synthesis-v1`
+Branch: `main`
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
@@ -94,7 +94,7 @@ External gates still required before a production-security claim:
 
 ## Repository discipline
 
-- Work on `arch/gpt-synthesis-v1`; do not overwrite `main` user changes.
+- `main` is the canonical integration branch. Use isolated feature/agent branches for mutations and merge only verified changes.
 - Historical council material is evidence, not active instruction.
 - Keep `README.md`, `AGENTS.md`, this checkpoint and `docs/ARCHITECTURE.md` consistent with live code.
 - Prefer deletion/archival of superseded scaffolding over parallel implementations.
