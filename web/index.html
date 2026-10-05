@@ -432,6 +432,8 @@ let syncing=false;
 let activeSide='chats';
 let voiceStream=null,voiceMuted=false,voiceRecognition=null,voiceRecognitionStarting=false,voiceSpeaking=false;
 let voiceAudioContext=null,voiceAnalyser=null,voiceSource=null,voiceRaf=0,speechRaf=0,speechPulse=0;
+let voiceSocket=null,voiceProcessor=null,voiceSilentGain=null,voicePlaybackContext=null,voicePlaybackCursor=0;
+let voicePlaybackNodes=new Set(),voiceCanonical=false,voiceTurnId='',voiceSeq=0,voiceAssistantText='';
 
 const $=s=>document.querySelector(s);
 const $$=s=>Array.from(document.querySelectorAll(s));
@@ -1428,7 +1430,7 @@ function startMeter(stream){
 function recognitionCtor(){return window.SpeechRecognition||window.webkitSpeechRecognition||null}
 function stopRecognition(){if(!voiceRecognition)return;try{voiceRecognition.onend=null;voiceRecognition.stop()}catch(e){}voiceRecognition=null;voiceRecognitionStarting=false}
 function startRecognition(){
-  if(voiceRecognition||voiceRecognitionStarting||voiceMuted||voiceSpeaking||controller)return;
+  if(voiceCanonical||voiceRecognition||voiceRecognitionStarting||voiceMuted||voiceSpeaking||controller)return;
   const Ctor=recognitionCtor();if(!Ctor){voiceState.textContent='es-AR no disponible';return}
   voiceRecognitionStarting=true;const rec=new Ctor();rec.lang='es-AR';rec.continuous=false;rec.interimResults=true;rec.maxAlternatives=1;voiceRecognition=rec;
   rec.onstart=()=>{voiceRecognitionStarting=false;voiceState.textContent='●'};
@@ -1437,6 +1439,245 @@ function startRecognition(){
   rec.onend=()=>{voiceRecognition=null;voiceRecognitionStarting=false;if(voiceLive.classList.contains('open')&&!voiceMuted&&!controller)setTimeout(startRecognition,250)};
   try{rec.start()}catch(e){voiceRecognition=null;voiceRecognitionStarting=false}
 }
+function voiceWsUrl(sessionId){
+  const proto=location.protocol==='https:'?'wss:':'ws:';
+  return proto+'//'+location.host+'/api/voice/ws?session_id='+encodeURIComponent(sessionId);
+}
+function canonicalVoiceAvailable(){
+  return backendMode==='canonical'&&ownerAuthReady&&coreHealth?.voice_backend_configured===true;
+}
+function resampleVoiceTo16k(samples,inputRate){
+  if(inputRate===16000)return new Float32Array(samples);
+  const ratio=inputRate/16000;
+  const outputLength=Math.max(1,Math.round(samples.length/ratio));
+  const output=new Float32Array(outputLength);
+  for(let i=0;i<outputLength;i++){
+    const start=Math.floor(i*ratio);
+    const end=Math.min(samples.length,Math.max(start+1,Math.floor((i+1)*ratio)));
+    let sum=0;
+    for(let j=start;j<end;j++)sum+=samples[j];
+    output[i]=sum/(end-start);
+  }
+  return output;
+}
+function encodeCanonicalAudio(samples,turnId,seq,inputRate){
+  const mono=resampleVoiceTo16k(samples,inputRate);
+  const header=new TextEncoder().encode(JSON.stringify({
+    turn_id:turnId,
+    seq,
+    sample_rate:16000,
+    channels:1,
+    client_ts_ms:performance.now()
+  }));
+  const pcmBytes=mono.length*2;
+  const out=new ArrayBuffer(4+header.length+pcmBytes);
+  const view=new DataView(out);
+  view.setUint32(0,header.length,false);
+  new Uint8Array(out,4,header.length).set(header);
+  const pcmOffset=4+header.length;
+  for(let i=0;i<mono.length;i++){
+    const sample=Math.max(-1,Math.min(1,mono[i]));
+    const value=Math.round(sample<0?sample*0x8000:sample*0x7fff);
+    view.setInt16(pcmOffset+i*2,value,true);
+  }
+  return out;
+}
+function decodeCanonicalAudio(buffer){
+  const view=new DataView(buffer);
+  if(view.byteLength<4)throw new Error('audio frame corto');
+  const headerSize=view.getUint32(0,false);
+  if(headerSize<=0||4+headerSize>view.byteLength)throw new Error('audio header inválido');
+  const header=JSON.parse(new TextDecoder().decode(new Uint8Array(buffer,4,headerSize)));
+  const pcmBytes=view.byteLength-4-headerSize;
+  if(pcmBytes<0||pcmBytes%2)throw new Error('PCM inválido');
+  const pcm=new Int16Array(pcmBytes/2);
+  const pcmView=new DataView(buffer,4+headerSize);
+  for(let i=0;i<pcm.length;i++)pcm[i]=pcmView.getInt16(i*2,true);
+  return {header,pcm};
+}
+function stopCanonicalPlayback(){
+  for(const node of voicePlaybackNodes){try{node.stop()}catch(e){}}
+  voicePlaybackNodes.clear();
+  voicePlaybackCursor=0;
+}
+function playCanonicalAudio(buffer){
+  const decoded=decodeCanonicalAudio(buffer);
+  const sampleRate=Number(decoded.header.sample_rate||16000);
+  voicePlaybackContext ||= new (window.AudioContext||window.webkitAudioContext)();
+  const audio=voicePlaybackContext.createBuffer(1,decoded.pcm.length,sampleRate);
+  const channel=audio.getChannelData(0);
+  let energySum=0;
+  for(let i=0;i<decoded.pcm.length;i++){
+    const sample=decoded.pcm[i]/32768;
+    channel[i]=sample;
+    energySum+=sample*sample;
+  }
+  const energy=Math.min(1,Math.sqrt(energySum/Math.max(1,decoded.pcm.length))*3.2);
+  drawRing(null,Math.max(.18,energy),performance.now()/180);
+  const source=voicePlaybackContext.createBufferSource();
+  source.buffer=audio;
+  source.connect(voicePlaybackContext.destination);
+  const startAt=Math.max(voicePlaybackContext.currentTime,voicePlaybackCursor||0);
+  voicePlaybackCursor=startAt+audio.duration;
+  voicePlaybackNodes.add(source);
+  source.onended=()=>{
+    voicePlaybackNodes.delete(source);
+    if(!voicePlaybackNodes.size&&!voiceTurnId){
+      voiceSpeaking=false;
+      drawRing();
+    }
+  };
+  voiceSpeaking=true;
+  voiceState.textContent='0liviA';
+  source.start(startAt);
+}
+function beginCanonicalTurn(){
+  if(!voiceSocket||voiceSocket.readyState!==WebSocket.OPEN||voiceMuted)return;
+  voiceTurnId=uid('v');
+  voiceSeq=0;
+  voiceAssistantText='';
+  voiceSocket.send(JSON.stringify({type:'turn_started',turn_id:voiceTurnId}));
+}
+function canonicalVoiceEvent(raw){
+  let event;
+  try{event=JSON.parse(raw)}catch(e){return}
+  if(!event||!event.type)return;
+  if(event.type==='turn_started'||event.type==='speech_started'){
+    voiceState.textContent='●';
+    return;
+  }
+  if(event.type==='speech_ended'){
+    voiceState.textContent='…';
+    return;
+  }
+  if(event.type==='stt_partial'||event.type==='stt_final'){
+    if(event.text)voiceState.textContent=String(event.text).slice(0,80);
+    return;
+  }
+  if(event.type==='llm_delta'){
+    voiceAssistantText+=String(event.text||'');
+    voiceSpeaking=true;
+    voiceState.textContent='0liviA';
+    return;
+  }
+  if(event.type==='cancelled'){
+    stopCanonicalPlayback();
+    voiceSpeaking=false;
+    voiceAssistantText='';
+    voiceTurnId='';
+    if(voiceSocket?.readyState===WebSocket.OPEN&&!voiceMuted)beginCanonicalTurn();
+    return;
+  }
+  if(event.type==='turn_completed'){
+    voiceTurnId='';
+    voiceState.textContent='';
+    const chat=selectedChat();
+    if(chat?.remoteSessionId)hydrateCanonicalChat(chat).catch(()=>{});
+    voiceAssistantText='';
+    if(voiceSocket?.readyState===WebSocket.OPEN&&!voiceMuted){
+      const waitForPlayback=()=>{
+        if(voicePlaybackNodes.size){setTimeout(waitForPlayback,40);return}
+        voiceSpeaking=false;
+        drawRing();
+        if(voiceSocket?.readyState===WebSocket.OPEN&&!voiceMuted&&!voiceTurnId)beginCanonicalTurn();
+      };
+      waitForPlayback();
+    }
+    return;
+  }
+  if(event.type==='error'){
+    voiceState.textContent='voz no disponible';
+  }
+}
+function stopCanonicalCapture(){
+  if(voiceProcessor)voiceProcessor.onaudioprocess=null;
+  try{voiceProcessor?.disconnect()}catch(e){}
+  try{voiceSilentGain?.disconnect()}catch(e){}
+  voiceProcessor=voiceSilentGain=null;
+}
+function attachCanonicalCapture(){
+  if(!voiceAudioContext||!voiceSource||voiceProcessor)return;
+  voiceProcessor=voiceAudioContext.createScriptProcessor(2048,1,1);
+  voiceSilentGain=voiceAudioContext.createGain();
+  voiceSilentGain.gain.value=0;
+  voiceSource.connect(voiceProcessor);
+  voiceProcessor.connect(voiceSilentGain);
+  voiceSilentGain.connect(voiceAudioContext.destination);
+  voiceProcessor.onaudioprocess=event=>{
+    if(!voiceCanonical||voiceMuted||!voiceTurnId||voiceSocket?.readyState!==WebSocket.OPEN)return;
+    const samples=event.inputBuffer.getChannelData(0);
+    try{
+      voiceSocket.send(encodeCanonicalAudio(samples,voiceTurnId,voiceSeq++,voiceAudioContext.sampleRate));
+    }catch(e){}
+  };
+}
+async function startCanonicalVoice(){
+  if(!canonicalVoiceAvailable())return false;
+  const chat=selectedChat();
+  if(!chat)return false;
+  voicePlaybackContext ||= new (window.AudioContext||window.webkitAudioContext)();
+  if(voicePlaybackContext.state==='suspended')voicePlaybackContext.resume().catch(()=>{});
+  await ensureRemoteSession(chat,null);
+  if(!voiceStream){
+    voiceStream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+    });
+  }
+  voiceMuted=false;
+  voiceStream.getAudioTracks().forEach(track=>track.enabled=true);
+  startMeter(voiceStream);
+  attachCanonicalCapture();
+  if(voiceSocket&&voiceSocket.readyState===WebSocket.OPEN){
+    voiceCanonical=true;
+    beginCanonicalTurn();
+    return true;
+  }
+  const socket=new WebSocket(voiceWsUrl(chat.remoteSessionId));
+  socket.binaryType='arraybuffer';
+  voiceSocket=socket;
+  await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('voice timeout')),8000);
+    socket.onopen=()=>{clearTimeout(timer);resolve()};
+    socket.onerror=()=>{clearTimeout(timer);reject(new Error('voice socket'))};
+  });
+  voiceCanonical=true;
+  socket.onmessage=event=>{
+    if(typeof event.data==='string')canonicalVoiceEvent(event.data);
+    else if(event.data instanceof ArrayBuffer)playCanonicalAudio(event.data);
+  };
+  socket.onclose=()=>{
+    voiceCanonical=false;
+    voiceTurnId='';
+    stopCanonicalCapture();
+    stopCanonicalPlayback();
+    voiceState.textContent='';
+  };
+  beginCanonicalTurn();
+  return true;
+}
+function cancelCanonicalTurn(){
+  if(voiceSocket?.readyState===WebSocket.OPEN&&voiceTurnId){
+    voiceSocket.send(JSON.stringify({type:'cancelled',turn_id:voiceTurnId}));
+  }
+  stopCanonicalPlayback();
+  voiceSpeaking=false;
+  voiceAssistantText='';
+}
+function closeCanonicalVoice(){
+  const socket=voiceSocket;
+  cancelCanonicalTurn();
+  voiceTurnId='';
+  voiceCanonical=false;
+  voiceSocket=null;
+  stopCanonicalCapture();
+  stopCanonicalPlayback();
+  try{socket?.close(1000,'closed')}catch(e){}
+  if(voicePlaybackContext){
+    voicePlaybackContext.close().catch(()=>{});
+    voicePlaybackContext=null;
+  }
+}
+
 function exactArgentineVoice(){if(!('speechSynthesis' in window))return null;return speechSynthesis.getVoices().find(v=>(v.lang||'').toLowerCase().replace('_','-')==='es-ar')||null}
 async function speakEsAr(value){
   if(!('speechSynthesis' in window))return false;stopRecognition();speechSynthesis.cancel();let voice=exactArgentineVoice();
@@ -1451,10 +1692,34 @@ async function speakEsAr(value){
     u.onend=done;u.onerror=done;speechSynthesis.speak(u);
   });
 }
-function closeVoice(){stopRecognition();if('speechSynthesis' in window)speechSynthesis.cancel();voiceSpeaking=false;stopMeter();if(voiceStream){voiceStream.getTracks().forEach(t=>t.stop());voiceStream=null}voiceMuted=false;voiceState.textContent='';voiceLive.classList.remove('open');voiceLive.setAttribute('aria-hidden','true')}
+function closeVoice(){closeCanonicalVoice();stopRecognition();if('speechSynthesis' in window)speechSynthesis.cancel();voiceSpeaking=false;stopMeter();if(voiceStream){voiceStream.getTracks().forEach(t=>t.stop());voiceStream=null}voiceMuted=false;voiceState.textContent='';voiceLive.classList.remove('open');voiceLive.setAttribute('aria-hidden','true')}
 $('#voiceBtn').onclick=()=>{voiceLive.classList.add('open');voiceLive.setAttribute('aria-hidden','false');renderMessagesInto(voiceChat,selectedChat());drawRing()};
 $('#voiceClose').onclick=closeVoice;$('#voiceEnd').onclick=closeVoice;
 $('#voiceMain').onclick=async()=>{
+  if(canonicalVoiceAvailable()||voiceCanonical){
+    try{
+      if(!voiceCanonical){
+        await startCanonicalVoice();
+        return;
+      }
+      if(voiceSpeaking){
+        cancelCanonicalTurn();
+        return;
+      }
+      voiceMuted=!voiceMuted;
+      if(voiceStream)voiceStream.getAudioTracks().forEach(track=>track.enabled=!voiceMuted);
+      if(voiceMuted){
+        cancelCanonicalTurn();
+        voiceState.textContent='';
+      }else if(!voiceTurnId){
+        beginCanonicalTurn();
+      }
+    }catch(e){
+      closeCanonicalVoice();
+      voiceState.textContent='voz no disponible';
+    }
+    return;
+  }
   if(voiceSpeaking){speechSynthesis.cancel();voiceSpeaking=false;drawRing();startRecognition();return}
   if(!voiceStream){try{voiceStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});voiceMuted=false;startMeter(voiceStream);startRecognition()}catch(e){voiceState.textContent='micrófono bloqueado'}return}
   voiceMuted=!voiceMuted;voiceStream.getAudioTracks().forEach(t=>t.enabled=!voiceMuted);if(voiceMuted){stopRecognition();drawRing();voiceState.textContent=''}else{startMeter(voiceStream);startRecognition()}
