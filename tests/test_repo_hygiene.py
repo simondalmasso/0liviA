@@ -144,3 +144,10 @@ def test_browser_worker_docs_require_private_artifact_repo():
     assert "private GitHub" in architecture
     assert "private GitHub" in plan
     assert "public GitHub Actions runner" not in worker
+
+
+def test_active_workflows_do_not_depend_on_maintainer_branch():
+    for name in ("coding-agent.yml", "browser-agent.yml"):
+        workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        assert "arch/gpt-synthesis-v1" not in workflow
+        assert "github.event.repository.default_branch" in workflow
