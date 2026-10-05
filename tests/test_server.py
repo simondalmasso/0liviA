@@ -1353,3 +1353,41 @@ async def test_unauthenticated_client_cannot_read_arbitrary_session_id(aiohttp_c
     response = await client.get(f"/api/sessions/{sid}/messages")
     assert response.status == 401
     assert "private message" not in await response.text()
+
+
+@pytest.mark.asyncio
+async def test_security_event_feed_is_owner_only_and_contains_no_credentials(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "security-events.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    denied = await client.get("/api/security/events")
+    assert denied.status == 401
+
+    failed = await client.post(
+        "/api/auth/login",
+        json={"email": "owner@example.com", "password": "wrong-password"},
+    )
+    assert failed.status == 401
+
+    response = await client.get(
+        "/api/security/events",
+        headers={"Authorization": "Bearer gateway-signing-secret"},
+    )
+    assert response.status == 200
+    payload = await response.json()
+    rendered = repr(payload)
+    assert "security.login_failed" in rendered
+    assert "owner@example.com" not in rendered
+    assert "wrong-password" not in rendered
+    assert "gateway-signing-secret" not in rendered
