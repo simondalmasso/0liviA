@@ -139,6 +139,10 @@ class ProviderSpec:
             raise ProviderConfigError(
                 f"invalid cost_mode for {raw.get('name', 'provider')}: {cost_mode}"
             )
+        if cost_mode == "plan_included" and kind != "chatgpt_plan":
+            raise ProviderConfigError(
+                "plan_included is reserved for kind=chatgpt_plan"
+            )
         default_base = "https://api.openai.com/v1" if kind == "chatgpt_plan" else ""
         default_model = "gpt-6-astra" if kind == "chatgpt_plan" else ""
         base_url = str(raw.get("base_url", default_base)).rstrip("/")
