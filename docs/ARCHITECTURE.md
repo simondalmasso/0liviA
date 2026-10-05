@@ -114,8 +114,16 @@ The canonical Gateway registers authenticated `GET /api/voice/ws?session_id=...`
 - requires the same owner auth boundary as chat;
 - validates that the target chat session exists;
 - remains unavailable with HTTP 503 unless a server-side `VoicePipeline` factory is explicitly configured;
-- uses bounded binary frames and the existing sequencing/cancel/barge-in pipeline;
-- does not pretend that browser SpeechRecognition/SpeechSynthesis are the production speech backend.
+- uses bounded binary frames and the existing sequencing/cancel/barge-in pipeline.
+
+The browser/mobile shell now implements that same wire contract:
+- it opens same-origin WSS only when `/healthz` reports `voice_backend_configured=true`;
+- microphone audio is resampled to 16 kHz PCM16 and framed with `turn_id`/sequence metadata;
+- server STT/LLM/TTS events drive the existing cyan fullscreen voice surface;
+- server PCM is streamed back through Web Audio;
+- microphone frames remain active during playback so server-side VAD can perform spoken barge-in;
+- completed turns rehydrate the same durable chat session;
+- browser SpeechRecognition/SpeechSynthesis remains only a provisional fallback while the server speech backend is gated.
 
 Production VAD/STT/TTS promotion still requires target-host es-AR quality, latency and 60-minute stability evidence.
 
