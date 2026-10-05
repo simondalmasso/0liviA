@@ -33,7 +33,9 @@ The canonical Python Core is now the durable source of truth for Projects/Chats/
 
 ### 3. Stable zero-cost model routing
 Provider routing must remain catalog-driven and fail closed:
+- hard-zero-cost is a product invariant; runtime ENV cannot turn this guard off;
 - never move to a paid/unverified route silently;
+- `plan_included` is reserved for the official `chatgpt_plan` transport and requires explicit no-credit-overage verification;
 - official ChatGPT-plan usage is the preferred frontier-quality lane for eligible Plus/Pro owners once OAuth onboarding exists and no-credit-overage is explicitly verified; exhaustion must fail/degrade rather than use credits silently;
 - DeepSeek V4.1 Flash/NVIDIA NIM remains development/evaluation-only unless explicit production entitlement exists;
 - the transitional Cloudflare bridge is disabled by default; Workers AI/read routes remain unavailable until both identity and account-wide zero-cost behavior are independently verified;
