@@ -283,9 +283,11 @@ class ChatGPTPlanProvider:
             raise ProviderConfigError(
                 f"{self.name}: incomplete ChatGPT profile ({','.join(missing)})"
             )
-        if self.PLAN_SCOPE not in self._scope_set(profile.get("scope")):
+        scopes = self._scope_set(profile.get("scope"))
+        required = {self.PLAN_SCOPE, "resource.invoke", "offline_access"}
+        if not required.issubset(scopes):
             raise ProviderConfigError(
-                f"{self.name}: ChatGPT plan usage scope not granted"
+                f"{self.name}: required ChatGPT plan scopes not granted"
             )
         return profile
 
