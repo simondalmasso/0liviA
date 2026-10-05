@@ -9,6 +9,7 @@ import socket
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Route, async_playwright
 
 from olivia.web import WebReadError, validate_public_url
@@ -110,7 +111,7 @@ async def main() -> None:
             title = (await page.title())[:300]
             try:
                 text = await page.locator("body").inner_text(timeout=5_000)
-            except Exception:
+            except PlaywrightError:
                 text = ""
             text = re.sub(r"[ \t\f\v]+", " ", text)
             text = re.sub(r"\n\s*\n+", "\n\n", text).strip()
@@ -144,7 +145,7 @@ async def main() -> None:
                     timeout=8_000,
                 )
                 screenshot = args.screenshot
-            except Exception:
+            except PlaywrightError:
                 screenshot = None
 
             status = response.status if response is not None else None
