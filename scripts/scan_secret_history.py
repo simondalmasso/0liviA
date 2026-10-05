@@ -1,23 +1,27 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PATTERNS = {
-    "private_key": re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.I),
+    "private_key": re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE),
     "github_token": re.compile(r"\bgh(?:p|o|u|s|r)_[A-Za-z0-9]{20,}\b"),
     "openai_key": re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b"),
     "google_api_key": re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
     "aws_access_key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
 }
 
+git = shutil.which("git")
+if not git:
+    raise SystemExit("git executable not found")
+
 proc = subprocess.run(
     [
-        "git", "log", "--all", "-p", "--no-color",
+        git, "log", "--all", "-p", "--no-color",
         "--", "olivia", "deploy", "web", "cloudflare", ".github/workflows",
     ],
     cwd=ROOT,
