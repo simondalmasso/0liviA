@@ -14,6 +14,7 @@ from olivia.chatgpt_oauth import (
     ChatGPTOAuthError,
     build_authorization_url,
     build_profile,
+    disconnect_profile,
     load_or_create_host_id,
     new_transaction,
     save_profile,
@@ -157,3 +158,100 @@ def test_profile_scope_and_mode_0600(tmp_path):
             client_id="oaiapp_demo",
             host_id="urn:uuid:12345678-1234-4234-8234-123456789abc",
         )
+
+
+
+class _DisconnectResponse:
+    def __init__(self, status=200, body=None):
+        self.status = status
+        self._body = body or {}
+
+    async def json(self):
+        return self._body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+
+class _DisconnectSession:
+    def __init__(self, post_statuses, calls, **_kwargs):
+        self.post_statuses = list(post_statuses)
+        self.calls = calls
+
+    def get(self, url):
+        self.calls.append(("GET", url, {}))
+        return _DisconnectResponse(
+            200,
+            {
+                "issuer": "https://auth.openai.com",
+                "authorization_endpoint": "https://auth.openai.com/api/accounts/authorize",
+                "token_endpoint": "https://auth.openai.com/api/accounts/oauth/token",
+                "jwks_uri": "https://auth.openai.com/.well-known/jwks.json",
+                "revocation_endpoint": "https://auth.openai.com/api/accounts/oauth/revoke",
+            },
+        )
+
+    def post(self, url, **kwargs):
+        self.calls.append(("POST", url, kwargs))
+        return _DisconnectResponse(self.post_statuses.pop(0))
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_disconnect_revokes_refresh_token_then_removes_local_profile(tmp_path):
+    profile_path = tmp_path / "chatgpt-plan.json"
+    save_profile(
+        profile_path,
+        {
+            "client_id": "oaiapp_demo",
+            "refresh_token": synthetic("refresh"),
+        },
+    )
+    calls = []
+    confirmed = await disconnect_profile(
+        profile_path=profile_path,
+        session_factory=lambda **kwargs: _DisconnectSession([200], calls, **kwargs),
+        sleep=lambda _delay: None,
+    )
+    assert confirmed is True
+    assert profile_path.exists() is False
+    posts = [call for call in calls if call[0] == "POST"]
+    assert len(posts) == 1
+    _, url, kwargs = posts[0]
+    assert url == "https://auth.openai.com/api/accounts/oauth/revoke"
+    assert kwargs["data"]["token_type_hint"] == "refresh_token"
+    assert kwargs["data"]["client_id"] == "oaiapp_demo"
+    assert "refresh" in kwargs["data"]["token"]
+
+
+@pytest.mark.asyncio
+async def test_disconnect_clears_local_profile_when_remote_revocation_is_unconfirmed(tmp_path):
+    profile_path = tmp_path / "chatgpt-plan.json"
+    save_profile(
+        profile_path,
+        {
+            "client_id": "oaiapp_demo",
+            "refresh_token": synthetic("refresh"),
+        },
+    )
+    calls = []
+
+    async def no_wait(_delay):
+        return None
+
+    confirmed = await disconnect_profile(
+        profile_path=profile_path,
+        session_factory=lambda **kwargs: _DisconnectSession([503, 503, 503], calls, **kwargs),
+        sleep=no_wait,
+    )
+    assert confirmed is False
+    assert profile_path.exists() is False
+    assert len([call for call in calls if call[0] == "POST"]) == 3
