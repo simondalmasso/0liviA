@@ -256,6 +256,12 @@ def build_profile(
     scope = token_response.get("scope")
     token_type = str(token_response.get("token_type") or "")
     expires_in = token_response.get("expires_in")
+    granted = set(scope.split()) if isinstance(scope, str) else set()
+    required_scopes = {
+        "offline_access",
+        "resource.invoke",
+        "chatgpt.tokens.use.direct",
+    }
     if (
         not isinstance(access, str)
         or not access
@@ -263,8 +269,7 @@ def build_profile(
         or not refresh
         or not isinstance(id_token, str)
         or not id_token
-        or not isinstance(scope, str)
-        or "chatgpt.tokens.use.direct" not in scope.split()
+        or not required_scopes.issubset(granted)
         or token_type.casefold() != "bearer"
     ):
         raise ChatGPTOAuthError(
@@ -334,8 +339,15 @@ async def start_callback_listener(
     async def callback(request: web.Request) -> web.Response:
         if future.done():
             raise web.HTTPNotFound()
-        if request.method != "GET" or request.path != CALLBACK_PATH:
+        expected_host = f"127.0.0.1:{port}"
+        if (
+            request.method != "GET"
+            or request.path != CALLBACK_PATH
+            or request.host != expected_host
+        ):
             raise web.HTTPNotFound()
+        if len(request.query.getall("state", [])) != 1:
+            return web.Response(status=400, text="Estado de inicio de sesión inválido.")
         returned_state = request.query.get("state", "")
         if not secrets.compare_digest(returned_state, state):
             return web.Response(status=400, text="Estado de inicio de sesión inválido.")
@@ -344,6 +356,9 @@ async def start_callback_listener(
                 ChatGPTOAuthError("ChatGPT sign-in was declined or cancelled")
             )
             return web.Response(text="Inicio de sesión cancelado. Podés cerrar esta pestaña.")
+        if len(request.query.getall("code", [])) != 1 or len(request.query.getall("client_id", [])) > 1:
+            future.set_exception(ChatGPTOAuthError("ChatGPT registration is incomplete"))
+            return web.Response(status=400, text="Registro incompleto.")
         code = request.query.get("code", "")
         returned_client = request.query.get("client_id")
         client_id = returned_client or saved_client_id or ""
