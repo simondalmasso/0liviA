@@ -1391,3 +1391,32 @@ async def test_security_event_feed_is_owner_only_and_contains_no_credentials(aio
     assert "owner@example.com" not in rendered
     assert "wrong-password" not in rendered
     assert "gateway-signing-secret" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_login_does_not_enumerate_owner_email(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "anti-enumeration.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    wrong_email = await client.post(
+        "/api/auth/login",
+        json={"email": "nobody@example.com", "password": "owner-passphrase"},
+    )
+    wrong_password = await client.post(
+        "/api/auth/login",
+        json={"email": "owner@example.com", "password": "wrong-password"},
+    )
+
+    assert wrong_email.status == wrong_password.status == 401
+    assert await wrong_email.json() == await wrong_password.json() == {"error": "unauthorized"}
