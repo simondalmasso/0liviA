@@ -32,7 +32,11 @@ async def test_browser_worker_dispatches_bounded_workflow(monkeypatch):
     calls = []
 
     class FakeResponse:
-        status = 204
+        def __init__(self, status=204, body=None):
+            self.status = status
+            self._body = body or {}
+        async def json(self):
+            return self._body
         async def text(self):
             return ""
         async def __aenter__(self):
@@ -41,6 +45,8 @@ async def test_browser_worker_dispatches_bounded_workflow(monkeypatch):
             return None
 
     class FakeSession:
+        def get(self, url, *, headers):
+            return FakeResponse(200, {"private": True})
         def post(self, url, *, json, headers):
             calls.append((url, json, headers))
             return FakeResponse()
