@@ -7,6 +7,7 @@ import re
 import zipfile
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 import aiohttp
 
@@ -15,6 +16,23 @@ from .web import WebReadError, validate_public_url
 
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+_SENSITIVE_QUERY_KEYS = frozenset({
+    "access_token",
+    "api_key",
+    "apikey",
+    "auth",
+    "authorization",
+    "code",
+    "credential",
+    "key",
+    "password",
+    "secret",
+    "session",
+    "sessionid",
+    "sig",
+    "signature",
+    "token",
+})
 
 
 class BrowserWorkerError(RuntimeError):
@@ -71,9 +89,15 @@ class GitHubActionsBrowserWorker:
     @staticmethod
     def validate_request(request: BrowserJobRequest) -> None:
         try:
-            validate_public_url(request.url)
+            normalized = validate_public_url(request.url)
         except WebReadError as exc:
             raise ValueError(f"invalid browser URL: {exc}") from exc
+        query_keys = {
+            key.strip().lower()
+            for key, _ in parse_qsl(urlsplit(normalized).query, keep_blank_values=True)
+        }
+        if query_keys & _SENSITIVE_QUERY_KEYS:
+            raise ValueError("browser URL contains a sensitive query parameter")
         if len(request.objective) > 4_000:
             raise ValueError("objective must be at most 4000 characters")
         if (
