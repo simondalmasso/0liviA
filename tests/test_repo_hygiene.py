@@ -87,3 +87,15 @@ def test_product_docs_track_cloud_workspace_and_agent_tools():
     assert "/read" in plan and "/search" in plan
     assert "AGENT_REVIEW.md" in architecture
     assert "contents: read" in decisions
+
+
+def test_coding_agent_never_receives_repository_admin_write_credentials():
+    workflow = (ROOT / ".github" / "workflows" / "coding-agent.yml").read_text(encoding="utf-8")
+    code_segment = workflow.split("jobs:\n  code:", 1)[1].split("\n  publish:", 1)[0]
+    publish_segment = workflow.split("\n  publish:", 1)[1]
+
+    assert "contents: write" not in code_segment
+    assert "persist-credentials: false" in code_segment
+    assert "github.token" not in code_segment
+    assert "NVIDIA_API_KEY" not in publish_segment
+    assert "contents: write" in publish_segment
