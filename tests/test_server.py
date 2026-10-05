@@ -1491,3 +1491,54 @@ async def test_logout_revokes_current_remembered_device_cookie(aiohttp_client, t
     assert logout.status == 200
     assert store.trusted_device_active(device_id) is False
     assert client.app["gateway"]._owner_cookie_valid(cookie) is False
+
+
+@pytest.mark.asyncio
+async def test_voice_wss_endpoint_is_authenticated_and_capability_gated(client, gateway):
+    _, store, _ = gateway
+    session_id = store.create_session()
+
+    health = await (await client.get("/healthz")).json()
+    assert health["voice_backend_configured"] is False
+    assert health["voice_transport"] == "direct-wss"
+    assert health["voice_locale"] == "es-AR"
+
+    unauthenticated = await client.get(f"/api/voice/ws?session_id={session_id}")
+    assert unauthenticated.status == 401
+
+    unavailable = await client.get(
+        f"/api/voice/ws?session_id={session_id}",
+        headers=auth(),
+    )
+    assert unavailable.status == 503
+    assert (await unavailable.json())["error"] == "voice_backend_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_voice_wss_rejects_bad_or_missing_session_before_handshake(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "voice-gate.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+
+    class DummyPipeline:
+        async def run(self):
+            return None
+
+    def factory(_transport, _session_id):
+        return DummyPipeline()
+
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="voice-token",
+            voice_pipeline_factory=factory,
+        )
+    )
+    headers={"Authorization": "Bearer voice-token"}
+
+    missing = await client.get("/api/voice/ws", headers=headers)
+    assert missing.status == 400
+
+    unknown = await client.get("/api/voice/ws?session_id=missing", headers=headers)
+    assert unknown.status == 404
