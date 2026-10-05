@@ -96,7 +96,6 @@ class GitHubActionsBrowserWorker:
             "inputs": {
                 "olivia_job_id": job_id,
                 "url": normalized_url,
-                "objective": request.objective.strip(),
                 "base_ref": request.base_ref,
             },
         }
