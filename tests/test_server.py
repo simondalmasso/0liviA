@@ -1748,3 +1748,14 @@ async def test_read_rejects_sensitive_query_before_fetch_or_persistence(client, 
     persisted = repr(store.recent_messages(session_id))
     assert "abc123" not in persisted
     assert "token=" not in persisted
+
+
+@pytest.mark.asyncio
+async def test_health_exposes_exact_build_sha(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path, build_sha="b" * 40)
+    store = Store(tmp_path / "build-sha.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(create_app(agent, settings, auth_token="test-token"))
+
+    body = await (await client.get("/healthz")).json()
+    assert body["build_sha"] == "b" * 40
