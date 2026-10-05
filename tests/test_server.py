@@ -1869,6 +1869,7 @@ async def test_live_voice_prefers_canonical_wss_when_backend_exists(client):
     assert "llm_delta" in html
     assert "turn_completed" in html
     assert "hydrateCanonicalChat" in html
+    assert "voiceMuted||voiceSpeaking||!voiceTurnId" not in html
     # Browser speech remains a graceful fallback while the server voice backend is gated.
     assert "SpeechRecognition" in html
     assert "speechSynthesis" in html
