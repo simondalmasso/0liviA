@@ -607,7 +607,9 @@ async function probeCore(){
     const body=await r.json();
     if(body.process_alive!==true)throw new Error('offline');
     coreHealth=body;
-    backendMode=body.api_mode==='canonical'?'canonical':body.api_mode==='public_shell'?'public_shell':'bridge';
+    if(body.api_mode==='canonical')backendMode='canonical';
+    else if(body.api_mode==='public_shell')backendMode='public_shell';
+    else backendMode='bridge';
     const authOk=await canonicalAuthCheck();
     setCoreState(body.provider_ready&&authOk?'online':body.provider_ready?'locked':'locked');
     if(authOk){await loadSessionProfile();await loadTrustedDevices();await loadSecurityEvents()}
