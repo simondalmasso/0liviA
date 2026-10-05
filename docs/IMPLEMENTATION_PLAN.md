@@ -22,6 +22,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Authenticated `/api/voice/ws` direct-WSS endpoint plus voice contracts/pipeline/sequence/cancel tests and benchmark recorder. The endpoint fails 503 until an approved speech backend factory is configured.
 - Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
 - Repository hygiene tests preventing stale build claims and active-doc duplication.
+- Public inert shell released from exact source `4ad53fdfd6e1664763c73ea5847582ba2ed99157`: core CI run `37266316863` PASS, mobile Playwright smoke run `37266316851` PASS at 360×800 and 430×900, public-shell deploy run `37266503642` PASS, Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, with `PUBLIC_SHELL_OK=YES` and `INFERENCE_DISABLED=YES`.
 
 ## Productization gates
 
@@ -121,4 +122,4 @@ Every meaningful mutation must preserve:
 6. Muse Glimmer remains a parked OpenAI-compatible challenger: no new Core module is needed. Promote only when a recurring-free/self-owned host with adequate GPU memory is proven; current public inference-provider availability does not satisfy that gate.
 7. Evaluate the Intern Discovery GPU burst lane only as a challenger: read point/hour estimates before creating resources and implement an adapter only after a real no-overage/account gate exists.
 8. Verify production entitlement/cost for every retained model/coding route and account-level MFA/2FA.
-9. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
+9. The public shell is already exact-SHA and inert. Only after the remaining host/provider/voice gates, deploy the **canonical Python Core** at an exact SHA and smoke the authenticated product end to end.
