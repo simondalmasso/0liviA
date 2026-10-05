@@ -1558,3 +1558,31 @@ def test_login_throttle_state_is_bounded_under_many_client_ips(gateway):
     gw._prune_login_failures(100.0)
     assert "stale" not in gw._login_failures
     assert len(gw._login_failures) <= 2048
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get", "/api/auth/session"),
+        ("get", "/api/auth/devices"),
+        ("delete", "/api/auth/devices/not-a-device"),
+        ("get", "/api/security/events"),
+        ("get", "/api/workspace"),
+        ("post", "/api/projects"),
+        ("post", "/api/library"),
+        ("post", "/api/memories"),
+        ("get", "/api/sessions"),
+        ("post", "/api/sessions"),
+        ("get", "/api/sessions/not-a-session/messages"),
+        ("post", "/api/chat/not-a-session"),
+        ("post", "/api/chat/not-a-session/cancel"),
+        ("get", "/api/voice/ws?session_id=not-a-session"),
+        ("post", "/api/jobs/code"),
+        ("get", "/api/jobs/not-a-job"),
+    ],
+)
+async def test_sensitive_api_surface_fails_closed_without_auth(client, method, path):
+    response = await getattr(client, method)(path)
+    assert response.status == 401
+    assert (await response.json())["error"] == "unauthorized"
