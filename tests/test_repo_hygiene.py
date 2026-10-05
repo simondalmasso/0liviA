@@ -148,3 +148,9 @@ def test_public_product_has_no_maintainer_cloud_defaults():
     assert "const TRANSITIONAL_BRIDGE_ENABLED = false;" in worker
     assert "OLIVIA_CF_ACCOUNT_ID=" not in env.replace("# OLIVIA_CF_ACCOUNT_ID=", "")
     assert "OLIVIA_CF_API_TOKEN=" not in env.replace("# OLIVIA_CF_API_TOKEN=", "")
+
+
+def test_package_exposes_public_olivia_cli_entrypoint():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '[project.scripts]' in pyproject
+    assert 'olivia = "olivia.server:main"' in pyproject
