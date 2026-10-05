@@ -149,7 +149,8 @@ CREATE TABLE IF NOT EXISTS trusted_devices (
     label TEXT NOT NULL,
     created_at REAL NOT NULL,
     last_seen_at REAL NOT NULL,
-    expires_at REAL NOT NULL
+    expires_at REAL NOT NULL,
+    remembered INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_trusted_devices_expiry
     ON trusted_devices(expires_at);
@@ -185,8 +186,8 @@ class Store:
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
         os.chmod(self.path, 0o600)
+        self._migrate_workspace_schema()
         if current_version < SCHEMA_VERSION:
-            self._migrate_workspace_schema()
             self._conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         self._ensure_workspace_invariants()
 
@@ -198,6 +199,19 @@ class Store:
             }
             if "project_id" not in columns:
                 self._conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT")
+
+            device_columns = {
+                str(row["name"])
+                for row in self._conn.execute("PRAGMA table_info(trusted_devices)").fetchall()
+            }
+            if "remembered" not in device_columns:
+                self._conn.execute(
+                    "ALTER TABLE trusted_devices ADD COLUMN remembered INTEGER NOT NULL DEFAULT 0"
+                )
+                # Before this column existed every trusted_devices row represented
+                # an explicitly remembered device; preserve that legacy meaning.
+                self._conn.execute("UPDATE trusted_devices SET remembered=1")
+
             self._conn.execute(
                 """CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
                    ON sessions(project_id, updated_at DESC)"""
@@ -337,15 +351,29 @@ class Store:
         if email and password_verifier:
             self.register_owner(email, password_verifier)
 
-    def create_trusted_device(self, label: str, *, expires_at: float) -> str:
+    def create_trusted_device(
+        self,
+        label: str,
+        *,
+        expires_at: float,
+        remembered: bool = True,
+    ) -> str:
         clean_label = redact_secrets(str(label or "").strip())[:120] or "Dispositivo"
         now = time.time()
         device_id = uuid.uuid4().hex
         with self._lock:
             self._conn.execute(
-                """INSERT INTO trusted_devices(id,label,created_at,last_seen_at,expires_at)
-                   VALUES(?,?,?,?,?)""",
-                (device_id, clean_label, now, now, float(expires_at)),
+                """INSERT INTO trusted_devices(
+                       id,label,created_at,last_seen_at,expires_at,remembered
+                   ) VALUES(?,?,?,?,?,?)""",
+                (
+                    device_id,
+                    clean_label,
+                    now,
+                    now,
+                    float(expires_at),
+                    1 if remembered else 0,
+                ),
             )
         return device_id
 
@@ -385,6 +413,7 @@ class Store:
             rows = self._conn.execute(
                 """SELECT id,label,created_at,last_seen_at,expires_at
                    FROM trusted_devices
+                   WHERE remembered=1
                    ORDER BY last_seen_at DESC
                    LIMIT ?""",
                 (max(1, min(int(limit), 100)),),
