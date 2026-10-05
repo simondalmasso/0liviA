@@ -58,11 +58,20 @@ Configure your own repository:
 
 ```env
 OLIVIA_CODING_WORKER_ENABLED=1
-OLIVIA_CODING_REPO=YOUR_GITHUB_USER/YOUR_REPO
+OLIVIA_CODING_REPO=owner/your-repo
 OLIVIA_CODING_BASE_REF=main
 ```
 
-The workflow uses secrets from that repository only.
+Configure that repository's Actions with operator-owned values:
+
+- secret `OLIVIA_CODING_API_KEY`;
+- variable `OLIVIA_CODING_API_BASE` (optional; defaults to the NVIDIA NIM OpenAI-compatible endpoint);
+- variable `OLIVIA_CODING_MODEL` (optional; defaults to DeepSeek V4.1 Flash);
+- variable `OLIVIA_CODING_ZERO_COST_VERIFIED=true` only after the operator verifies that exact route/account cannot create spend.
+
+The workflow fails closed if the zero-cost verification flag is absent/false or if the API key is absent.
+
+For backward compatibility, an existing `NVIDIA_API_KEY` secret may still be used as a fallback key name. Public forks inherit no secret values from this repository.
 
 ## 7. Runtime data
 
