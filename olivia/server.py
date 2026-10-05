@@ -534,6 +534,7 @@ class Gateway:
             "provider_catalog": provider_catalog,
             "hard_zero_cost": bool(self.settings.hard_zero_cost),
             "api_mode": "canonical",
+            "build_sha": self.settings.build_sha,
             "owner_auth_configured": bool(
                 self.auth_token and self.agent.store.get_owner_account() is not None
             ),
