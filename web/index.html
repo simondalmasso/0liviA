@@ -66,6 +66,10 @@ linear-gradient(180deg,#050506 0%,#08070c 48%,#090811 100%)}
 .pending .bubble{opacity:.58}
 .partial .bubble{opacity:.82}
 .pending-mark{width:5px;height:5px;border-radius:50%;background:var(--cyan);margin:10px 7px 0 0;box-shadow:0 0 10px rgba(25,230,227,.65)}
+.job-pill{display:inline-flex;align-items:center;gap:7px;align-self:flex-start;max-width:100%;margin-top:8px;padding:6px 9px;border-radius:11px;background:rgba(109,78,255,.12);box-shadow:inset 0 0 0 1px rgba(151,128,255,.18);color:#bfc4f4;font-size:11px;cursor:pointer}
+.job-pill:hover{background:rgba(109,78,255,.19);color:#fff}
+.job-pill .job-dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px rgba(25,230,227,.6);flex:0 0 auto}
+.job-pill code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit;font:600 11px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace}
 .msg-actions{display:flex;gap:6px;margin-top:6px;opacity:.38;transition:opacity .14s var(--ease)}
 .msg:hover .msg-actions,.msg:focus-within .msg-actions{opacity:1}
 .copy-btn{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#7379a3;transition:transform .13s var(--ease),background .15s var(--ease),color .15s var(--ease)}
@@ -657,6 +661,20 @@ async function copyText(value,button){
   }
 }
 
+function extractJobMeta(message){
+  if(message?.job?.job_id)return message.job;
+  const text=String(message?.text||'');
+  const match=text.match(/\bJob\s+([0-9a-f]{16})\b/i);
+  if(!match)return null;
+  const statusMatch=text.match(/\b(dispatched|succeeded|failed|running|queued|completed|cancelled)\b/i);
+  return {job_id:match[1],status:(statusMatch?.[1]||'job').toLowerCase()};
+}
+function chooseJobStatus(jobId){
+  if(!jobId)return;
+  textInput.value='/job '+jobId;
+  closeSlashPalette();
+  textInput.focus();
+}
 function renderMessagesInto(root,chat){
   root.textContent='';
   if(!chat||!chat.messages.length){
@@ -680,6 +698,21 @@ function renderMessagesInto(root,chat){
     bubble.className='bubble';
     bubble.textContent=String(m.text||'');
     body.appendChild(bubble);
+
+    const job=extractJobMeta(m);
+    if(job){
+      const pill=document.createElement('button');
+      pill.type='button';
+      pill.className='job-pill';
+      pill.title='Consultar estado';
+      pill.setAttribute('aria-label','Consultar estado del job '+job.job_id);
+      const dot=document.createElement('span');dot.className='job-dot';
+      const code=document.createElement('code');
+      code.textContent=(job.kind?job.kind+' · ':'')+(job.status||'job')+' · '+job.job_id;
+      pill.append(dot,code);
+      pill.onclick=()=>chooseJobStatus(job.job_id);
+      body.appendChild(pill);
+    }
 
     const actions=document.createElement('div');
     actions.className='msg-actions';
@@ -1165,17 +1198,30 @@ async function sendRemote(chat,userMessage,speak){
     if(!r.ok)throw new Error(await r.text()||'core no disponible');
     if(!(r.headers.get('content-type')||'').toLowerCase().includes('text/event-stream'))throw new Error('respuesta inválida');
     const reader=r.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer='',answer='',streamError=null,sawDone=false;
+    let buffer='',answer='',streamError=null,sawDone=false,pendingJob=null;
     const consume=line=>{
       if(!line.startsWith('data: '))return;
       const raw=line.slice(6).trim();if(!raw)return;
       if(raw==='[DONE]'){sawDone=true;return}
       let ev;try{ev=JSON.parse(raw)}catch(e){return}
       if(ev?.type==='done'){sawDone=true;return}
+      if(ev?.type==='job'){
+        pendingJob={
+          job_id:String(ev.job_id||''),
+          status:String(ev.status||'job'),
+          kind:String(ev.kind||ev.mode||'')
+        };
+        if(assistant){assistant.job=pendingJob;renderMessages()}
+        return;
+      }
       if(ev&&ev.error){streamError=ev;return}
       const piece=streamText(ev);if(!piece)return;
       answer+=piece;
-      if(!assistant){assistant={id:uid('m'),role:'assistant',text:'',status:'synced',ts:now()};chat.messages.push(assistant)}
+      if(!assistant){
+        assistant={id:uid('m'),role:'assistant',text:'',status:'synced',ts:now()};
+        if(pendingJob)assistant.job=pendingJob;
+        chat.messages.push(assistant);
+      }
       assistant.text=answer;renderMessages();
     };
     while(true){
