@@ -80,6 +80,14 @@ pip install -e '.[dev]'
 pytest -q
 ```
 
+Arranque del Core:
+
+```bash
+olivia
+```
+
+La primera apertura del Core canónico muestra **Registrate** para crear al único propietario de esa instalación.
+
 Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memory SQLite files inside the repository.
 
 ## Canonical documents
