@@ -412,3 +412,27 @@ Result:
 - the audit records `ACCOUNT_ZERO_COST_VERIFIED=NO` and `REASON=billing_read_permission_unavailable`.
 
 Consequence: the latest inference bridge must not be deployed under a claim of account-wide zero-cost safety until billing-plan evidence is available. Production remains unchanged.
+
+
+### OpenClaw 2026.9.8 / GPT-6 Astra screenshot evidence
+
+Sources:
+- owner-provided screenshots from 2026-10-05;
+- https://github.com/openclaw/openclaw
+- OpenClaw compatibility inventory for build `2026.9.8`, source commit `fc23bc864e4553c2d215e479eeec47b67a0bf943`.
+
+Verified:
+- OpenClaw is a real open-source assistant/gateway whose model providers are pluggable;
+- the supplied screenshots are consistent with the public OpenClaw 2026.9.8 build and show one configured environment listing several `openai/*` model names and returning the text “GPT-6 Astra funcionando correctamente.”;
+- OpenClaw itself is **not** the model provider: its own documentation states that prompts go to whichever hosted/local model provider the operator configures.
+
+Not verified:
+- that the specific `openai/gpt-6-astra` route in the screenshot is an official OpenAI API endpoint available to 0liviA;
+- that the route is free, has a hard no-overage boundary, or may be reused outside that configured OpenClaw environment;
+- that the returned text proves the backend model identity rather than the selected provider/model label.
+
+0liviA decision:
+- **do not add this route to the production provider catalog yet**;
+- preserve the evidence as a discovery lead only;
+- if a provider endpoint becomes available, verify provenance, authorization, account-level cost behavior, and a direct API response before classifying it as `free_hard_cap`;
+- OpenClaw architecture patterns (trusted gateway, pluggable providers/tools, untrusted execution boundary) remain useful references, but importing the full framework would duplicate 0liviA's existing Core and increase complexity.
