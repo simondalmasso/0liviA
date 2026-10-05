@@ -90,7 +90,7 @@ if ! id olivia >/dev/null 2>&1; then
 fi
 
 install -d -o root -g root -m 0755 "${APP_ROOT}" "${LLAMA_ROOT}"
-install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}" "${MODEL_ROOT}"
+install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}" "${MODEL_ROOT}" "${STATE_ROOT}/private"
 install -d -o root -g olivia -m 0750 "${ETC_ROOT}"
 
 # The 1 GB micro fallback needs swap to survive model load. A1 does not.
