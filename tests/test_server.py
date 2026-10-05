@@ -1306,3 +1306,15 @@ async def test_ui_consumes_setup_fragment_without_persisting_it(client):
     assert "location.hash.startsWith('#setup=')" in html
     assert "X-Olivia-Setup-Token" in html
     assert "history.replaceState(null,'',location.pathname+location.search)" in html
+
+
+@pytest.mark.asyncio
+async def test_public_shell_has_product_metadata_without_personal_runtime_url(client):
+    html = await (await client.get("/")).text()
+    assert "<title>0liviA — Self-hosted agentic AI workspace</title>" in html
+    assert 'name="description"' in html
+    assert "self-hosted agentic AI workspace" in html
+    assert 'property="og:title"' in html
+    assert 'property="og:description"' in html
+    assert 'name="application-name" content="0liviA"' in html
+    assert "0livia.simondalmasso44.workers.dev" not in html
