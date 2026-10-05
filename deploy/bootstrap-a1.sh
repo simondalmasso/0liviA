@@ -215,6 +215,21 @@ if [[ -z "${PUBLIC_IP}" ]]; then
   echo "could not determine public IPv4" >&2
   exit 1
 fi
+if ! python3 - "${PUBLIC_IP}" <<'PY'
+import ipaddress
+import sys
+
+try:
+    ip = ipaddress.ip_address(sys.argv[1])
+except ValueError:
+    raise SystemExit(1)
+if ip.version != 4 or not ip.is_global:
+    raise SystemExit(1)
+PY
+then
+  echo "invalid public IPv4" >&2
+  exit 1
+fi
 HOST="${PUBLIC_IP}.nip.io"
 
 cat > /etc/caddy/Caddyfile <<EOF
