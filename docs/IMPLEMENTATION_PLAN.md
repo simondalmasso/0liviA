@@ -17,7 +17,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Isolated GitHub Actions coding worker with durable job IDs, exact base refs, `implement/repair/review` modes and deterministic post-agent verification.
 - Isolated JS browser burst worker with `/browse`, JavaScript rendering, read-only GET/HEAD enforcement, public-network egress guards, bounded artifacts, and no external-page persistence into model/chat context.
 - Review mode may only create/update `AGENT_REVIEW.md`; any product mutation fails the job.
-- Voice contracts/pipeline/sequence/cancel tests and benchmark recorder.
+- Authenticated `/api/voice/ws` direct-WSS endpoint plus voice contracts/pipeline/sequence/cancel tests and benchmark recorder. The endpoint fails 503 until an approved speech backend factory is configured.
 - Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
 - Repository hygiene tests preventing stale build claims and active-doc duplication.
 
@@ -52,7 +52,7 @@ Implemented in branch:
 - `/browse`: opt-in GitHub Actions burst worker using a standard public-repo runner, pinned Playwright, JavaScript rendering, reserved/private-network egress blocks, no third-party browser secrets, bounded requests/text/artifacts, and external page content kept out of durable chat/model context until explicitly requested.
 
 ### 5. Live Voice
-The UI and Python contracts exist; production speech engines do not. Benchmark direct WSS + candidate VAD/STT/TTS on the actual target host for es-AR quality, TTFT/TTFA, barge-in and 60-minute stability before promotion. LiveKit Agents and Pipecat remain challengers, not defaults.
+The UI, authenticated direct-WSS Gateway route and Python pipeline now exist; production speech engines do not. The route is capability-gated and returns 503 until a backend is configured. Benchmark direct WSS + candidate VAD/STT/TTS on the actual target host for es-AR quality, TTFT/TTFA, barge-in and 60-minute stability before promotion. LiveKit Agents and Pipecat remain challengers, not defaults.
 
 ### 6. Coding worker
 The GitHub Actions worker is implemented and opt-in:
