@@ -239,3 +239,51 @@ def test_browser_worker_non_hard_zero_cost_can_be_enabled_without_cost_attestati
 
     worker = browser_worker_from_env(hard_zero_cost=False)
     assert worker is not None
+
+
+@pytest.mark.asyncio
+async def test_browser_worker_rejects_public_repo_before_dispatch(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status, body=None):
+            self.status = status
+            self._body = body or {}
+        async def json(self):
+            return self._body
+        async def text(self):
+            return ""
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+
+    class FakeSession:
+        def get(self, url, *, headers):
+            calls.append(("get", url))
+            return FakeResponse(200, {"private": False})
+        def post(self, url, *, json, headers):
+            calls.append(("post", url))
+            return FakeResponse(204)
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsBrowserWorker(
+        "simondalmasso/0liviA",
+        session_factory=lambda **_: FakeSession(),
+    )
+
+    with pytest.raises(BrowserWorkerError, match="private"):
+        await worker.dispatch(
+            "0123456789abcdef",
+            BrowserJobRequest(
+                url="https://example.com/",
+                objective="",
+                base_ref="arch/gpt-synthesis-v1",
+            ),
+        )
+
+    assert [kind for kind, _ in calls] == ["get"]
