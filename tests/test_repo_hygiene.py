@@ -136,3 +136,16 @@ def test_browser_worker_examples_fail_closed_on_privacy_and_cost():
         assert "OLIVIA_BROWSER_ZERO_COST_VERIFIED=0" in text
         assert "private" in text.lower()
         assert "configured public repo" not in text.lower()
+
+
+def test_security_docs_match_revocable_sessions_and_private_browser_worker():
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    security = (ROOT / "docs" / "SECURITY_AUDIT.md").read_text(encoding="utf-8")
+
+    combined = "\n".join((plan, architecture))
+    assert "public-repo runner" not in combined
+    assert "private GitHub Actions" in combined
+    assert "OLIVIA_BROWSER_ZERO_COST_VERIFIED" in combined
+    assert "Session-only login leaves no durable trusted-device record" not in security
+    assert "all owner sessions are server-revocable" in security
