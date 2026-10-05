@@ -1420,3 +1420,35 @@ async def test_login_does_not_enumerate_owner_email(aiohttp_client, tmp_path):
 
     assert wrong_email.status == wrong_password.status == 401
     assert await wrong_email.json() == await wrong_password.json() == {"error": "unauthorized"}
+
+
+@pytest.mark.asyncio
+async def test_login_rate_key_ignores_spoofed_x_forwarded_for(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "xff.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    for i in range(5):
+        response = await client.post(
+            "/api/auth/login",
+            json={"email": "owner@example.com", "password": "wrong"},
+            headers={"X-Forwarded-For": f"203.0.113.{i + 1}"},
+        )
+        assert response.status == 401
+
+    blocked = await client.post(
+        "/api/auth/login",
+        json={"email": "owner@example.com", "password": "owner-passphrase"},
+        headers={"X-Forwarded-For": "198.51.100.77"},
+    )
+    assert blocked.status == 429
