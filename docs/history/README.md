@@ -10,3 +10,5 @@ Active project instructions live in:
 - `docs/IMPLEMENTATION_PLAN.md`
 
 Do not resurrect historical candidate lists or stale runtime assumptions without re-verifying them.
+
+- `SONNET_AGENTIC_ARCH_HANDOFF.md` — historical external-council prompt for the model/agent execution plane; preserved as evidence, not active instruction.
