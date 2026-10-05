@@ -48,6 +48,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
 - replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
 - bounded `/research` tool: one search plus safe reads of up to three results, injected only as ephemeral untrusted context;
+- opt-in `/browse` GitHub Actions burst worker with JavaScript rendering, GET/HEAD-only navigation, reserved/private-network egress guards, bounded artifacts and no page-text persistence into chat/model context;
 - violet/blue/cyan rail UI with Chats, Projects, Library, Memory, Config and Session surfaces, plus fullscreen Live Voice; responsive gates cover 360–430 px mobile layouts;
 - isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
 - review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
@@ -59,7 +60,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 ## Still gated
 
 - Oracle A1 production availability and target-host benchmarks;
-- production JS-capable browser automation/research worker beyond safe `/read`;
+- production smoke of the isolated `/browse` worker and any future owner-approved click/write automation;
 - a production `/search` provider only after its exact account/provider route is proven zero-cost;
 - production STT/VAD/TTS selection and es-AR voice acceptance;
 - production entitlement for the preferred DeepSeek NIM coding/model route;
