@@ -1759,3 +1759,41 @@ async def test_health_exposes_exact_build_sha(aiohttp_client, tmp_path):
 
     body = await (await client.get("/healthz")).json()
     assert body["build_sha"] == "b" * 40
+
+
+@pytest.mark.asyncio
+async def test_session_only_login_is_revocable_but_not_listed_as_remembered(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "session-only-device.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": False,
+            "device_name": "Temporal",
+        },
+    )
+    assert login.status == 200
+    cookie = login.cookies["olivia_owner"]
+    headers = {"Cookie": f"olivia_owner={cookie.value}"}
+
+    assert (await client.get("/api/sessions", headers=headers)).status == 200
+    devices = await client.get("/api/auth/devices", headers=headers)
+    assert devices.status == 200
+    assert (await devices.json())["devices"] == []
+
+    assert (await client.post("/api/auth/logout", headers=headers)).status == 200
+    assert (await client.get("/api/sessions", headers=headers)).status == 401
