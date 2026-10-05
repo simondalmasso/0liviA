@@ -1695,3 +1695,15 @@ async def test_protected_registration_ui_explains_setup_link(client):
     assert "registration_protected" in html
     assert "Abrí el enlace de instalación inicial" in html
     assert "r.status===403&&registering" in html
+
+
+@pytest.mark.asyncio
+async def test_ui_surfaces_actual_zero_cost_route_per_answer(client):
+    html = await (await client.get("/")).text()
+    assert "providerPresentation" in html
+    assert "ChatGPT plan ·" in html
+    assert "Local ·" in html
+    assert " · $0" in html
+    assert "ev?.type==='route'" in html
+    assert "provider:item.provider||''" in html
+    assert "provider-pill" in html
