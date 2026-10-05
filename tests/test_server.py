@@ -1687,3 +1687,38 @@ async def test_voice_wss_rejects_second_connection_for_same_session(aiohttp_clie
             break
         await asyncio.sleep(0.01)
     assert session_id not in client.app["gateway"]._voice_sessions
+
+
+@pytest.mark.asyncio
+async def test_owner_logout_revokes_non_remembered_cookie_server_side(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "logout-replay.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    verifier = make_password_verifier("owner-passphrase", salt=b"0123456789abcdef")
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="gateway-signing-secret",
+            owner_password_verifier=verifier,
+            owner_email="owner@example.com",
+        )
+    )
+
+    login = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "owner-passphrase",
+            "remember": False,
+        },
+    )
+    assert login.status == 200
+    cookie = login.cookies["olivia_owner"]
+    stolen_cookie = {"Cookie": f"olivia_owner={cookie.value}"}
+
+    assert (await client.get("/api/sessions", headers=stolen_cookie)).status == 200
+    assert (await client.post("/api/auth/logout", headers=stolen_cookie)).status == 200
+
+    replay = await client.get("/api/sessions", headers=stolen_cookie)
+    assert replay.status == 401
