@@ -42,6 +42,14 @@ async def test_browser_worker_dispatches_bounded_workflow(monkeypatch):
             return None
 
     class FakeSession:
+        def get(self, url, *, headers):
+            calls.append((url, None, headers))
+            response = FakeResponse()
+            response.status = 200
+            async def private_repo():
+                return {"private": True}
+            response.json = private_repo
+            return response
         def post(self, url, *, json, headers):
             calls.append((url, json, headers))
             return FakeResponse()
@@ -65,8 +73,11 @@ async def test_browser_worker_dispatches_bounded_workflow(monkeypatch):
     )
 
     assert result["remote_status"] == "dispatched"
-    assert len(calls) == 1
-    url, payload, headers = calls[0]
+    assert len(calls) == 2
+    repo_url, _, repo_headers = calls[0]
+    assert repo_url.endswith("/repos/simondalmasso/0liviA")
+    assert repo_headers["authorization"] == "Bearer test-token"
+    url, payload, headers = calls[1]
     assert url.endswith("/actions/workflows/browser-agent.yml/dispatches")
     assert payload["inputs"]["url"] == "https://example.com/path"
     assert "objective" not in payload["inputs"]
