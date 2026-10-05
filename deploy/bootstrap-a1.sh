@@ -152,6 +152,11 @@ import secrets
 print(secrets.token_urlsafe(32))
 PY
 )"
+REGISTRATION_TOKEN="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(32))
+PY
+)"
 
 cat > "${ETC_ROOT}/olivia.env" <<EOF
 OLIVIA_DATA_DIR=${STATE_ROOT}
@@ -159,6 +164,7 @@ OLIVIA_BIND=127.0.0.1
 OLIVIA_PORT=8080
 OLIVIA_HARD_ZERO_COST=1
 OLIVIA_GATEWAY_TOKEN=${TOKEN}
+OLIVIA_REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
 OLIVIA_MAX_HISTORY=24
 OLIVIA_TTFT_TIMEOUT_S=45
 OLIVIA_STREAM_IDLE_TIMEOUT_S=120
@@ -214,6 +220,7 @@ systemctl restart caddy
 cat > "${STATE_ROOT}/bootstrap-info" <<EOF
 URL=https://${HOST}
 REGISTRATION=first-run
+SETUP_URL=https://${HOST}/#setup=${REGISTRATION_TOKEN}
 MODEL_PROFILE=${MODEL_PROFILE}
 MODEL=${MODEL_NAME}
 MODEL_SHA256=${MODEL_SHA256}
@@ -224,7 +231,7 @@ SOURCE_REF=${REF}
 EOF
 chown root:root "${STATE_ROOT}/bootstrap-info"
 chmod 0600 "${STATE_ROOT}/bootstrap-info"
-unset TOKEN
+unset TOKEN REGISTRATION_TOKEN
 
 for _ in $(seq 1 90); do
   if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
