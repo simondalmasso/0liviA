@@ -81,5 +81,5 @@ class Settings:
             stream_idle_timeout_s=_env_float("OLIVIA_STREAM_IDLE_TIMEOUT_S", 0.0, 0.0, 600.0),
             visible_prefix_max_chars=_env_int("OLIVIA_VISIBLE_PREFIX_MAX", 256, 1, 65536),
             quota_utc_offset_h=_env_int("OLIVIA_QUOTA_UTC_OFFSET_H", 0, -12, 14),
-            hard_zero_cost=_env_bool("OLIVIA_HARD_ZERO_COST", True),
+            hard_zero_cost=True,
         )
