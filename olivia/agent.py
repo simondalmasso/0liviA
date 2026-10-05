@@ -232,6 +232,7 @@ class Agent:
         text: str,
         *,
         ephemeral_context: str | None = None,
+        capability: str = "chat",
     ) -> AsyncIterator[dict[str, Any]]:
         if _MODEL_IDENTITY.match(text.strip()):
             async for event in self._local_identity_command(session_id, text.strip()):
@@ -244,9 +245,23 @@ class Agent:
 
         safe_text = redact_secrets(text)
         self.store.append_message(session_id, "user", safe_text)
+        requested_capability = str(capability or "chat").strip().lower()
+        effective_capability = "chat"
+        providers_for = getattr(self.router, "providers_for", None)
+        if requested_capability != "chat" and callable(providers_for):
+            try:
+                if providers_for(requested_capability):
+                    effective_capability = requested_capability
+            except Exception:
+                effective_capability = "chat"
         self.store.record_event(
             "turn.started",
-            {"text_len": len(text), "secrets_redacted": safe_text != text},
+            {
+                "text_len": len(text),
+                "secrets_redacted": safe_text != text,
+                "capability_requested": requested_capability,
+                "capability_effective": effective_capability,
+            },
             session_id=session_id,
         )
 
@@ -259,12 +274,17 @@ class Agent:
         provider: str | None = None
 
         try:
-            async for event in self.router.stream(model_messages):
+            route_stream = (
+                self.router.stream(model_messages, capability=effective_capability)
+                if effective_capability != "chat"
+                else self.router.stream(model_messages)
+            )
+            async for event in route_stream:
                 if event.type == "route":
                     provider = event.provider
                     self.store.record_event(
                         "route.selected",
-                        {"provider": provider},
+                        {"provider": provider, "capability": effective_capability},
                         session_id=session_id,
                     )
                     yield {"type": "route", "provider": provider}
