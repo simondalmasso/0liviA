@@ -16,12 +16,13 @@ if [[ ! -f "${DB_PATH}" ]]; then
   exit 2
 fi
 
-mkdir -p "${BACKUP_DIR}"
 if [[ -z "${OUT}" ]]; then
+  mkdir -p "${BACKUP_DIR}"
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   OUT="${BACKUP_DIR}/olivia-${stamp}.sqlite3.enc"
+else
+  mkdir -p "$(dirname "${OUT}")"
 fi
-mkdir -p "$(dirname "${OUT}")"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
