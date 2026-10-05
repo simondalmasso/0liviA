@@ -11,6 +11,9 @@ dependencies = [
   "aiohttp>=3.10,<4",
 ]
 
+[project.scripts]
+olivia = "olivia.server:main"
+
 [project.optional-dependencies]
 chatgpt = [
   "PyJWT[crypto]>=2.10,<3",
