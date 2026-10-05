@@ -52,7 +52,7 @@ Still gated:
 - owner-approved write/click automation remains a separate future capability.
 
 Implemented in branch:
-- `/browse`: opt-in GitHub Actions burst worker using a standard public-repo runner, pinned Playwright, JavaScript rendering, reserved/private-network egress blocks, no third-party browser secrets, bounded requests/text/artifacts, and external page content kept out of durable chat/model context until explicitly requested.
+- `/browse`: opt-in private GitHub Actions burst worker with pinned Playwright, JavaScript rendering, reserved/private-network egress blocks, no third-party browser secrets, bounded requests/text/artifacts, pre-dispatch private-repo verification, and external page content kept out of durable chat/model context until explicitly requested. Under `OLIVIA_HARD_ZERO_COST=1`, it remains unavailable unless `OLIVIA_BROWSER_ZERO_COST_VERIFIED=1` is explicitly set after verifying the Actions billing boundary.
 
 ### 5. Live Voice
 The UI, authenticated direct-WSS Gateway route and Python pipeline now exist; production speech engines do not. The route is capability-gated and returns 503 until a backend is configured. Benchmark direct WSS + candidate VAD/STT/TTS on the actual target host for es-AR quality, TTFT/TTFA, barge-in and 60-minute stability before promotion. LiveKit Agents and Pipecat remain challengers, not defaults.
