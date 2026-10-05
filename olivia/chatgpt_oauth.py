@@ -464,33 +464,36 @@ async def disconnect_profile(
 
     confirmed = False
     try:
-        timeout = aiohttp.ClientTimeout(total=20, sock_connect=10, sock_read=15)
-        async with session_factory(timeout=timeout) as session:
-            oidc = await discover(session)
-            endpoint = oidc["revocation_endpoint"]
-            for attempt in range(3):
-                try:
-                    async with session.post(
-                        endpoint,
-                        data={
-                            "token": refresh_token,
-                            "token_type_hint": "refresh_token",
-                            "client_id": client_id,
-                        },
-                        headers={
-                            "Accept": "application/json",
-                            "Content-Type": "application/x-www-form-urlencoded",
-                        },
-                    ) as response:
-                        if response.status == 200:
-                            confirmed = True
-                            break
-                        if response.status < 500:
-                            break
-                except aiohttp.ClientError:
-                    pass
-                if attempt < 2:
-                    await sleep(0.25 * (2**attempt))
+        try:
+            timeout = aiohttp.ClientTimeout(total=20, sock_connect=10, sock_read=15)
+            async with session_factory(timeout=timeout) as session:
+                oidc = await discover(session)
+                endpoint = oidc["revocation_endpoint"]
+                for attempt in range(3):
+                    try:
+                        async with session.post(
+                            endpoint,
+                            data={
+                                "token": refresh_token,
+                                "token_type_hint": "refresh_token",
+                                "client_id": client_id,
+                            },
+                            headers={
+                                "Accept": "application/json",
+                                "Content-Type": "application/x-www-form-urlencoded",
+                            },
+                        ) as response:
+                            if response.status == 200:
+                                confirmed = True
+                                break
+                            if response.status < 500:
+                                break
+                    except (aiohttp.ClientError, asyncio.TimeoutError):
+                        pass
+                    if attempt < 2:
+                        await sleep(0.25 * (2**attempt))
+        except (ChatGPTOAuthError, aiohttp.ClientError, asyncio.TimeoutError):
+            confirmed = False
     finally:
         profile_path.unlink(missing_ok=True)
     return confirmed
