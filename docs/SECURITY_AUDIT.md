@@ -27,6 +27,9 @@ The canonical `/read` path uses an SSRF-safe URL reader and injects page text on
 ### VOICE-WSS-CONTRACT — FIXED IN BRANCH / speech backend gated
 The canonical Gateway now exposes the declared direct-WSS voice route behind owner authentication and session validation. It fails closed with 503 while no approved speech backend factory is configured. Binary audio frames remain bounded by the transport contract. This fixes the old route mismatch without claiming production STT/TTS readiness.
 
+### CHATGPT-PLAN-OAUTH — IMPLEMENTED TRANSPORT / ONBOARDING GATED
+The router now supports the official Sign in with ChatGPT plan-usage transport without an API key: server-side OAuth profile, protected mode-0600 storage, refresh-token rotation and direct Responses API streaming with `store:false`. The provider is blocked under hard-zero-cost policy unless `no_credit_overage_verified=true`. That flag is an explicit owner assertion; it does not substitute for inspecting the ChatGPT Usage controls. OAuth onboarding/JWKS validation is not yet integrated into the product, so no production connection is claimed.
+
 ### ZERO-COST-ACCOUNT-PROOF — OPEN / fail closed
 A request-count cap is not an account billing guard. Cloudflare account-wide billing status could not be verified with the available token. The transitional Worker runtime is now disabled by default, and provider readiness is false while disabled; no production-cost guarantee is claimed.
 
@@ -76,7 +79,7 @@ See `docs/SECURITY_OPERATIONS.md`.
 ## Remaining release blockers
 
 1. Replace/retire the stale public Worker only after an exact-SHA canonical target host passes smoke.
-2. Verify provider/account cost guarantees before enabling externally metered production inference or search routes.
+2. Complete Sign in with ChatGPT OAuth onboarding and verify the app cannot consume paid credits before enabling the included-plan provider; separately verify provider/account cost guarantees for any other external inference/search route.
 3. Verify Oracle A1 capacity plus install/restart/backup/latency/resource gates on the real host.
 4. Benchmark and accept a production voice stack on the real target; current Live Voice backend remains provisional.
 5. Verify account-level MFA/2FA on every production control plane and rotate any credential with a real exposure alert.
