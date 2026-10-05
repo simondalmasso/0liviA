@@ -585,7 +585,7 @@ async def authorize_local(
             profile["model_catalog"] = models
             preferred = next(
                 (item["slug"] for item in models if item["slug"] == "gpt-6-astra"),
-                models[0]["slug"] if models else "",
+                "",
             )
             if preferred:
                 profile["recommended_model"] = preferred
