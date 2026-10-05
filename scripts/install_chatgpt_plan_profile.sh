@@ -56,9 +56,14 @@ models = [
     if isinstance(item, dict) and isinstance(item.get("slug"), str)
 ]
 model = override.strip() or str(profile.get("recommended_model") or "").strip()
+if not model and "gpt-6-astra" in models:
+    model = "gpt-6-astra"
 if not model:
-    model = "gpt-6-astra" if "gpt-6-astra" in models else (models[0] if models else "")
-if not model or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", model):
+    raise SystemExit(
+        "gpt-6-astra is not available for this account; pass an explicit model override "
+        "instead of accepting a silent downgrade"
+    )
+if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", model):
     raise SystemExit("no safe model slug is available in the OAuth profile")
 if models and model not in models:
     raise SystemExit("selected model is not in the signed-in account catalog")
