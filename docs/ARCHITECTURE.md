@@ -126,7 +126,7 @@ Implemented in the canonical core:
 - fetched page content is injected only as ephemeral **untrusted** model context and is not persisted to SQLite;
 - `/search` is a replaceable adapter contract, disabled by default and fail-closed unless the exact provider route is explicitly configured and verified zero-cost;
 - `/research` composes bounded search + safe reads while keeping external content ephemeral;
-- `/browse` dispatches a JavaScript-capable Playwright job to an isolated GitHub Actions public-repo runner. The runner accepts only public HTTP(S), enforces GET/HEAD-only requests, blocks reserved/private network egress, disables downloads/service workers, bounds requests/text/artifacts, and returns the result through a durable job artifact.
+- `/browse` dispatches a JavaScript-capable Playwright job to an isolated private GitHub Actions repository. The Core verifies repository privacy before dispatch; the workflow independently refuses to run if the repository is public. The runner accepts only public HTTP(S), enforces GET/HEAD-only requests, blocks reserved/private network egress, disables downloads/service workers, bounds requests/text/artifacts, and returns the result through a durable job artifact. Under hard-zero-cost mode, `OLIVIA_BROWSER_ZERO_COST_VERIFIED=1` is additionally required before the worker is enabled.
 
 The Core never embeds a privileged browser. Browser result text is shown from the job result and is not persisted into chat/model context automatically.
 
