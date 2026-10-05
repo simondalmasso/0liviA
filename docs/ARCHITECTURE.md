@@ -1,12 +1,12 @@
 # 0liviA architecture — synthesis v1
 
 Status: **accepted core / provisional voice components**  
-Target: one self-hosted single-owner instance. Reference low-cost benchmark: ~2 CPU / 12 GB RAM. Recurring infrastructure posture: zero-cost-first.
+Target: one user, Oracle A1 ARM64 (2 OCPU / 12 GB), recurring infrastructure target USD 0.
 
 ## Final shape
 
 `Browser / mobile PWA`
-→ direct HTTPS/WSS to the self-hosted Core
+→ direct HTTPS/WSS to Oracle
 → **0liviA Core (Python, one small control plane)**
 → SQLite WAL + FTS5 for operational state
 → curated Markdown/Git for durable human-readable truth
@@ -48,7 +48,20 @@ Router requirements:
 - after the first token, a provider failure returns an explicit partial/error instead of duplicating text through a second model;
 - route/model/latency/error telemetry without chain-of-thought or secrets.
 
-A free quota disappearing must cause degradation, rerouting or pause — never hidden spend.
+A free quota or included-plan allowance disappearing must cause degradation, rerouting or pause — never hidden spend.
+
+### ChatGPT plan lane
+
+For eligible Plus/Pro owners, the router supports the official **Sign in with ChatGPT** plan-usage path as a first-class provider:
+- `kind=chatgpt_plan`;
+- official `https://api.openai.com/v1/responses` transport only;
+- `store:false` and streaming Responses;
+- OAuth access/refresh credentials live in a server-side profile file mode 0600;
+- no OpenAI API key is accepted or exposed in the browser;
+- system/developer policy is sent through `instructions`, not as unsupported system input items;
+- the provider is eligible under hard-zero-cost policy only when `no_credit_overage_verified=true`.
+
+That flag is an owner/account assertion, not a billing API proof. It must only be set after the owner verifies ChatGPT app credit use cannot create overage—for example by leaving app credit use disabled and/or setting this app's usage limit below 100%. If the plan/app limit is exhausted, the route fails and the normal provider failover policy applies before visible output.
 
 ## Coding and repository work
 
@@ -95,20 +108,35 @@ The canonical Core is a single-owner installation:
 
 Existing deployments may seed a legacy owner from environment variables once; new bootstrap flow uses first-run registration.
 
+## Voice transport gate
+
+The canonical Gateway registers authenticated `GET /api/voice/ws?session_id=...` using the direct-WSS wire format. The route:
+- requires the same owner auth boundary as chat;
+- validates that the target chat session exists;
+- remains unavailable with HTTP 503 unless a server-side `VoicePipeline` factory is explicitly configured;
+- uses bounded binary frames and the existing sequencing/cancel/barge-in pipeline;
+- does not pretend that browser SpeechRecognition/SpeechSynthesis are the production speech backend.
+
+Production VAD/STT/TTS promotion still requires target-host es-AR quality, latency and 60-minute stability evidence.
+
 ## Research/browser
 
 Implemented in the canonical core:
 - `/read` uses an SSRF-safe server-side URL reader with DNS/IP revalidation, redirect bounds, MIME/body limits and no browser credentials;
 - fetched page content is injected only as ephemeral **untrusted** model context and is not persisted to SQLite;
-- `/search` is a replaceable adapter contract, disabled by default and fail-closed unless the exact provider route is explicitly configured and verified zero-cost.
+- `/search` is a replaceable adapter contract, disabled by default and fail-closed unless the exact provider route is explicitly configured and verified zero-cost;
+- `/research` composes bounded search + safe reads while keeping external content ephemeral;
+- `/browse` dispatches a JavaScript-capable Playwright job to an isolated private GitHub Actions repository. The private boundary is mandatory because the bounded result includes page text and an optional screenshot artifact. The runner accepts only public HTTP(S), enforces GET/HEAD-only requests, blocks reserved/private network egress, disables downloads/service workers, bounds requests/text/artifacts, and the Core preflights repository privacy before dispatch.
 
-Not implemented yet:
-- JS-heavy rendering;
+The Core never embeds a privileged browser. Browser result text is shown from the job result and is not persisted into chat/model context automatically.
+
+Still gated:
 - authenticated browsing;
-- browser automation;
-- autonomous multi-page navigation.
+- owner-approved click/write automation;
+- autonomous multi-page agents;
+- production smoke of the isolated browser workflow.
 
-A Playwright-class isolated browser worker is the candidate for those capabilities, but it is not yet the runtime default. Research results never become instructions merely because a page says so.
+Research/browser content remains **data**, never instructions merely because a page says so.
 
 ## Voice transport
 
@@ -173,7 +201,7 @@ Voice target:
 - perceived barge-in silence <150 ms client-side and <300 ms pipeline cancellation;
 - 60-minute session without meaningful RSS growth/drift.
 
-These are gates to measure on the actual target host, not current PASS claims.
+These are gates to measure on the actual Oracle A1, not current PASS claims.
 
 ## Explicit exclusions for v1
 
@@ -204,4 +232,4 @@ Language is a kernel policy, not a model preference:
 - unexpected language drift causes cancellation/retry, not German/English text leaking into the session;
 - a user request for another language overrides the guard for that turn.
 
-The operator's desktop/laptop is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access. Browser persistence, where present in the temporary bridge UI, is disposable cache and never durable truth.
+The owner's PC is not part of the compute plane. The browser captures microphone/input and renders output only; it does not grant 0liviA local filesystem, shell or background-agent access. Browser persistence, where present in the temporary bridge UI, is disposable cache and never durable truth.

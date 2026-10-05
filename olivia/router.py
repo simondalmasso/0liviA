@@ -11,6 +11,7 @@ import uuid
 from collections import Counter, deque
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Protocol
 
 import aiohttp
@@ -21,8 +22,9 @@ from .store import Store
 
 _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
 
-ZERO_COST_ALLOWED_MODES = frozenset({"local", "free_hard_cap"})
+ZERO_COST_ALLOWED_MODES = frozenset({"local", "free_hard_cap", "plan_included"})
 _PROVIDER_COST_MODES = ZERO_COST_ALLOWED_MODES | frozenset({"free_unverified", "paid"})
+_PROVIDER_CAPABILITIES = frozenset({"chat", "code", "review", "research", "vision"})
 
 
 def is_visible_segment(text: str | None) -> bool:
@@ -120,22 +122,71 @@ class ProviderSpec:
     priority: int = 100
     daily_limit: int = 0
     cost_mode: str = "free_unverified"
+    kind: str = "openai_compatible"
+    profile_path: str = ""
+    no_credit_overage_verified: bool = False
+    capabilities: tuple[str, ...] = ("chat",)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ProviderSpec":
+        kind = str(raw.get("kind", "openai_compatible")).strip().lower()
+        if kind not in {"openai_compatible", "chatgpt_plan"}:
+            raise ProviderConfigError(
+                f"invalid provider kind for {raw.get('name', 'provider')}: {kind}"
+            )
         cost_mode = str(raw.get("cost_mode", "free_unverified")).strip().lower()
         if cost_mode not in _PROVIDER_COST_MODES:
             raise ProviderConfigError(
                 f"invalid cost_mode for {raw.get('name', 'provider')}: {cost_mode}"
             )
+        if cost_mode == "plan_included" and kind != "chatgpt_plan":
+            raise ProviderConfigError(
+                "plan_included is reserved for kind=chatgpt_plan"
+            )
+        default_base = "https://api.openai.com/v1" if kind == "chatgpt_plan" else ""
+        default_model = "gpt-6-astra" if kind == "chatgpt_plan" else ""
+        base_url = str(raw.get("base_url", default_base)).rstrip("/")
+        model = str(raw.get("model", default_model)).strip()
+        if not base_url:
+            raise ProviderConfigError(f"{raw.get('name', 'provider')}: base_url is required")
+        if not model:
+            raise ProviderConfigError(f"{raw.get('name', 'provider')}: model is required")
+        if kind == "chatgpt_plan" and base_url != "https://api.openai.com/v1":
+            raise ProviderConfigError(
+                "chatgpt_plan provider must use https://api.openai.com/v1"
+            )
+        raw_capabilities = raw.get("capabilities", ("chat",))
+        if isinstance(raw_capabilities, str):
+            parts = [part.strip().lower() for part in raw_capabilities.split(",")]
+        elif isinstance(raw_capabilities, (list, tuple, set)):
+            parts = [str(part).strip().lower() for part in raw_capabilities]
+        else:
+            raise ProviderConfigError(
+                f"invalid capabilities for {raw.get('name', 'provider')}"
+            )
+        capabilities = tuple(dict.fromkeys(part for part in parts if part))
+        if not capabilities:
+            capabilities = ("chat",)
+        unknown = sorted(set(capabilities) - _PROVIDER_CAPABILITIES)
+        if unknown:
+            raise ProviderConfigError(
+                f"invalid capabilities for {raw.get('name', 'provider')}: "
+                + ",".join(unknown)
+            )
         return cls(
             name=str(raw["name"]),
-            base_url=str(raw["base_url"]).rstrip("/"),
-            model=str(raw["model"]),
+            base_url=base_url,
+            model=model,
             api_key_env=str(raw.get("api_key_env", "")),
             priority=int(raw.get("priority", 100)),
             daily_limit=int(raw.get("daily_limit", 0)),
             cost_mode=cost_mode,
+            kind=kind,
+            profile_path=str(raw.get("profile_path", "")),
+            no_credit_overage_verified=bool(
+                raw.get("no_credit_overage_verified", False)
+            ),
+            capabilities=capabilities,
         )
 
 
@@ -146,6 +197,13 @@ class OpenAICompatibleProvider:
         self.priority = spec.priority
         self.daily_limit = spec.daily_limit
         self.cost_mode = spec.cost_mode
+        self.capabilities = spec.capabilities
+
+    @property
+    def configured(self) -> bool:
+        if self.cost_mode == "local":
+            return True
+        return bool(self.spec.api_key_env and os.getenv(self.spec.api_key_env))
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         api_key = os.getenv(self.spec.api_key_env) if self.spec.api_key_env else ""
@@ -201,6 +259,298 @@ class OpenAICompatibleProvider:
             ) from exc
 
 
+class ChatGPTPlanProvider:
+    """Official Sign in with ChatGPT plan route.
+
+    Credentials live in a protected server-side profile file. This transport uses
+    only the public Responses API and never accepts an OpenAI API key.
+    """
+
+    PLAN_SCOPE = "chatgpt.tokens.use.direct"
+    TOKEN_URL = "https://auth.openai.com/api/accounts/oauth/token"
+    RESOURCE = "https://api.openai.com/v1"
+
+    def __init__(
+        self,
+        spec: ProviderSpec,
+        *,
+        session_factory=aiohttp.ClientSession,
+        clock: Callable[[], float] | None = None,
+    ):
+        if spec.kind != "chatgpt_plan":
+            raise ProviderConfigError("ChatGPTPlanProvider requires kind=chatgpt_plan")
+        if spec.cost_mode != "plan_included":
+            raise ProviderConfigError(
+                "chatgpt_plan requires cost_mode=plan_included"
+            )
+        if not spec.no_credit_overage_verified:
+            raise ProviderConfigError(
+                "chatgpt_plan requires no_credit_overage_verified=true"
+            )
+        if not spec.profile_path:
+            raise ProviderConfigError("chatgpt_plan requires profile_path")
+        self.spec = spec
+        self.name = spec.name
+        self.model = spec.model
+        self.priority = spec.priority
+        self.daily_limit = spec.daily_limit
+        self.cost_mode = spec.cost_mode
+        self.capabilities = spec.capabilities
+        self.profile_path = Path(spec.profile_path).expanduser()
+        self._session_factory = session_factory
+        self._clock = clock or time.time
+        self._profile_lock = asyncio.Lock()
+
+    @property
+    def configured(self) -> bool:
+        try:
+            self._load_profile()
+        except (ProviderConfigError, OSError):
+            return False
+        return True
+
+    @staticmethod
+    def _scope_set(value: Any) -> set[str]:
+        if isinstance(value, str):
+            return {part for part in value.split() if part}
+        if isinstance(value, list):
+            return {str(part) for part in value if str(part)}
+        return set()
+
+    def _validate_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        required = ("client_id", "access_token", "refresh_token", "expires_at")
+        missing = [key for key in required if not profile.get(key)]
+        if missing:
+            raise ProviderConfigError(
+                f"{self.name}: incomplete ChatGPT profile ({','.join(missing)})"
+            )
+        scopes = self._scope_set(profile.get("scope"))
+        required = {self.PLAN_SCOPE, "resource.invoke", "offline_access"}
+        if not required.issubset(scopes):
+            raise ProviderConfigError(
+                f"{self.name}: required ChatGPT plan scopes not granted"
+            )
+        return profile
+
+    def _load_profile(self) -> dict[str, Any]:
+        try:
+            mode = self.profile_path.stat().st_mode & 0o777
+        except FileNotFoundError as exc:
+            raise ProviderConfigError(
+                f"{self.name}: ChatGPT plan profile not found"
+            ) from exc
+        if mode & 0o077:
+            raise ProviderConfigError(
+                f"{self.name}: ChatGPT plan profile must be mode 0600"
+            )
+        try:
+            profile = json.loads(self.profile_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProviderConfigError(
+                f"{self.name}: invalid ChatGPT plan profile"
+            ) from exc
+        if not isinstance(profile, dict):
+            raise ProviderConfigError(
+                f"{self.name}: invalid ChatGPT plan profile"
+            )
+        return self._validate_profile(profile)
+
+    def _save_profile(self, profile: dict[str, Any]) -> None:
+        self.profile_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.profile_path.with_name(self.profile_path.name + ".tmp")
+        tmp.write_text(
+            json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.profile_path)
+
+    async def _access_token(self) -> str:
+        async with self._profile_lock:
+            profile = self._load_profile()
+            try:
+                expires_at = float(profile["expires_at"])
+            except (TypeError, ValueError) as exc:
+                raise ProviderConfigError(
+                    f"{self.name}: invalid ChatGPT token expiry"
+                ) from exc
+            now = self._clock()
+            if expires_at > now + 120:
+                return str(profile["access_token"])
+            try:
+                earliest_refresh_at = float(profile.get("earliest_refresh_at") or 0)
+            except (TypeError, ValueError) as exc:
+                raise ProviderConfigError(
+                    f"{self.name}: invalid ChatGPT earliest refresh time"
+                ) from exc
+            if earliest_refresh_at > now:
+                if expires_at > now:
+                    return str(profile["access_token"])
+                raise ProviderConfigError(
+                    f"{self.name}: ChatGPT token expired before refresh became eligible"
+                )
+
+            timeout = aiohttp.ClientTimeout(total=20, sock_connect=10, sock_read=15)
+            async with self._session_factory(timeout=timeout) as session:
+                async with session.post(
+                    self.TOKEN_URL,
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": str(profile["client_id"]),
+                        "refresh_token": str(profile["refresh_token"]),
+                        "resource": self.RESOURCE,
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                ) as response:
+                    if response.status >= 400:
+                        body = (await response.text())[:1000]
+                        raise ProviderHTTPError(
+                            self.name,
+                            response.status,
+                            body,
+                            _parse_retry_after(response.headers.get("Retry-After")),
+                        )
+                    body = await response.json()
+
+            if not isinstance(body, dict) or not body.get("access_token"):
+                raise ProviderConfigError(
+                    f"{self.name}: invalid ChatGPT token refresh response"
+                )
+            updated = dict(profile)
+            updated["access_token"] = str(body["access_token"])
+            if body.get("refresh_token"):
+                updated["refresh_token"] = str(body["refresh_token"])
+            if body.get("scope"):
+                updated["scope"] = body["scope"]
+            try:
+                expires_in = max(60, int(body.get("expires_in", 3600)))
+            except (TypeError, ValueError):
+                expires_in = 3600
+            updated["expires_at"] = int(self._clock()) + expires_in
+            if body.get("earliest_refresh_at") is not None:
+                try:
+                    refresh_floor = int(body["earliest_refresh_at"])
+                except (TypeError, ValueError) as exc:
+                    raise ProviderConfigError(
+                        f"{self.name}: invalid ChatGPT earliest refresh time"
+                    ) from exc
+                if refresh_floor < 0:
+                    raise ProviderConfigError(
+                        f"{self.name}: invalid ChatGPT earliest refresh time"
+                    )
+                updated["earliest_refresh_at"] = refresh_floor
+            else:
+                updated.pop("earliest_refresh_at", None)
+            self._validate_profile(updated)
+            self._save_profile(updated)
+            return str(updated["access_token"])
+
+    @staticmethod
+    def _responses_payload(
+        model: str,
+        messages: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        instructions = "\n\n".join(
+            str(item.get("content", "")).strip()
+            for item in messages
+            if item.get("role") in {"system", "developer"}
+            and str(item.get("content", "")).strip()
+        )
+        input_items = [
+            {
+                "role": str(item.get("role")),
+                "content": str(item.get("content", "")),
+            }
+            for item in messages
+            if item.get("role") in {"user", "assistant"}
+            and str(item.get("content", "")).strip()
+        ]
+        payload: dict[str, Any] = {
+            "model": model,
+            "input": input_items,
+            "store": False,
+            "stream": True,
+        }
+        if instructions:
+            payload["instructions"] = instructions
+        return payload
+
+    async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
+        token = await self._access_token()
+        timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=120)
+        payload = self._responses_payload(self.model, messages)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        completed = False
+        try:
+            async with self._session_factory(timeout=timeout) as session:
+                async with session.post(
+                    self.spec.base_url + "/responses",
+                    json=payload,
+                    headers=headers,
+                ) as response:
+                    if response.status >= 400:
+                        body = (await response.text())[:1000]
+                        raise ProviderHTTPError(
+                            self.name,
+                            response.status,
+                            body,
+                            _parse_retry_after(response.headers.get("Retry-After")),
+                        )
+                    async for raw in response.content:
+                        for line_bytes in raw.splitlines():
+                            line = line_bytes.decode("utf-8", "ignore").strip()
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[5:].strip()
+                            if not data or data == "[DONE]":
+                                continue
+                            try:
+                                event = json.loads(data)
+                            except json.JSONDecodeError:
+                                continue
+                            event_type = str(event.get("type") or "")
+                            if event_type == "response.output_text.delta":
+                                delta = event.get("delta")
+                                if delta:
+                                    yield str(delta)
+                                continue
+                            if event_type == "response.completed":
+                                completed = True
+                                continue
+                            if event_type == "response.failed":
+                                error = (event.get("response") or {}).get("error") or {}
+                                code = str(error.get("code") or "response_failed")
+                                if code == "subscription_sharing_usage_limit_exceeded":
+                                    raise ProviderHTTPError(self.name, 429, code)
+                                if code == "subscription_sharing_usage_unavailable":
+                                    raise ProviderHTTPError(self.name, 503, code)
+                                if code == "subscription_sharing_user_not_eligible":
+                                    raise ProviderHTTPError(self.name, 403, code)
+                                raise ProviderError(f"{self.name}: {code}")
+                            if event_type in {"response.incomplete", "error"}:
+                                raise ProviderError(
+                                    f"{self.name}: {event_type}"
+                                )
+        except asyncio.CancelledError:
+            raise
+        except ProviderError:
+            raise
+        except (aiohttp.ServerTimeoutError, asyncio.TimeoutError) as exc:
+            raise ProviderTimeout(f"{self.name}: {type(exc).__name__}") from exc
+        except aiohttp.ClientError as exc:
+            raise ProviderError(
+                f"{self.name}: network {type(exc).__name__}: "
+                f"{redact(str(exc), max_len=160)}"
+            ) from exc
+        if not completed:
+            raise ProviderError(
+                f"{self.name}: stream ended without response.completed"
+            )
+
+
 class ProviderPool:
     def __init__(
         self,
@@ -247,10 +597,23 @@ class ProviderPool:
         blocked: list[dict[str, str]] = []
         for raw in settings.providers:
             spec = ProviderSpec.from_dict(raw)
-            if settings.hard_zero_cost and spec.cost_mode not in ZERO_COST_ALLOWED_MODES:
+            cost_blocked = (
+                settings.hard_zero_cost
+                and (
+                    spec.cost_mode not in ZERO_COST_ALLOWED_MODES
+                    or (
+                        spec.kind == "chatgpt_plan"
+                        and not spec.no_credit_overage_verified
+                    )
+                )
+            )
+            if cost_blocked:
                 blocked.append({"provider": spec.name, "cost_mode": spec.cost_mode})
                 continue
-            providers.append(OpenAICompatibleProvider(spec))
+            if spec.kind == "chatgpt_plan":
+                providers.append(ChatGPTPlanProvider(spec))
+            else:
+                providers.append(OpenAICompatibleProvider(spec))
         pool = cls(providers, store, settings)
         pool.zero_cost_blocked = blocked
         for item in blocked:
@@ -320,6 +683,32 @@ class ProviderPool:
         self.telemetry.clear()
         return out
 
+    def catalog(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for provider in self.providers:
+            spec = getattr(provider, "spec", None)
+            rows.append({
+                "name": provider.name,
+                "model": str(getattr(spec, "model", "") or ""),
+                "priority": int(getattr(provider, "priority", 100)),
+                "daily_limit": int(getattr(provider, "daily_limit", 0)),
+                "cost_mode": str(getattr(provider, "cost_mode", "free_unverified")),
+                "capabilities": list(
+                    getattr(provider, "capabilities", ("chat",))
+                ),
+            })
+        return rows
+
+    def providers_for(self, capability: str) -> list[StreamProvider]:
+        normalized = str(capability or "chat").strip().lower()
+        if normalized not in _PROVIDER_CAPABILITIES:
+            raise ProviderConfigError(f"invalid routing capability: {normalized}")
+        return [
+            provider
+            for provider in self.providers
+            if normalized in set(getattr(provider, "capabilities", ("chat",)))
+        ]
+
     def metrics(self) -> dict[str, Any]:
         return {
             "turns": self._turns,
@@ -335,7 +724,10 @@ class ProviderPool:
         messages: list[dict[str, str]],
         *,
         session_id: str | None = None,
+        capability: str = "chat",
     ) -> AsyncIterator[RouteEvent]:
+        normalized_capability = str(capability or "chat").strip().lower()
+        selected_providers = self.providers_for(normalized_capability)
         turn_id = uuid.uuid4().hex[:8]
         errors: list[str] = []
         attempted: set[str] = set()
@@ -346,10 +738,11 @@ class ProviderPool:
             "turn.start",
             turn=turn_id,
             session_id=session_id,
-            providers=[p.name for p in self.providers],
+            providers=[p.name for p in selected_providers],
+            capability=normalized_capability,
         )
 
-        for provider in self.providers:
+        for provider in selected_providers:
             if attempts >= max_attempts:
                 self.emit(
                     "attempts.capped",
@@ -495,7 +888,11 @@ class ProviderPool:
             )
             return
 
-        detail = "; ".join(errors) if errors else "no configured/available providers"
+        detail = (
+            "; ".join(errors)
+            if errors
+            else f"no configured/available providers for capability {normalized_capability}"
+        )
         self.emit(
             "turn.failed",
             turn=turn_id,

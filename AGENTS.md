@@ -20,6 +20,7 @@ Each installation is isolated and owns its own identity, runtime data, provider 
 8. Keep model, router, harness, memory, browser and voice layers replaceable.
 9. Never commit secrets, runtime databases, setup tokens, cookies or private user content.
 10. Never claim USD 0, realtime voice quality, hardware fit or production readiness without verifiable evidence.
+11. ChatGPT-plan usage, when enabled, must use OpenAI's documented Sign in with ChatGPT / Responses path. Keep OAuth tokens server-side, require explicit no-credit-overage verification, and never substitute reverse-engineered ChatGPT consumer endpoints.
 
 ## Public-product isolation
 

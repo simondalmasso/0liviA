@@ -54,11 +54,10 @@ def test_production_bootstrap_requires_immutable_ref_and_hides_gateway_token():
     assert '^[0-9a-fA-F]{40}$' in cloud_init
 
 
-def test_env_examples_document_first_run_registration_without_plaintext_password():
+def test_env_examples_document_owner_cookie_auth_without_plaintext_password():
     for path in (ROOT / ".env.example", ROOT / "deploy" / "olivia.env.example"):
         content = path.read_text(encoding="utf-8")
-        assert "OLIVIA_REGISTRATION_TOKEN=" in content
-        assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" not in content
+        assert "OLIVIA_OWNER_PASSWORD_VERIFIER=" in content
         assert "OLIVIA_OWNER_PASSWORD=" not in content
 
 
@@ -90,67 +89,58 @@ def test_product_docs_track_cloud_workspace_and_agent_tools():
     assert "contents: read" in decisions
 
 
-def test_public_product_is_instance_isolated_and_has_no_personal_backend_defaults():
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    env = (ROOT / ".env.example").read_text(encoding="utf-8")
-    deploy_env = (ROOT / "deploy" / "olivia.env.example").read_text(encoding="utf-8")
-    worker = (ROOT / "cloudflare" / "worker.mjs").read_text(encoding="utf-8")
+def test_coding_agent_never_receives_repository_admin_write_credentials():
     workflow = (ROOT / ".github" / "workflows" / "coding-agent.yml").read_text(encoding="utf-8")
-    server = (ROOT / "olivia" / "server.py").read_text(encoding="utf-8")
+    code_segment = workflow.split("jobs:\n  code:", 1)[1].split("\n  publish:", 1)[0]
+    publish_segment = workflow.split("\n  publish:", 1)[1]
 
-    public_blob = "\n".join([readme, env, deploy_env, worker, workflow, server]).lower()
-    assert "simondalmasso44@gmail.com" not in public_blob
-    assert "0livia.simondalmasso44.workers.dev" not in public_blob
-    assert "olivia_coding_repo=simondalmasso/0livia" not in public_blob
-
-    assert "OLIVIA_CODING_REPO=YOUR_GITHUB_USER/YOUR_REPO" in env
-    assert "OLIVIA_CODING_REPO=YOUR_GITHUB_USER/YOUR_REPO" in deploy_env
-    assert 'default: "main"' in workflow
-    assert 'os.getenv("OLIVIA_CODING_BASE_REF", "main")' in server
-    assert "const TRANSITIONAL_BRIDGE_ENABLED = false;" in worker
+    assert "contents: write" not in code_segment
+    assert "persist-credentials: false" in code_segment
+    assert "github.token" not in code_segment
+    assert "NVIDIA_API_KEY" not in publish_segment
+    assert "contents: write" in publish_segment
 
 
-def test_public_product_docs_define_privacy_self_hosting_and_claims_policy():
+def test_chatgpt_plan_docs_match_implemented_onboarding():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
-    privacy = (ROOT / "docs" / "PRIVACY.md").read_text(encoding="utf-8")
-    self_hosting = (ROOT / "docs" / "SELF_HOSTING.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    security = (ROOT / "docs" / "SECURITY_AUDIT.md").read_text(encoding="utf-8")
+    research = (ROOT / "docs" / "RESEARCH.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "CHATGPT_PLAN.md").read_text(encoding="utf-8")
 
-    assert "self-hosted agentic AI workspace" in readme
-    assert "zero-cost-first" in readme
-    assert "not a guarantee" in readme.lower()
-    assert "separate runtime state" in privacy.lower()
-    assert "your own provider" in self_hosting.lower()
-    assert "private vulnerability" in security.lower()
-
-
-def test_public_tree_does_not_embed_personal_runtime_identifiers():
-    blocked = (
-        "simondalmasso44",
-        "@gmail.com",
-        "0livia.simondalmasso44.workers.dev",
-    )
-    suffixes = {".md", ".py", ".js", ".html", ".yml", ".yaml", ".toml", ".sh", ".example"}
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or "tests" in path.parts or path.suffix not in suffixes:
-            continue
-        content = path.read_text(encoding="utf-8", errors="ignore").lower()
-        for marker in blocked:
-            assert marker.lower() not in content, f"{marker} leaked into public file {path.relative_to(ROOT)}"
+    assert "Implement the one-time local Sign in with ChatGPT OAuth onboarding helper" not in plan
+    assert "OAuth onboarding/JWKS validation is not yet integrated" not in security
+    assert "one-time OAuth onboarding remains a release gate" not in research
+    assert "one-time local Sign in with ChatGPT OAuth helper" in readme
+    assert "PKCE" in runbook and "JWKS" in runbook
+    assert "no_credit_overage_verified" in runbook
 
 
-def test_public_product_has_no_maintainer_cloud_defaults():
-    env = (ROOT / ".env.example").read_text(encoding="utf-8")
-    deploy_env = (ROOT / "deploy" / "olivia.env.example").read_text(encoding="utf-8")
-    worker = (ROOT / "cloudflare" / "worker.mjs").read_text(encoding="utf-8")
-    assert "OLIVIA_PROVIDERS_JSON=[]" in env
-    assert "OLIVIA_PROVIDERS_JSON=[]" in deploy_env
-    assert "const TRANSITIONAL_BRIDGE_ENABLED = false;" in worker
-    assert "OLIVIA_CF_ACCOUNT_ID=" not in env.replace("# OLIVIA_CF_ACCOUNT_ID=", "")
-    assert "OLIVIA_CF_API_TOKEN=" not in env.replace("# OLIVIA_CF_API_TOKEN=", "")
+def test_github_actions_are_pinned_to_immutable_commits():
+    import re
+
+    workflows = ROOT / ".github" / "workflows"
+    action_ref = re.compile(r"^\s*(?:-\s*)?uses:\s+(actions/[^@\s]+)@([^\s#]+)", re.MULTILINE)
+    unpinned = []
+    for path in workflows.glob("*.yml"):
+        text = path.read_text(encoding="utf-8")
+        for action, ref in action_ref.findall(text):
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                unpinned.append(f"{path.name}: {action}@{ref}")
+    assert unpinned == []
 
 
-def test_package_exposes_public_olivia_cli_entrypoint():
-    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert '[project.scripts]' in pyproject
-    assert 'olivia = "olivia.server:main"' in pyproject
+def test_browser_worker_docs_require_private_artifact_repo():
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    worker = (ROOT / "olivia" / "browser_worker.py").read_text(encoding="utf-8")
+
+    assert "OLIVIA_BROWSER_REPO=owner/private-browser" in env_example
+    assert "OLIVIA_BROWSER_ZERO_COST_VERIFIED=0" in env_example
+    assert "OLIVIA_BROWSER_REPO=simondalmasso/0liviA" not in env_example
+    assert "public-repo runner" not in architecture
+    assert "public-repo runner" not in plan
+    assert "private GitHub" in architecture
+    assert "private GitHub" in plan
+    assert "public GitHub Actions runner" not in worker

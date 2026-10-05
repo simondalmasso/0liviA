@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -25,6 +26,8 @@ def _scrub_value(value: Any) -> Any:
 
 
 DEFAULT_PROJECT_ID = "default"
+TRUSTED_DEVICE_TOUCH_INTERVAL_S = 300
+SCHEMA_VERSION = 1
 
 
 _SCHEMA = """
@@ -147,7 +150,8 @@ CREATE TABLE IF NOT EXISTS trusted_devices (
     label TEXT NOT NULL,
     created_at REAL NOT NULL,
     last_seen_at REAL NOT NULL,
-    expires_at REAL NOT NULL
+    expires_at REAL NOT NULL,
+    remembered INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_trusted_devices_expiry
     ON trusted_devices(expires_at);
@@ -166,13 +170,27 @@ class Store:
             isolation_level=None,
             check_same_thread=False,
         )
+        current_version = int(
+            self._conn.execute("PRAGMA user_version").fetchone()[0]
+        )
+        if current_version > SCHEMA_VERSION:
+            self._conn.close()
+            raise ValueError(
+                f"database uses newer schema version {current_version}; "
+                f"this build supports up to {SCHEMA_VERSION}"
+            )
+
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
+        os.chmod(self.path, 0o600)
         self._migrate_workspace_schema()
+        self._ensure_workspace_invariants()
+        if current_version < SCHEMA_VERSION:
+            self._conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     def _migrate_workspace_schema(self) -> None:
         with self._lock:
@@ -182,6 +200,19 @@ class Store:
             }
             if "project_id" not in columns:
                 self._conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT")
+
+            device_columns = {
+                str(row["name"])
+                for row in self._conn.execute("PRAGMA table_info(trusted_devices)").fetchall()
+            }
+            if "remembered" not in device_columns:
+                self._conn.execute(
+                    "ALTER TABLE trusted_devices ADD COLUMN remembered INTEGER NOT NULL DEFAULT 0"
+                )
+                # Before this column existed every trusted_devices row represented
+                # an explicitly remembered device; preserve that legacy meaning.
+                self._conn.execute("UPDATE trusted_devices SET remembered=1")
+
             self._conn.execute(
                 """CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
                    ON sessions(project_id, updated_at DESC)"""
@@ -195,6 +226,35 @@ class Store:
             self._conn.execute(
                 "UPDATE sessions SET project_id=? WHERE project_id IS NULL OR project_id=''",
                 (DEFAULT_PROJECT_ID,),
+            )
+
+    def _ensure_workspace_invariants(self) -> None:
+        with self._lock:
+            self._conn.executescript(
+                """
+                CREATE TRIGGER IF NOT EXISTS sessions_project_insert_guard
+                BEFORE INSERT ON sessions
+                WHEN NEW.project_id IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM projects WHERE id=NEW.project_id)
+                BEGIN
+                    SELECT RAISE(ABORT, 'project not found');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS sessions_project_update_guard
+                BEFORE UPDATE OF project_id ON sessions
+                WHEN NEW.project_id IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM projects WHERE id=NEW.project_id)
+                BEGIN
+                    SELECT RAISE(ABORT, 'project not found');
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS projects_delete_guard
+                BEFORE DELETE ON projects
+                WHEN EXISTS (SELECT 1 FROM sessions WHERE project_id=OLD.id)
+                BEGIN
+                    SELECT RAISE(ABORT, 'project in use');
+                END;
+                """
             )
 
     def project_exists(self, project_id: str) -> bool:
@@ -292,15 +352,29 @@ class Store:
         if email and password_verifier:
             self.register_owner(email, password_verifier)
 
-    def create_trusted_device(self, label: str, *, expires_at: float) -> str:
+    def create_trusted_device(
+        self,
+        label: str,
+        *,
+        expires_at: float,
+        remembered: bool = True,
+    ) -> str:
         clean_label = redact_secrets(str(label or "").strip())[:120] or "Dispositivo"
         now = time.time()
         device_id = uuid.uuid4().hex
         with self._lock:
             self._conn.execute(
-                """INSERT INTO trusted_devices(id,label,created_at,last_seen_at,expires_at)
-                   VALUES(?,?,?,?,?)""",
-                (device_id, clean_label, now, now, float(expires_at)),
+                """INSERT INTO trusted_devices(
+                       id,label,created_at,last_seen_at,expires_at,remembered
+                   ) VALUES(?,?,?,?,?,?)""",
+                (
+                    device_id,
+                    clean_label,
+                    now,
+                    now,
+                    float(expires_at),
+                    1 if remembered else 0,
+                ),
             )
         return device_id
 
@@ -308,7 +382,8 @@ class Store:
         moment = time.time() if now is None else float(now)
         with self._lock:
             row = self._conn.execute(
-                "SELECT expires_at FROM trusted_devices WHERE id=? LIMIT 1",
+                """SELECT expires_at,last_seen_at
+                   FROM trusted_devices WHERE id=? LIMIT 1""",
                 (str(device_id),),
             ).fetchone()
             if row is None:
@@ -319,10 +394,11 @@ class Store:
                     (str(device_id),),
                 )
                 return False
-            self._conn.execute(
-                "UPDATE trusted_devices SET last_seen_at=? WHERE id=?",
-                (moment, str(device_id)),
-            )
+            if moment - float(row["last_seen_at"]) >= TRUSTED_DEVICE_TOUCH_INTERVAL_S:
+                self._conn.execute(
+                    "UPDATE trusted_devices SET last_seen_at=? WHERE id=?",
+                    (moment, str(device_id)),
+                )
         return True
 
     def list_trusted_devices(
@@ -340,6 +416,7 @@ class Store:
             rows = self._conn.execute(
                 """SELECT id,label,created_at,last_seen_at,expires_at
                    FROM trusted_devices
+                   WHERE remembered=1
                    ORDER BY last_seen_at DESC
                    LIMIT ?""",
                 (max(1, min(int(limit), 100)),),
@@ -487,20 +564,26 @@ class Store:
         *,
         include_inactive: bool = False,
     ) -> list[dict[str, Any]]:
-        where = "scope=?"
-        args: list[Any] = [scope]
-        if not include_inactive:
-            where += " AND is_active=1"
-        args.append(max(1, min(limit, 500)))
+        bounded_limit = max(1, min(limit, 500))
         with self._lock:
-            rows = self._conn.execute(
-                f"""SELECT id,scope,key,value,source,confidence,is_active,created_at
-                    FROM memories
-                    WHERE {where}
-                    ORDER BY id DESC
-                    LIMIT ?""",
-                tuple(args),
-            ).fetchall()
+            if include_inactive:
+                rows = self._conn.execute(
+                    """SELECT id,scope,key,value,source,confidence,is_active,created_at
+                       FROM memories
+                       WHERE scope=?
+                       ORDER BY id DESC
+                       LIMIT ?""",
+                    (scope, bounded_limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """SELECT id,scope,key,value,source,confidence,is_active,created_at
+                       FROM memories
+                       WHERE scope=? AND is_active=1
+                       ORDER BY id DESC
+                       LIMIT ?""",
+                    (scope, bounded_limit),
+                ).fetchall()
         return [dict(r) for r in rows]
 
     def delete_memory(self, scope: str, key: str) -> int:
@@ -508,15 +591,6 @@ class Store:
         with self._lock:
             cur = self._conn.execute(
                 "DELETE FROM memories WHERE scope=? AND key=?",
-                (scope, redact_secrets(str(key))),
-            )
-        return int(cur.rowcount)
-
-    def deactivate_memory(self, scope: str, key: str) -> int:
-        """Legacy soft-delete helper kept for migration compatibility."""
-        with self._lock:
-            cur = self._conn.execute(
-                "UPDATE memories SET is_active=0 WHERE scope=? AND key=? AND is_active=1",
                 (scope, redact_secrets(str(key))),
             )
         return int(cur.rowcount)
@@ -572,7 +646,65 @@ class Store:
                     time.time(),
                 ),
             )
-        return int(cur.lastrowid)
+        event_id = int(cur.lastrowid)
+        if str(event_type).startswith("security."):
+            self.prune_security_events()
+        return event_id
+
+    def prune_security_events(
+        self,
+        *,
+        now: float | None = None,
+        retention_s: float = 90 * 24 * 60 * 60,
+        keep_latest: int = 2000,
+    ) -> int:
+        moment = time.time() if now is None else float(now)
+        cutoff = moment - max(0.0, float(retention_s))
+        keep = max(1, min(int(keep_latest), 10_000))
+        with self._lock:
+            old = self._conn.execute(
+                "DELETE FROM events WHERE type LIKE ? AND created_at<?",
+                ("security.%", cutoff),
+            ).rowcount
+            overflow = self._conn.execute(
+                """DELETE FROM events
+                   WHERE type LIKE ?
+                     AND id NOT IN (
+                       SELECT id FROM events
+                       WHERE type LIKE ?
+                       ORDER BY id DESC
+                       LIMIT ?
+                     )""",
+                ("security.%", "security.%", keep),
+            ).rowcount
+        return int(old) + int(overflow)
+
+    def recent_events(self, *, prefix: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        bounded_limit = max(1, min(int(limit), 500))
+        with self._lock:
+            if prefix:
+                rows = self._conn.execute(
+                    """SELECT id,session_id,job_id,type,payload_json,created_at
+                       FROM events
+                       WHERE type LIKE ?
+                       ORDER BY id DESC
+                       LIMIT ?""",
+                    (f"{prefix}%", bounded_limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """SELECT id,session_id,job_id,type,payload_json,created_at
+                       FROM events
+                       ORDER BY id DESC
+                       LIMIT ?""",
+                    (bounded_limit,),
+                ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = json.loads(item.pop("payload_json"))
+            out.append(item)
+        return out
 
     def create_job(self, kind: str, repo: str | None = None) -> str:
         job_id = uuid.uuid4().hex[:16]

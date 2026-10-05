@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -12,17 +13,26 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from aiohttp import web
 
 from .agent import Agent
 from .config import Settings
+from .browser_worker import (
+    BrowserJobRequest,
+    BrowserWorkerError,
+    GitHubActionsBrowserWorker,
+    browser_worker_from_env,
+)
 from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWorker, coding_worker_from_env
 from .router import ProviderPool
 from .research import SearchUnavailable, WebSearch, web_search_from_env
 from .security import make_password_verifier, redact_secrets, verify_password
 from .store import Store
-from .web import SafeWebReader, WebReadError
+from .web import SafeWebReader, WebReadError, has_sensitive_query_parameters
+from .voice.adapters.transport import AiohttpWebSocketTransport, DirectWssConfig
+from .voice.pipeline import VoicePipeline
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_MESSAGE_CHARS = 12_000
@@ -34,8 +44,10 @@ OWNER_SESSION_TTL_S = 12 * 60 * 60
 OWNER_REMEMBER_TTL_S = 30 * 24 * 60 * 60
 LOGIN_FAILURE_LIMIT = 5
 LOGIN_FAILURE_WINDOW_S = 60
+LOGIN_FAILURE_KEYS_MAX = 2048
 
 LocaleValidator = Callable[[str], bool]
+VoicePipelineFactory = Callable[[AiohttpWebSocketTransport, str], VoicePipeline]
 
 
 def default_es_ar_validator(text: str) -> bool:
@@ -65,6 +77,32 @@ def _json(payload: dict[str, Any], status: int = 200) -> web.Response:
     return web.json_response(payload, status=status, dumps=lambda value: json.dumps(value, ensure_ascii=False))
 
 
+@web.middleware
+async def security_headers_and_origin(
+    request: web.Request,
+    handler: Callable[[web.Request], Any],
+) -> web.StreamResponse:
+    origin = request.headers.get("Origin", "")
+    if origin and request.path.startswith("/api/"):
+        try:
+            parsed = urlsplit(origin)
+        except ValueError:
+            return _json({"error": "origin"}, 403)
+        host = request.headers.get("Host", "")
+        if parsed.scheme not in {"http", "https"} or not host or parsed.netloc != host:
+            return _json({"error": "origin"}, 403)
+
+    response = await handler(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    if request.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
 @dataclass
 class ActiveTurn:
     turn_id: str
@@ -85,8 +123,11 @@ class Gateway:
         locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
         static_root: Path | None = None,
         coding_worker: GitHubActionsCodingWorker | None = None,
+        browser_worker: GitHubActionsBrowserWorker | None = None,
         web_reader: SafeWebReader | None = None,
         web_search: WebSearch | None = None,
+        voice_pipeline_factory: VoicePipelineFactory | None = None,
+        voice_wss_config: DirectWssConfig | None = None,
     ):
         self.agent = agent
         self.settings = settings
@@ -116,11 +157,15 @@ class Gateway:
         self.locale_buffer_chars = max(1, locale_buffer_chars)
         self.static_root = (static_root or Path(__file__).resolve().parent.parent / "web").resolve()
         self.coding_worker = coding_worker
-        self.coding_base_ref = os.getenv("OLIVIA_CODING_BASE_REF", "main").strip() or "main"
+        self.browser_worker = browser_worker
         self.web_reader = web_reader or SafeWebReader()
         self.web_search = web_search
+        self.voice_pipeline_factory = voice_pipeline_factory
+        self.voice_wss_config = voice_wss_config or DirectWssConfig()
         self._turns: dict[str, ActiveTurn] = {}
         self._turns_lock = asyncio.Lock()
+        self._voice_sessions: set[str] = set()
+        self._voice_sessions_lock = asyncio.Lock()
         self._login_failures: dict[str, list[float]] = {}
 
     def _owner_cookie_value(self, expires_at: int, device_id: str | None = None) -> str:
@@ -170,16 +215,44 @@ class Gateway:
         return _json({"error": "unauthorized"}, status=401)
 
     def _login_key(self, request: web.Request) -> str:
-        forwarded = request.headers.get("X-Forwarded-For", "")
-        if forwarded:
-            candidate = forwarded.split(",", 1)[0].strip()
-            if candidate:
-                return candidate[:128]
-        return str(request.remote or "unknown")[:128]
+        remote = str(request.remote or "").strip()
+        try:
+            remote_ip = ipaddress.ip_address(remote)
+        except ValueError:
+            remote_ip = None
+        if remote_ip is not None and remote_ip.is_loopback:
+            proxied = request.headers.get("X-Olivia-Client-IP", "").strip()
+            try:
+                client_ip = ipaddress.ip_address(proxied)
+            except ValueError:
+                client_ip = None
+            if client_ip is not None:
+                return str(client_ip)
+        return remote[:128] or "unknown"
+
+    def _prune_login_failures(self, now: float) -> None:
+        stale = []
+        for key, stamps in self._login_failures.items():
+            recent = [stamp for stamp in stamps if now - stamp < LOGIN_FAILURE_WINDOW_S]
+            if recent:
+                self._login_failures[key] = recent[-LOGIN_FAILURE_LIMIT:]
+            else:
+                stale.append(key)
+        for key in stale:
+            self._login_failures.pop(key, None)
+        overflow = len(self._login_failures) - LOGIN_FAILURE_KEYS_MAX
+        if overflow > 0:
+            oldest = sorted(
+                self._login_failures.items(),
+                key=lambda item: item[1][-1] if item[1] else 0.0,
+            )
+            for key, _ in oldest[:overflow]:
+                self._login_failures.pop(key, None)
 
     def _login_retry_after(self, request: web.Request) -> int:
         key = self._login_key(request)
         now = time.monotonic()
+        self._prune_login_failures(now)
         recent = [
             stamp
             for stamp in self._login_failures.get(key, [])
@@ -196,6 +269,7 @@ class Gateway:
     def _record_login_failure(self, request: web.Request) -> None:
         key = self._login_key(request)
         now = time.monotonic()
+        self._prune_login_failures(now)
         recent = [
             stamp
             for stamp in self._login_failures.get(key, [])
@@ -216,17 +290,16 @@ class Gateway:
     ) -> web.Response:
         ttl_s = OWNER_REMEMBER_TTL_S if remember else OWNER_SESSION_TTL_S
         expires_at = int(time.time()) + ttl_s
-        device_id = None
-        if remember:
-            device_id = self.agent.store.create_trusted_device(
-                device_name.strip() or "Este dispositivo",
-                expires_at=expires_at,
-            )
+        device_id = self.agent.store.create_trusted_device(
+            device_name.strip() or "Este dispositivo",
+            expires_at=expires_at,
+            remembered=remember,
+        )
         response = _json({
             "authenticated": True,
             "email": email,
             "remembered": remember,
-            "device_id": device_id,
+            "device_id": device_id if remember else None,
             "expires_at": expires_at,
         })
         cookie_kwargs = {
@@ -280,6 +353,10 @@ class Gateway:
         verifier = make_password_verifier(password)
         if not self.agent.store.register_owner(normalized_email, verifier):
             return _json({"error": "registration_closed"}, 409)
+        self.agent.store.record_event(
+            "security.owner_registered",
+            {"remembered": bool(remember)},
+        )
         self._clear_login_failures(request)
         return self._issue_owner_session(
             email=normalized_email,
@@ -296,6 +373,7 @@ class Gateway:
 
         retry_after = self._login_retry_after(request)
         if retry_after:
+            self.agent.store.record_event("security.login_rate_limited", {"blocked": True})
             response = _json({"error": "login_rate_limited"}, 429)
             response.headers["Retry-After"] = str(retry_after)
             return response
@@ -317,6 +395,7 @@ class Gateway:
             or len(device_name) > 120
         ):
             self._record_login_failure(request)
+            self.agent.store.record_event("security.login_failed", {"reason": "invalid_input"})
             return _json({"error": "invalid credentials"}, 400)
 
         normalized_email = email.strip().casefold()
@@ -324,8 +403,13 @@ class Gateway:
         password_ok = verify_password(password, str(account["password_verifier"]))
         if not email_ok or not password_ok:
             self._record_login_failure(request)
+            self.agent.store.record_event("security.login_failed", {"reason": "credentials"})
             return _json({"error": "unauthorized"}, 401)
 
+        self.agent.store.record_event(
+            "security.login_succeeded",
+            {"remembered": bool(remember)},
+        )
         self._clear_login_failures(request)
         return self._issue_owner_session(
             email=str(account["email"]),
@@ -334,6 +418,18 @@ class Gateway:
         )
 
     async def logout(self, request: web.Request) -> web.Response:
+        cookie = request.cookies.get(OWNER_COOKIE, "")
+        if cookie and self._owner_cookie_valid(cookie):
+            try:
+                _version, _expires, device_id, _signature = cookie.split(":", 3)
+            except ValueError:
+                device_id = "-"
+            if device_id != "-":
+                self.agent.store.delete_trusted_device(device_id)
+                self.agent.store.record_event(
+                    "security.device_revoked",
+                    {"revoked": True, "reason": "logout"},
+                )
         response = _json({"authenticated": False})
         response.del_cookie(OWNER_COOKIE, path="/")
         return response
@@ -363,6 +459,10 @@ class Gateway:
             return denied
         device_id = request.match_info["device_id"]
         revoked = self.agent.store.delete_trusted_device(device_id) > 0
+        self.agent.store.record_event(
+            "security.device_revoked",
+            {"revoked": revoked},
+        )
         return _json({"revoked": revoked})
 
     async def _read_json(self, request: web.Request) -> dict[str, Any]:
@@ -392,32 +492,52 @@ class Gateway:
 
     async def healthz(self, request: web.Request) -> web.Response:
         providers = list(self.agent.router.providers)
-        configured = 0
+        configured = len(providers)
         available = 0
         health = getattr(self.agent.router, "health", None)
         health_metrics = health.metrics() if health is not None else {}
+        availability_by_name: dict[str, bool] = {}
         for provider in providers:
-            configured += 1
-            spec = getattr(provider, "spec", None)
-            env_name = getattr(spec, "api_key_env", "")
-            cost_mode = getattr(spec, "cost_mode", "free_unverified")
-            if cost_mode != "local" and (not env_name or not os.getenv(env_name)):
-                continue
+            transport_ready = bool(getattr(provider, "configured", False))
             state = health_metrics.get(provider.name, {})
             cooldown = float(state.get("cooldown_remaining_s", 0.0))
             daily = int(state.get("daily_requests", 0)) if state.get("day_current", True) else 0
-            if cooldown <= 0 and (
+            route_ready = transport_ready and cooldown <= 0 and (
                 not provider.daily_limit or daily < provider.daily_limit
-            ):
+            )
+            availability_by_name[provider.name] = route_ready
+            if route_ready:
                 available += 1
+
+        catalog_fn = getattr(self.agent.router, "catalog", None)
+        base_catalog = catalog_fn() if callable(catalog_fn) else []
+        provider_catalog = [
+            {
+                **row,
+                "available": bool(availability_by_name.get(str(row.get("name") or ""), False)),
+            }
+            for row in base_catalog
+        ]
+        primary_model = next(
+            (
+                str(row.get("model") or "")
+                for row in provider_catalog
+                if row.get("available") and row.get("model")
+            ),
+            str(provider_catalog[0].get("model") or "") if provider_catalog else "",
+        )
+
         return _json({
             "process_alive": True,
             "provider_configured": bool(configured),
             "provider_ready": bool(available),
             "providers_configured": configured,
             "providers_available": available,
+            "primary_model": primary_model,
+            "provider_catalog": provider_catalog,
             "hard_zero_cost": bool(self.settings.hard_zero_cost),
             "api_mode": "canonical",
+            "build_sha": self.settings.build_sha,
             "owner_auth_configured": bool(
                 self.auth_token and self.agent.store.get_owner_account() is not None
             ),
@@ -428,8 +548,20 @@ class Gateway:
                 self.registration_token and self.agent.store.get_owner_account() is None
             ),
             "coding_worker_configured": bool(self.coding_worker and self.coding_worker.configured),
+            "browser_worker_configured": bool(self.browser_worker and self.browser_worker.configured),
             "web_read_configured": self.web_reader is not None,
             "web_search_configured": bool(self.web_search and self.web_search.configured),
+            "voice_backend_configured": self.voice_pipeline_factory is not None,
+            "voice_transport": "direct-wss",
+            "voice_locale": "es-AR",
+        })
+
+    async def security_events(self, request: web.Request) -> web.Response:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        return _json({
+            "events": self.agent.store.recent_events(prefix="security.", limit=100)
         })
 
     async def workspace(self, request: web.Request) -> web.Response:
@@ -645,6 +777,111 @@ class Gateway:
             **remote,
         }
 
+    async def _dispatch_browser_job(
+        self,
+        *,
+        url: str,
+        objective: str,
+        base_ref: str,
+    ) -> dict[str, Any]:
+        if self.browser_worker is None or not self.browser_worker.configured:
+            raise BrowserWorkerError("browser_worker_unavailable")
+        if redact_secrets(url) != url:
+            raise ValueError("browser URL appears to contain a secret")
+        safe_objective = redact_secrets(objective)
+        request = BrowserJobRequest(
+            url=url,
+            objective=safe_objective,
+            base_ref=base_ref,
+        )
+        self.browser_worker.validate_request(request)
+        job_id = self.agent.store.create_job("browser", repo=self.browser_worker.repo)
+        checkpoint = {
+            "base_ref": base_ref,
+            "url": url,
+            "objective": safe_objective,
+            "workflow": self.browser_worker.workflow,
+        }
+        self.agent.store.checkpoint_job(job_id, "dispatching", checkpoint)
+        try:
+            remote = await self.browser_worker.dispatch(job_id, request)
+        except BrowserWorkerError as exc:
+            self.agent.store.checkpoint_job(
+                job_id,
+                "failed",
+                {**checkpoint, "error": str(exc)[:500]},
+            )
+            raise
+        checkpoint = {**checkpoint, **remote}
+        self.agent.store.checkpoint_job(job_id, "dispatched", checkpoint)
+        return {
+            "job_id": job_id,
+            "status": "dispatched",
+            **remote,
+        }
+
+    @staticmethod
+    def _bounded_browser_result(payload: dict[str, Any]) -> dict[str, Any]:
+        links = []
+        for item in (payload.get("links") or [])[:40]:
+            if not isinstance(item, dict):
+                continue
+            links.append({
+                "text": redact_secrets(str(item.get("text") or ""))[:200],
+                "url": str(item.get("url") or "")[:2048],
+            })
+        return {
+            "final_url": str(payload.get("final_url") or "")[:2048],
+            "title": redact_secrets(str(payload.get("title") or ""))[:300],
+            "text": redact_secrets(str(payload.get("text") or ""))[:30_000],
+            "links": links,
+            "request_count": int(payload.get("request_count") or 0),
+            "truncated": bool(payload.get("truncated")),
+        }
+
+    async def _refresh_browser_job(self, job_id: str) -> dict[str, Any] | None:
+        job = self.agent.store.get_job(job_id)
+        if job is None:
+            return None
+        if job.get("kind") != "browser":
+            return job
+        if self.browser_worker is None or not self.browser_worker.configured:
+            return job
+        try:
+            remote = await self.browser_worker.status(job_id)
+        except BrowserWorkerError:
+            remote = None
+        if remote:
+            status = str(remote.get("remote_status") or job["status"])
+            conclusion = remote.get("remote_conclusion")
+            if status == "completed":
+                status = "succeeded" if conclusion == "success" else "failed"
+            checkpoint = {**job.get("checkpoint", {}), **remote}
+            if (
+                status == "succeeded"
+                and checkpoint.get("remote_run_id")
+                and not checkpoint.get("browser_result")
+            ):
+                try:
+                    payload = await self.browser_worker.result(
+                        checkpoint["remote_run_id"]
+                    )
+                except (BrowserWorkerError, ValueError):
+                    payload = None
+                if payload:
+                    checkpoint["browser_result"] = self._bounded_browser_result(payload)
+            self.agent.store.checkpoint_job(job_id, status, checkpoint)
+            job = self.agent.store.get_job(job_id) or job
+        return job
+
+    async def _refresh_job(self, job_id: str) -> dict[str, Any] | None:
+        job = self.agent.store.get_job(job_id)
+        if job is None:
+            return None
+        if job.get("kind") == "browser":
+            return await self._refresh_browser_job(job_id)
+        return await self._refresh_code_job(job_id)
+
     async def _refresh_code_job(self, job_id: str) -> dict[str, Any] | None:
         job = self.agent.store.get_job(job_id)
         if job is None:
@@ -689,7 +926,7 @@ class Gateway:
 
         payload = await self._read_json(request)
         task = payload.get("task")
-        base_ref = payload.get("base_ref", self.coding_base_ref)
+        base_ref = payload.get("base_ref", "arch/gpt-synthesis-v1")
         mode = payload.get("mode", "implement")
         publish_branch = payload.get("publish_branch", False)
         if (
@@ -719,7 +956,7 @@ class Gateway:
         denied = await self._require_auth(request)
         if denied:
             return denied
-        job = await self._refresh_code_job(request.match_info["job_id"])
+        job = await self._refresh_job(request.match_info["job_id"])
         if job is None:
             return _json({"error": "job not found"}, 404)
         return _json({"job": job})
@@ -728,7 +965,7 @@ class Gateway:
     def _parse_chat_command(text: str) -> tuple[str, str] | None:
         command, separator, argument = text.partition(" ")
         command = command.lower()
-        if command in {"/code", "/repair", "/review", "/read", "/search", "/research"}:
+        if command in {"/code", "/repair", "/review", "/read", "/search", "/research", "/browse"}:
             if not separator or not argument.strip():
                 return command, ""
             return command, argument.strip()
@@ -762,6 +999,33 @@ class Gateway:
                 return
 
             url, separator, question = argument.partition(" ")
+            if has_sensitive_query_parameters(url):
+                safe_question = redact_secrets(question.strip())
+                persisted_user = "/read [REDACTED_SENSITIVE_URL]"
+                if safe_question:
+                    persisted_user += f" {safe_question}"
+                assistant = (
+                    "No puedo leer una URL que incluya parámetros sensibles "
+                    "como tokens, credenciales o firmas."
+                )
+                self.agent.store.append_message(session_id, "user", persisted_user)
+                self.agent.store.append_message(
+                    session_id,
+                    "assistant",
+                    assistant,
+                    provider="web-reader",
+                    status="complete",
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "sensitive_url",
+                    "retryable": False,
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
             try:
                 document = await self.web_reader.read(url)
             except WebReadError as exc:
@@ -801,6 +1065,7 @@ class Gateway:
                 prompt,
                 turn_id,
                 ephemeral_context=context,
+                capability="research",
             )
             return
 
@@ -864,6 +1129,7 @@ class Gateway:
                 safe_user,
                 turn_id,
                 ephemeral_context=context,
+                capability="research",
             )
             return
 
@@ -944,7 +1210,77 @@ class Gateway:
                 safe_user,
                 turn_id,
                 ephemeral_context=context,
+                capability="research",
             )
+            return
+
+        if name == "/browse":
+            if not argument:
+                assistant = "Usá /browse seguido de una URL pública y, opcionalmente, un objetivo."
+                self.agent.store.append_message(session_id, "user", safe_user)
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="browser-worker"
+                )
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+
+            target_url, separator, objective = argument.partition(" ")
+            self.agent.store.append_message(session_id, "user", safe_user)
+            try:
+                result = await self._dispatch_browser_job(
+                    url=target_url,
+                    objective=objective.strip() if separator else "",
+                    base_ref="arch/gpt-synthesis-v1",
+                )
+            except (ValueError, BrowserWorkerError) as exc:
+                assistant = (
+                    "El browser worker no está disponible ahora."
+                    if str(exc) == "browser_worker_unavailable"
+                    else "No pude despachar el navegador aislado."
+                )
+                self.agent.store.append_message(
+                    session_id,
+                    "assistant",
+                    assistant,
+                    provider="browser-worker",
+                    status="complete",
+                )
+                await self._write_event(response, {
+                    "type": "error",
+                    "code": "browser_job_unavailable",
+                    "retryable": True,
+                    "turn_id": turn_id,
+                })
+                await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+                await self._write_event(response, {"type": "done", "turn_id": turn_id})
+                await response.write_eof()
+                return
+
+            assistant = (
+                f"Job {result['job_id']} de navegador JS despachado. "
+                f"Consultalo con /job {result['job_id']}."
+            )
+            self.agent.store.append_message(
+                session_id,
+                "assistant",
+                assistant,
+                provider="browser-worker",
+                status="complete",
+            )
+            await self._write_event(response, {
+                "type": "job",
+                "job_id": result["job_id"],
+                "status": result["status"],
+                "kind": "browser",
+                "repo": result.get("repo"),
+                "workflow": result.get("workflow"),
+                "turn_id": turn_id,
+            })
+            await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+            await self._write_event(response, {"type": "done", "turn_id": turn_id})
+            await response.write_eof()
             return
 
         self.agent.store.append_message(session_id, "user", safe_user)
@@ -963,7 +1299,7 @@ class Gateway:
             try:
                 result = await self._dispatch_code_job(
                     task=redact_secrets(argument),
-                    base_ref=self.coding_base_ref,
+                    base_ref="arch/gpt-synthesis-v1",
                     mode=mode,
                     publish_branch=True,
                 )
@@ -1036,7 +1372,7 @@ class Gateway:
                 await self._write_event(response, {"type": "done", "turn_id": turn_id})
                 await response.write_eof()
                 return
-            job = await self._refresh_code_job(job_id)
+            job = await self._refresh_job(job_id)
             if job is None:
                 assistant = f"No existe el job {job_id}."
                 self.agent.store.append_message(session_id, "assistant", assistant, provider="coding-worker")
@@ -1051,11 +1387,23 @@ class Gateway:
             if remote_url:
                 assistant += f" {remote_url}"
             review_report = checkpoint.get("review_report")
+            browser_result = checkpoint.get("browser_result")
+            persist_assistant = True
             if status == "succeeded" and isinstance(review_report, str) and review_report.strip():
                 assistant += "\n\n" + review_report[:12_000]
-            self.agent.store.append_message(
-                session_id, "assistant", assistant, provider="coding-worker", status="complete"
-            )
+            if status == "succeeded" and isinstance(browser_result, dict):
+                title = str(browser_result.get("title") or "")
+                final_url = str(browser_result.get("final_url") or "")
+                rendered_text = str(browser_result.get("text") or "")
+                assistant += (
+                    f"\n\nRender JS no confiable — {title or '(sin título)'}\n"
+                    f"{final_url}\n\n{rendered_text[:12_000]}"
+                )
+                persist_assistant = False
+            if persist_assistant:
+                self.agent.store.append_message(
+                    session_id, "assistant", assistant, provider="coding-worker", status="complete"
+                )
             await self._write_event(response, {
                 "type": "job",
                 "job_id": job_id,
@@ -1119,6 +1467,56 @@ class Gateway:
                     self._turns.pop(session_id, None)
         return response
 
+    async def voice_ws(self, request: web.Request) -> web.StreamResponse:
+        denied = await self._require_auth(request)
+        if denied:
+            return denied
+        if self.voice_pipeline_factory is None:
+            return _json({"error": "voice_backend_unavailable"}, 503)
+
+        session_id = str(request.query.get("session_id") or "").strip()
+        if not session_id or len(session_id) > 128:
+            return _json({"error": "session_id is required"}, 400)
+        if not self.agent.store.session_exists(session_id):
+            return _json({"error": "session not found"}, 404)
+
+        async with self._voice_sessions_lock:
+            if session_id in self._voice_sessions:
+                return _json({"error": "voice_session_busy"}, 409)
+            self._voice_sessions.add(session_id)
+
+        try:
+            config = self.voice_wss_config
+            ws = web.WebSocketResponse(
+                heartbeat=config.ping_interval_s,
+                receive_timeout=config.receive_timeout_s,
+                max_msg_size=config.max_audio_frame_bytes + 16 * 1024 + 4,
+                autoping=True,
+            )
+            await ws.prepare(request)
+            transport = AiohttpWebSocketTransport(
+                ws,
+                max_audio_frame_bytes=config.max_audio_frame_bytes,
+            )
+            try:
+                pipeline = self.voice_pipeline_factory(transport, session_id)
+                await pipeline.run()
+            except (ValueError, TypeError):
+                if not ws.closed:
+                    await ws.close(code=1003, message=b"invalid voice frame")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                if not ws.closed:
+                    await ws.close(code=1011, message=b"voice backend error")
+            finally:
+                with contextlib.suppress(Exception):
+                    await transport.close()
+            return ws
+        finally:
+            async with self._voice_sessions_lock:
+                self._voice_sessions.discard(session_id)
+
     async def cancel(self, request: web.Request) -> web.Response:
         denied = await self._require_auth(request)
         if denied:
@@ -1153,11 +1551,13 @@ class Gateway:
         turn_id: str,
         *,
         ephemeral_context: str | None = None,
+        capability: str = "chat",
     ) -> None:
         events = self.agent.stream_turn(
             session_id,
             text,
             ephemeral_context=ephemeral_context,
+            capability=capability,
         )
         pending: list[dict[str, Any]] = []
         first_text = ""
@@ -1223,8 +1623,11 @@ def create_app(
     locale_buffer_chars: int = LOCALE_BUFFER_CHARS,
     static_root: Path | None = None,
     coding_worker: GitHubActionsCodingWorker | None = None,
+    browser_worker: GitHubActionsBrowserWorker | None = None,
     web_reader: SafeWebReader | None = None,
     web_search: WebSearch | None = None,
+    voice_pipeline_factory: VoicePipelineFactory | None = None,
+    voice_wss_config: DirectWssConfig | None = None,
 ) -> web.Application:
     settings = settings or Settings.from_env()
     if agent is None:
@@ -1235,6 +1638,13 @@ def create_app(
             coding_worker = coding_worker_from_env()
         except (CodingWorkerError, ValueError):
             coding_worker = None
+    if browser_worker is None:
+        try:
+            browser_worker = browser_worker_from_env(
+                hard_zero_cost=settings.hard_zero_cost
+            )
+        except (BrowserWorkerError, ValueError):
+            browser_worker = None
     if web_search is None:
         try:
             web_search = web_search_from_env()
@@ -1251,10 +1661,16 @@ def create_app(
         locale_buffer_chars=locale_buffer_chars,
         static_root=static_root,
         coding_worker=coding_worker,
+        browser_worker=browser_worker,
         web_reader=web_reader,
         web_search=web_search,
+        voice_pipeline_factory=voice_pipeline_factory,
+        voice_wss_config=voice_wss_config,
     )
-    app = web.Application(client_max_size=MAX_BODY_BYTES)
+    app = web.Application(
+        client_max_size=MAX_BODY_BYTES,
+        middlewares=[security_headers_and_origin],
+    )
     app["gateway"] = gateway
     app.router.add_get("/", gateway.index)
     app.router.add_get("/index.html", gateway.index)
@@ -1265,6 +1681,7 @@ def create_app(
     app.router.add_get("/api/auth/session", gateway.auth_session)
     app.router.add_get("/api/auth/devices", gateway.list_devices)
     app.router.add_delete("/api/auth/devices/{device_id}", gateway.revoke_device)
+    app.router.add_get("/api/security/events", gateway.security_events)
     app.router.add_get("/api/workspace", gateway.workspace)
     app.router.add_post("/api/projects", gateway.create_project)
     app.router.add_post("/api/library", gateway.create_library_item)
@@ -1274,6 +1691,7 @@ def create_app(
     app.router.add_get("/api/sessions/{session_id}/messages", gateway.get_messages)
     app.router.add_post("/api/chat/{session_id}", gateway.chat)
     app.router.add_post("/api/chat/{session_id}/cancel", gateway.cancel)
+    app.router.add_get("/api/voice/ws", gateway.voice_ws)
     app.router.add_post("/api/jobs/code", gateway.create_code_job)
     app.router.add_get("/api/jobs/{job_id}", gateway.get_job)
     return app

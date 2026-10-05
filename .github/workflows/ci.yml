@@ -17,16 +17,22 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install
         run: python -m pip install -e '.[dev]'
       - name: Compile
-        run: python -m compileall -q olivia tests
-      - name: Check deployment scripts
-        run: bash -n deploy/*.sh
+        run: python -m compileall -q olivia tests scripts
+      - name: Scan tracked runtime tree for high-confidence secrets
+        run: python scripts/scan_secret_tree.py
+      - name: Scan Git history for high-confidence secrets
+        run: python scripts/scan_secret_history.py
+      - name: Check deployment and setup scripts
+        run: bash -n deploy/*.sh scripts/*.sh
       - name: Check browser script syntax
         run: |
           python - <<'PY'

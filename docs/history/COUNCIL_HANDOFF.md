@@ -21,9 +21,9 @@ Do not copy those personas literally. Convert them into measurable system behavi
 ## Hard environment
 
 - Recurring target cost: **USD 0**
-- Normal operation: **100% cloud; operator's PC may be off**
-- Reference low-cost host profile:
-  - region: operator-selected
+- Normal operation: **100% cloud; user's PC may be off**
+- Oracle Free Tier available now:
+  - region: `sa-saopaulo-1`
   - `VM.Standard.A1.Flex`: **2 OCPU / 12 GB RAM free**
   - ~153 GB free block storage
   - ~20 GiB free Object Storage

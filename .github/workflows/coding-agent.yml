@@ -62,7 +62,7 @@ jobs:
           test -n "$AIDER_OPENAI_API_KEY"
 
       - name: Checkout exact base
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.base_ref }}
           fetch-depth: 0
@@ -77,7 +77,7 @@ jobs:
           git fetch --no-tags origin refs/heads/arch/gpt-synthesis-v1:refs/remotes/origin/arch/gpt-synthesis-v1
           git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
 
@@ -95,7 +95,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q olivia tests
+          python -m compileall -q olivia tests scripts
+          python scripts/scan_secret_tree.py
+          python scripts/scan_secret_history.py
+          bash -n deploy/*.sh
+          git diff --check
           pytest -q
 
       - name: Execute bounded coding task
@@ -156,8 +160,11 @@ jobs:
         run: |
           set +e
           : > /tmp/verify-first.log
-          python -m compileall -q olivia tests >> /tmp/verify-first.log 2>&1
+          python -m compileall -q olivia tests scripts >> /tmp/verify-first.log 2>&1
           rc=$?
+          if [ "$rc" -eq 0 ]; then python scripts/scan_secret_tree.py >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          if [ "$rc" -eq 0 ]; then bash -n deploy/*.sh >> /tmp/verify-first.log 2>&1; rc=$?; fi
+          if [ "$rc" -eq 0 ]; then git diff --check >> /tmp/verify-first.log 2>&1; rc=$?; fi
           if [ "$rc" -eq 0 ]; then
             python - <<'PY' >> /tmp/verify-first.log 2>&1
           from pathlib import Path
@@ -212,7 +219,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q olivia tests
+          python -m compileall -q olivia tests scripts
+          python scripts/scan_secret_tree.py
+          bash -n deploy/*.sh
+          git diff --check
           python - <<'PY'
           from pathlib import Path
           import re
@@ -255,7 +265,7 @@ jobs:
 
       - name: Upload verified agent series
         if: ${{ inputs.publish_branch }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verified-agent-series
           path: agent-series.patch
@@ -273,7 +283,7 @@ jobs:
 
     steps:
       - name: Checkout exact base without persisted credentials
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.base_ref }}
           fetch-depth: 0
@@ -288,7 +298,7 @@ jobs:
           git merge-base --is-ancestor HEAD refs/remotes/origin/arch/gpt-synthesis-v1
 
       - name: Download verified agent series
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: verified-agent-series
 

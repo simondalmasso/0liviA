@@ -1,0 +1,58 @@
+name: 0liviA Mobile UI Smoke Once
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arch/gpt-synthesis-v1
+    paths:
+      - .github/ui-smoke-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned browser harness
+        run: |
+          python -m pip install --disable-pip-version-check "playwright==1.55.0"
+          python -m playwright install --with-deps chromium
+
+      - name: Serve UI locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m http.server 8766 --bind 127.0.0.1 --directory web >/tmp/olivia-ui-http.log 2>&1 &
+          echo $! >/tmp/olivia-ui-http.pid
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8766/ >/dev/null; then
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat /tmp/olivia-ui-http.log >&2
+          exit 1
+
+      - name: Smoke 360x800 and 430x900
+        run: |
+          python scripts/ui_mobile_smoke.py             http://127.0.0.1:8766/             /tmp/olivia-mobile-smoke
+
+      - name: Upload screenshots and report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: olivia-mobile-ui-smoke
+          path: /tmp/olivia-mobile-smoke
+          if-no-files-found: error
+          retention-days: 7

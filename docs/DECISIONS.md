@@ -84,3 +84,16 @@
   - it is not the canonical voice runtime until target-host benchmarks prove it beats direct WSS/Pipecat on latency, es-AR quality, stability and recurring cost;
   - adopting LiveKit must not move durable state or model/provider policy out of the 0liviA Core.
 - Rollback: either adapter can be removed without changing sessions, memory, projects or provider routing.
+
+
+## ADR-0010 — Native ChatGPT plan usage, not OpenClaw as a dependency
+- Date: 2026-10-05
+- Status: **accepted / live-connection gated**
+- Decision: support OpenAI's official Sign in with ChatGPT plan-usage flow directly behind the existing provider router instead of embedding OpenClaw or another full assistant framework.
+- Transport: OAuth bearer → official Responses API with streaming and `store:false`; credentials remain server-side.
+- Quality: the account's available model catalog determines eligible models; `gpt-6-astra` is the preferred configured slug only when actually available to the connected account.
+- Cost: `cost_mode=plan_included`; under hard-zero-cost policy the route is rejected unless the owner has explicitly verified that app credit overage cannot occur.
+- Failure behavior: plan/app limit exhaustion behaves like a quota/rate failure; pre-output failover may continue to another eligible route, otherwise the turn fails/degrades.
+- Security: no API key, refresh token or OAuth access token appears in the browser, chat, Library, Memory or Git.
+- Reason: uses a documented OpenAI path, preserves provider replaceability, avoids reverse-engineered consumer APIs, and removes an unnecessary full-framework dependency.
+- Rollback: delete the catalog entry/provider adapter without changing sessions, memory, UI or other routes.
