@@ -1863,3 +1863,28 @@ async def test_worker_base_ref_defaults_to_main_and_is_overridable(aiohttp_clien
     )
     assert response.status == 200
     assert second_worker.dispatched[-1][1].base_ref == "release"
+
+
+@pytest.mark.asyncio
+async def test_public_shell_has_product_metadata_without_personal_runtime_url(client):
+    html = await (await client.get("/")).text()
+    assert "<title>0liviA — Self-hosted agentic AI workspace</title>" in html
+    assert 'name="description"' in html
+    assert "self-hosted agentic AI workspace" in html
+    assert 'property="og:title"' in html
+    assert 'property="og:description"' in html
+    assert 'name="application-name" content="0liviA"' in html
+    assert "0livia.simondalmasso44.workers.dev" not in html
+
+
+@pytest.mark.asyncio
+async def test_shell_keeps_keyboard_focus_and_accessible_navigation_contract(client):
+    html = await (await client.get("/")).text()
+    assert ":focus-visible" in html
+    assert 'aria-label="Secciones de 0liviA"' in html
+    assert 'role="dialog"' in html
+    assert 'aria-modal="true"' in html
+    assert 'aria-labelledby="ownerAuthTitle"' in html
+    assert "setAttribute('aria-current'" in html
+    assert "removeAttribute('aria-current')" in html
+    assert "PostHog" not in html
