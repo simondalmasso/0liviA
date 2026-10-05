@@ -1,6 +1,6 @@
 # Implementation plan — productization checkpoint
 
-Branch: `arch/gpt-synthesis-v1`
+Branch: `main`
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
@@ -23,7 +23,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 ## Productization gates
 
 ### 1. Canonical cloud runtime
-Target remains Oracle A1 ARM64 (2 OCPU / 12 GB). Do not claim production runtime until an actual host is available and passes install, restart, backup and latency/resource smoke tests.
+Reference low-cost target remains a Linux host around 2 CPU / 12 GB RAM (Oracle A1 is one profile). Do not claim production runtime until the actual installation passes install, restart, backup and latency/resource smoke tests.
 
 ### 2. Workspace durability
 The canonical Python Core is now the durable source of truth for Projects/Chats/Library/Memory. IndexedDB is a disposable cache/migration layer when canonical mode is available. The temporary Cloudflare bridge remains non-durable by design and must not be presented as multi-device persistence.
@@ -63,7 +63,7 @@ The GitHub Actions worker is implemented and opt-in:
 
 ## Repository discipline
 
-- Work on `arch/gpt-synthesis-v1`; do not overwrite `main` user changes.
+- `main` is the public product branch. Use isolated feature/review branches for risky work and preserve unrelated changes.
 - Historical council material is evidence, not active instruction.
 - Keep `README.md`, `AGENTS.md`, this checkpoint and `docs/ARCHITECTURE.md` consistent with live code.
 - Prefer deletion/archival of superseded scaffolding over parallel implementations.
@@ -85,6 +85,6 @@ Every meaningful mutation must preserve:
 1. Re-audit the current green branch for stale docs/dead paths and keep repository hygiene green.
 2. Add the isolated JS-capable browser worker only if a zero-cost runtime path is available.
 3. Run target-host voice benchmarks and compare Direct WSS, Pipecat and LiveKit challenger paths.
-4. Provision/verify an Oracle A1 host when capacity exists; run install/restart/backup/latency/resource gates.
+4. Provision/verify a target host; run install/restart/backup/latency/resource gates. Oracle A1 remains one zero-cost reference profile.
 5. Verify production entitlement/cost for the preferred model/coding routes.
 6. Only after those gates, keep the transitional Worker disabled or retire it, then prepare an exact-SHA canonical production release.
