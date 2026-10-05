@@ -144,3 +144,69 @@ def test_browser_worker_docs_require_private_artifact_repo():
     assert "private GitHub" in architecture
     assert "private GitHub" in plan
     assert "public GitHub Actions runner" not in worker
+
+
+def test_public_product_is_instance_isolated_and_has_no_personal_backend_defaults():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    env = (ROOT / ".env.example").read_text(encoding="utf-8")
+    deploy_env = (ROOT / "deploy" / "olivia.env.example").read_text(encoding="utf-8")
+    worker = (ROOT / "cloudflare" / "worker.mjs").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "coding-agent.yml").read_text(encoding="utf-8")
+    server = (ROOT / "olivia" / "server.py").read_text(encoding="utf-8")
+
+    public_blob = "\n".join([readme, env, deploy_env, worker, workflow, server]).lower()
+    assert "simondalmasso44@gmail.com" not in public_blob
+    assert "0livia.simondalmasso44.workers.dev" not in public_blob
+    assert "olivia_coding_repo=simondalmasso/0livia" not in public_blob
+
+    assert "OLIVIA_CODING_REPO=YOUR_GITHUB_USER/YOUR_REPO" in env
+    assert "OLIVIA_CODING_REPO=YOUR_GITHUB_USER/YOUR_REPO" in deploy_env
+    assert 'default: "main"' in workflow
+    assert 'os.getenv("OLIVIA_CODING_BASE_REF", "main")' in server
+    assert "const TRANSITIONAL_BRIDGE_ENABLED = false;" in worker
+
+
+def test_public_product_docs_define_privacy_self_hosting_and_claims_policy():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    privacy = (ROOT / "docs" / "PRIVACY.md").read_text(encoding="utf-8")
+    self_hosting = (ROOT / "docs" / "SELF_HOSTING.md").read_text(encoding="utf-8")
+
+    assert "self-hosted agentic AI workspace" in readme
+    assert "zero-cost-first" in readme
+    assert "not a guarantee" in readme.lower()
+    assert "separate runtime state" in privacy.lower()
+    assert "your own provider" in self_hosting.lower()
+    assert "private vulnerability" in security.lower()
+
+
+def test_public_tree_does_not_embed_personal_runtime_identifiers():
+    blocked = (
+        "simondalmasso44",
+        "@gmail.com",
+        "0livia.simondalmasso44.workers.dev",
+    )
+    suffixes = {".md", ".py", ".js", ".html", ".yml", ".yaml", ".toml", ".sh", ".example"}
+    for path in ROOT.rglob("*"):
+        if not path.is_file() or "tests" in path.parts or path.suffix not in suffixes:
+            continue
+        content = path.read_text(encoding="utf-8", errors="ignore").lower()
+        for marker in blocked:
+            assert marker.lower() not in content, f"{marker} leaked into public file {path.relative_to(ROOT)}"
+
+
+def test_public_product_has_no_maintainer_cloud_defaults():
+    env = (ROOT / ".env.example").read_text(encoding="utf-8")
+    deploy_env = (ROOT / "deploy" / "olivia.env.example").read_text(encoding="utf-8")
+    worker = (ROOT / "cloudflare" / "worker.mjs").read_text(encoding="utf-8")
+    assert "OLIVIA_PROVIDERS_JSON=[]" in env
+    assert "OLIVIA_PROVIDERS_JSON=[]" in deploy_env
+    assert "const TRANSITIONAL_BRIDGE_ENABLED = false;" in worker
+    assert "OLIVIA_CF_ACCOUNT_ID=" not in env.replace("# OLIVIA_CF_ACCOUNT_ID=", "")
+    assert "OLIVIA_CF_API_TOKEN=" not in env.replace("# OLIVIA_CF_API_TOKEN=", "")
+
+
+def test_package_exposes_public_olivia_cli_entrypoint():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '[project.scripts]' in pyproject
+    assert 'olivia = "olivia.server:main"' in pyproject
