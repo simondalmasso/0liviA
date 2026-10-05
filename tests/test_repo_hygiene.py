@@ -120,7 +120,7 @@ def test_github_actions_are_pinned_to_immutable_commits():
     import re
 
     workflows = ROOT / ".github" / "workflows"
-    action_ref = re.compile(r"^\s*uses:\s+(actions/[^@\s]+)@([^\s#]+)", re.MULTILINE)
+    action_ref = re.compile(r"^\s*(?:-\s*)?uses:\s+(actions/[^@\s]+)@([^\s#]+)", re.MULTILINE)
     unpinned = []
     for path in workflows.glob("*.yml"):
         text = path.read_text(encoding="utf-8")
