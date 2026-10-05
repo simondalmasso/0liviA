@@ -6,6 +6,7 @@
 
 - normal operation does not depend on the owner's PC;
 - recurring infrastructure target: **USD 0**;
+- the product runtime cannot disable the hard-zero-cost guard through ENV;
 - if no verified-free route is available, fail/degrade before spending;
 - GitHub is the durable source of truth for code, architecture and checkpoints;
 - runtime conversation/memory/project state belongs server-side;
