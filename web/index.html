@@ -978,7 +978,12 @@ function closeDrawer(){drawer.classList.remove('open');backdrop.classList.remove
 $('#projectsBtn').onclick=()=>activateSide('projects');
 $('#drawerClose').onclick=closeDrawer;
 backdrop.onclick=closeDrawer;
-$$('[data-side]').forEach(b=>b.onclick=()=>activateSide(b.dataset.side));
+document.addEventListener('click',event=>{
+  const sideButton=event.target.closest('[data-side]');
+  if(!sideButton)return;
+  const name=sideButton.dataset.side;
+  if(name)activateSide(name);
+});
 $('#railNewChat').onclick=async()=>{
   const p=selectedProject();
   const chat={id:uid('c'),title:'Nuevo chat',messages:[],remoteSessionId:null};
