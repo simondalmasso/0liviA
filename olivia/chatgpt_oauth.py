@@ -103,6 +103,9 @@ async def discover(session: aiohttp.ClientSession) -> dict[str, str]:
             body.get("token_endpoint"), field="token_endpoint"
         ),
         "jwks_uri": _validate_openai_url(body.get("jwks_uri"), field="jwks_uri"),
+        "revocation_endpoint": _validate_openai_url(
+            body.get("revocation_endpoint"), field="revocation_endpoint"
+        ),
     }
 
 
@@ -431,6 +434,66 @@ async def list_models(
             }
         )
     return result
+
+
+async def disconnect_profile(
+    *,
+    profile_path: Path,
+    session_factory=aiohttp.ClientSession,
+    sleep=asyncio.sleep,
+) -> bool:
+    """Revoke the renewable ChatGPT session, then remove local credentials.
+
+    Returns True when OpenAI confirmed revocation. Local credentials are removed
+    even when remote revocation cannot be confirmed, matching the official
+    recovery guidance.
+    """
+    profile_path = profile_path.expanduser()
+    profile = load_existing_profile(profile_path)
+    if profile is None:
+        return True
+
+    refresh_token = profile.get("refresh_token")
+    client_id = profile.get("client_id")
+    if not isinstance(refresh_token, str) or not refresh_token:
+        profile_path.unlink(missing_ok=True)
+        return False
+    if not isinstance(client_id, str) or not client_id:
+        profile_path.unlink(missing_ok=True)
+        return False
+
+    confirmed = False
+    try:
+        timeout = aiohttp.ClientTimeout(total=20, sock_connect=10, sock_read=15)
+        async with session_factory(timeout=timeout) as session:
+            oidc = await discover(session)
+            endpoint = oidc["revocation_endpoint"]
+            for attempt in range(3):
+                try:
+                    async with session.post(
+                        endpoint,
+                        data={
+                            "token": refresh_token,
+                            "token_type_hint": "refresh_token",
+                            "client_id": client_id,
+                        },
+                        headers={
+                            "Accept": "application/json",
+                            "Content-Type": "application/x-www-form-urlencoded",
+                        },
+                    ) as response:
+                        if response.status == 200:
+                            confirmed = True
+                            break
+                        if response.status < 500:
+                            break
+                except aiohttp.ClientError:
+                    pass
+                if attempt < 2:
+                    await sleep(0.25 * (2**attempt))
+    finally:
+        profile_path.unlink(missing_ok=True)
+    return confirmed
 
 
 async def authorize_local(
