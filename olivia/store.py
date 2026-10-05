@@ -518,15 +518,6 @@ class Store:
             )
         return int(cur.rowcount)
 
-    def deactivate_memory(self, scope: str, key: str) -> int:
-        """Legacy soft-delete helper kept for migration compatibility."""
-        with self._lock:
-            cur = self._conn.execute(
-                "UPDATE memories SET is_active=0 WHERE scope=? AND key=? AND is_active=1",
-                (scope, redact_secrets(str(key))),
-            )
-        return int(cur.rowcount)
-
     def recall_memories(self, query: str, scope: str = "global", limit: int = 8) -> list[dict[str, Any]]:
         tokens = re.findall(r"[\wÀ-ÿ]+", query.lower(), flags=re.UNICODE)
         if not tokens:
