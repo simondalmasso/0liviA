@@ -952,7 +952,7 @@ async def test_research_command_fails_closed_without_search_route(aiohttp_client
 
 
 @pytest.mark.asyncio
-async def test_owner_login_throttle_separates_forwarded_clients(aiohttp_client, tmp_path):
+async def test_owner_login_throttle_separates_trusted_proxy_clients(aiohttp_client, tmp_path):
     settings = Settings(data_dir=tmp_path)
     store = Store(tmp_path / "login-forwarded.sqlite3")
     agent = Agent(store, FakeRouter(), settings)
@@ -971,14 +971,14 @@ async def test_owner_login_throttle_separates_forwarded_clients(aiohttp_client, 
         response = await client.post(
             "/api/auth/login",
             json={"email": "owner@example.com", "password": "wrong"},
-            headers={"X-Forwarded-For": "203.0.113.10"},
+            headers={"X-Olivia-Client-IP": "203.0.113.10"},
         )
         assert response.status == 401
 
     owner = await client.post(
         "/api/auth/login",
         json={"email": "owner@example.com", "password": "owner-passphrase"},
-        headers={"X-Forwarded-For": "203.0.113.11"},
+        headers={"X-Olivia-Client-IP": "203.0.113.11"},
     )
     assert owner.status == 200
 
