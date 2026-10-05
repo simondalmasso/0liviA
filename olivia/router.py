@@ -195,6 +195,12 @@ class OpenAICompatibleProvider:
         self.cost_mode = spec.cost_mode
         self.capabilities = spec.capabilities
 
+    @property
+    def configured(self) -> bool:
+        if self.cost_mode == "local":
+            return True
+        return bool(self.spec.api_key_env and os.getenv(self.spec.api_key_env))
+
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         api_key = os.getenv(self.spec.api_key_env) if self.spec.api_key_env else ""
         if self.spec.cost_mode != "local" and not api_key:
@@ -290,6 +296,14 @@ class ChatGPTPlanProvider:
         self._session_factory = session_factory
         self._clock = clock or time.time
         self._profile_lock = asyncio.Lock()
+
+    @property
+    def configured(self) -> bool:
+        try:
+            self._load_profile()
+        except (ProviderConfigError, OSError):
+            return False
+        return True
 
     @staticmethod
     def _scope_set(value: Any) -> set[str]:
