@@ -218,4 +218,4 @@ async def test_chatgpt_plan_usage_limit_maps_to_rate_limit(tmp_path):
     with pytest.raises(ProviderHTTPError) as exc:
         _ = [token async for token in provider.stream([{"role": "user", "content": "x"}])]
     assert exc.value.status == 429
-    assert "subscription_sharing_usage_limit_exceeded" in str(exc.value)
+    assert exc.value.provider == "chatgpt-plan"
