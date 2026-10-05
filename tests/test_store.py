@@ -172,3 +172,30 @@ def test_security_event_retention_prunes_old_and_bounds_count(tmp_path: Path):
     assert len(rows) <= 5
     assert all(row["created_at"] >= 5.0 for row in rows)
     assert store.recent_events(prefix="demo.", limit=10)
+
+
+def test_trusted_device_last_seen_touch_is_bounded(tmp_path: Path):
+    store = Store(tmp_path / "device-touch.sqlite3")
+    device_id = store.create_trusted_device("Mobile", expires_at=2_000_000_000)
+
+    with store._lock:
+        store._conn.execute(
+            "UPDATE trusted_devices SET last_seen_at=? WHERE id=?",
+            (1_900_000_000.0, device_id),
+        )
+
+    assert store.trusted_device_active(device_id, now=1_900_000_100) is True
+    with store._lock:
+        first = store._conn.execute(
+            "SELECT last_seen_at FROM trusted_devices WHERE id=?",
+            (device_id,),
+        ).fetchone()["last_seen_at"]
+    assert first == 1_900_000_000.0
+
+    assert store.trusted_device_active(device_id, now=1_900_000_301) is True
+    with store._lock:
+        second = store._conn.execute(
+            "SELECT last_seen_at FROM trusted_devices WHERE id=?",
+            (device_id,),
+        ).fetchone()["last_seen_at"]
+    assert second == 1_900_000_301.0
