@@ -151,3 +151,24 @@ def test_expired_trusted_devices_are_pruned(tmp_path: Path):
     device_id = store.create_trusted_device("Viejo", expires_at=100)
     assert store.trusted_device_active(device_id, now=101) is False
     assert store.list_trusted_devices(now=101) == []
+
+
+def test_security_event_retention_prunes_old_and_bounds_count(tmp_path: Path):
+    store = Store(tmp_path / "security-retention.sqlite3")
+    with store._lock:
+        for i in range(12):
+            store._conn.execute(
+                "INSERT INTO events(session_id,job_id,type,payload_json,created_at) VALUES(NULL,NULL,?,?,?)",
+                ("security.login_failed", "{}", float(i)),
+            )
+        store._conn.execute(
+            "INSERT INTO events(session_id,job_id,type,payload_json,created_at) VALUES(NULL,NULL,?,?,?)",
+            ("demo.keep", "{}", 1.0),
+        )
+
+    removed = store.prune_security_events(now=100.0, retention_s=95.0, keep_latest=5)
+    rows = store.recent_events(prefix="security.", limit=100)
+    assert removed >= 7
+    assert len(rows) <= 5
+    assert all(row["created_at"] >= 5.0 for row in rows)
+    assert store.recent_events(prefix="demo.", limit=10)
