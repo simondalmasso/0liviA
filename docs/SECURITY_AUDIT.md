@@ -7,7 +7,7 @@ This document records which findings apply to canonical `main`. Historical branc
 ## Applies to the active branch
 
 ### PUBLIC-SHELL-STALE — FIXED / canonical backend still gated
-The historical public Worker was stale and model-capable. The last deployment with durable exact-source evidence is the **inert public shell** from `b2decd3418e9a2f0f840115eeacd6350dfc2cc2d`, Cloudflare Worker version `dd644e13-a8bf-41b2-a1c7-9e2e8778b9a9`, with only the `ASSETS` runtime binding. Cache-busted production smoke confirmed the new monochrome shell, `api_mode:public_shell`, `bridge_enabled:false`, `provider_ready:false`, `inference_enabled:false`, `web_read:false`, `hard_zero_cost:true`, and `/api/chat` HTTP 503. Version metadata reports `has_preview:false`; the historical `CostGuard` remains export-only with SQLite storage and no request binding.
+The historical public Worker was stale and model-capable. The last deployment with durable exact-source evidence is the **inert public shell** from `b2decd3418e9a2f0f840115eeacd6350dfc2cc2d`, Cloudflare Worker version `36e32304-da90-42ed-a655-36d24d1a68bc`, with only the `ASSETS` runtime binding. Cache-busted production smoke confirmed the new monochrome shell, `api_mode:public_shell`, `bridge_enabled:false`, `provider_ready:false`, `inference_enabled:false`, `web_read:false`, `hard_zero_cost:true`, and `/api/chat` HTTP 503. Version metadata reports `has_preview:false`; the historical `CostGuard` remains export-only with SQLite storage and no request binding.
 
 This fixes the stale/shared-inference exposure of the **public shell**. It does **not** mean the canonical Python Core is deployed; authenticated durable chat/memory/voice still require the canonical host.
 
