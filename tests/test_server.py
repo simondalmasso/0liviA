@@ -1915,12 +1915,18 @@ async def test_ui_does_not_poll_cloudflare_runtime(client):
 
 
 @pytest.mark.asyncio
-async def test_public_shell_disables_chat_instead_of_queueing_messages(client):
+async def test_public_shell_demo_is_explicit_zero_cost_and_side_effect_free(client):
     html = await (await client.get("/")).text()
 
     assert "function updateComposerAvailability()" in html
     assert "backendMode==='public_shell'" in html
-    assert "Core canónico no conectado" in html
+    assert "publicDemoActive=false" in html
+    assert "if(backendMode==='public_shell')return publicDemoActive" in html
+    assert "https://text.pollinations.ai/openai/chat/completions" in html
+    assert "PUBLIC_DEMO_PROVIDER='pollinations-anon'" in html
+    assert "function redactDemoText" in html
+    assert "if(value.startsWith('/'))" in html
+    assert "Ese comando necesita el Core privado." in html
     assert "textInput.disabled=!available" in html
     assert "sendBtn.disabled=!available" in html
     assert "if(!composerAvailable())return" in html
