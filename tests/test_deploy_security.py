@@ -6,6 +6,7 @@ BOOTSTRAP = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
 CLOUD_INIT = (ROOT / "deploy" / "cloud-init-a1.yaml").read_text(encoding="utf-8")
 CHATGPT_INSTALLER = (ROOT / "scripts" / "install_chatgpt_plan_profile.sh").read_text(encoding="utf-8")
 SMOKE = (ROOT / "deploy" / "smoke.sh").read_text(encoding="utf-8")
+CANONICAL_DEPLOY = (ROOT / ".github" / "workflows" / "deploy-canonical.yml").read_text(encoding="utf-8")
 
 
 def test_cloud_init_requires_immutable_commit_ref_before_root_execution():
@@ -128,3 +129,22 @@ def test_bootstrap_restarts_new_release_and_rolls_back_on_failed_health():
     assert 'if ! wait_for_core; then' in BOOTSTRAP
     assert 'rollback_release' in BOOTSTRAP
     assert 'systemctl restart olivia || true' in BOOTSTRAP
+
+
+
+def test_canonical_deploy_workflow_is_exact_sha_and_pinned_ssh_only():
+    assert "workflow_dispatch:" in CANONICAL_DEPLOY
+    assert "RELEASE_SHA:" in CANONICAL_DEPLOY
+    assert '[[ "$RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]' in CANONICAL_DEPLOY
+    assert 'git merge-base --is-ancestor "$RELEASE_SHA" origin/main' in CANONICAL_DEPLOY
+    assert "OLIVIA_DEPLOY_HOST" in CANONICAL_DEPLOY
+    assert "OLIVIA_DEPLOY_USER" in CANONICAL_DEPLOY
+    assert "OLIVIA_DEPLOY_SSH_KEY" in CANONICAL_DEPLOY
+    assert "OLIVIA_DEPLOY_KNOWN_HOSTS" in CANONICAL_DEPLOY
+    assert "StrictHostKeyChecking=yes" in CANONICAL_DEPLOY
+    assert "PasswordAuthentication=no" in CANONICAL_DEPLOY
+    assert "REF='$RELEASE_SHA'" in CANONICAL_DEPLOY
+    assert "http://127.0.0.1:8080/healthz" in CANONICAL_DEPLOY
+    assert '"hard_zero_cost": body.get("hard_zero_cost") is True' in CANONICAL_DEPLOY
+    assert "SETUP_URL" not in CANONICAL_DEPLOY
+    assert "cloudflare" not in CANONICAL_DEPLOY.casefold()
