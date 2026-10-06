@@ -68,6 +68,14 @@ jobs:
             -o ConnectTimeout=10 -i "$HOME/.ssh/id_ed25519" \
             "$DEPLOY_USER@$DEPLOY_HOST" 'printf "ssh-ok\n"'
 
+      - name: Preflight target before mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 -i "$HOME/.ssh/id_ed25519" \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' < deploy/preflight.sh
+
       - name: Upload exact bootstrap script
         shell: bash
         run: |

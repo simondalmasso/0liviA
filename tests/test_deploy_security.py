@@ -6,6 +6,7 @@ BOOTSTRAP = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
 CLOUD_INIT = (ROOT / "deploy" / "cloud-init-a1.yaml").read_text(encoding="utf-8")
 CHATGPT_INSTALLER = (ROOT / "scripts" / "install_chatgpt_plan_profile.sh").read_text(encoding="utf-8")
 SMOKE = (ROOT / "deploy" / "smoke.sh").read_text(encoding="utf-8")
+PREFLIGHT = (ROOT / "deploy" / "preflight.sh").read_text(encoding="utf-8")
 CANONICAL_DEPLOY = (ROOT / ".github" / "workflows" / "deploy-canonical.yml").read_text(encoding="utf-8")
 
 
@@ -148,3 +149,16 @@ def test_canonical_deploy_workflow_is_exact_sha_and_pinned_ssh_only():
     assert '"hard_zero_cost": body.get("hard_zero_cost") is True' in CANONICAL_DEPLOY
     assert "SETUP_URL" not in CANONICAL_DEPLOY
     assert "cloudflare" not in CANONICAL_DEPLOY.casefold()
+
+
+def test_canonical_host_preflight_fails_closed_before_bootstrap():
+    assert "PREFLIGHT_OK=YES" in PREFLIGHT
+    assert "passwordless_sudo_required" in PREFLIGHT
+    assert "OLIVIA_PREFLIGHT_MIN_MEMORY_MB" in PREFLIGHT
+    assert "OLIVIA_PREFLIGHT_MIN_DISK_MB" in PREFLIGHT
+    assert "fallocate_missing_for_micro" in PREFLIGHT
+    assert "mkswap_missing_for_micro" in PREFLIGHT
+    assert "swapon_missing_for_micro" in PREFLIGHT
+    assert "Preflight target before mutation" in CANONICAL_DEPLOY
+    assert "'bash -s' < deploy/preflight.sh" in CANONICAL_DEPLOY
+    assert CANONICAL_DEPLOY.index("Preflight target before mutation") < CANONICAL_DEPLOY.index("Upload exact bootstrap script")
