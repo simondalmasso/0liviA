@@ -10,6 +10,7 @@ REPO_URL="${REPO_URL:-https://github.com/simondalmasso/0liviA.git}"
 REF="${REF:-}"
 ALLOW_MUTABLE_REF="${ALLOW_MUTABLE_REF:-0}"
 APP_ROOT="${APP_ROOT:-/opt/0livia}"
+RELEASES_ROOT="${APP_ROOT}/releases"
 STATE_ROOT="${STATE_ROOT:-/var/lib/0livia}"
 ETC_ROOT="${ETC_ROOT:-/etc/0livia}"
 LLAMA_ROOT="${LLAMA_ROOT:-/opt/llama}"
@@ -89,7 +90,7 @@ if ! id olivia >/dev/null 2>&1; then
   useradd --system --home "${STATE_ROOT}" --shell /usr/sbin/nologin olivia
 fi
 
-install -d -o root -g root -m 0755 "${APP_ROOT}" "${LLAMA_ROOT}"
+install -d -o root -g root -m 0755 "${APP_ROOT}" "${RELEASES_ROOT}" "${LLAMA_ROOT}"
 install -d -o olivia -g olivia -m 0700 "${STATE_ROOT}" "${MODEL_ROOT}" "${STATE_ROOT}/private"
 install -d -o root -g olivia -m 0750 "${ETC_ROOT}"
 
@@ -112,21 +113,45 @@ if [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
   git -C "${tmp}/repo" remote add origin "${REPO_URL}"
   git -C "${tmp}/repo" fetch --depth 1 origin "$REF"
   git -C "${tmp}/repo" checkout -q --detach FETCH_HEAD
-  test "$(git -C "${tmp}/repo" rev-parse HEAD)" = "$REF"
 else
   git clone --filter=blob:none --depth 1 --branch "$REF" "${REPO_URL}" "${tmp}/repo"
 fi
-rm -rf "${APP_ROOT}/current"
-install -d -o root -g root -m 0755 "${APP_ROOT}/current"
-cp -a "${tmp}/repo/." "${APP_ROOT}/current/"
-rm -rf "${APP_ROOT}/current/.git"
 
-python3 -m venv "${APP_ROOT}/venv"
-"${APP_ROOT}/venv/bin/pip" install --upgrade pip
-"${APP_ROOT}/venv/bin/pip" install "${APP_ROOT}/current"
+SOURCE_SHA="$(git -C "${tmp}/repo" rev-parse HEAD)"
+if [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]] && [[ "${SOURCE_SHA}" != "$REF" ]]; then
+  echo "checked-out commit does not match REF" >&2
+  exit 2
+fi
+RELEASE_DIR="${RELEASES_ROOT}/${SOURCE_SHA}"
+STAGE_DIR="${RELEASES_ROOT}/.${SOURCE_SHA}.stage.$"
 
-install -o root -g root -m 0644   "${APP_ROOT}/current/deploy/0livia.service"   /etc/systemd/system/olivia.service
-install -o root -g root -m 0644   "${APP_ROOT}/current/deploy/llama-local.service"   /etc/systemd/system/llama-local.service
+if [[ ! -d "${RELEASE_DIR}" ]]; then
+  rm -rf "${STAGE_DIR}"
+  install -d -o root -g root -m 0755 "${STAGE_DIR}"
+  cp -a "${tmp}/repo/." "${STAGE_DIR}/"
+  rm -rf "${STAGE_DIR}/.git"
+  python3 -m venv "${STAGE_DIR}/venv"
+  "${STAGE_DIR}/venv/bin/pip" install --upgrade pip
+  "${STAGE_DIR}/venv/bin/pip" install "${STAGE_DIR}"
+  mv "${STAGE_DIR}" "${RELEASE_DIR}"
+fi
+test -x "${RELEASE_DIR}/venv/bin/python"
+test -f "${RELEASE_DIR}/deploy/0livia.service"
+
+PREVIOUS_RELEASE=""
+if [[ -L "${APP_ROOT}/current" ]]; then
+  PREVIOUS_RELEASE="$(readlink -f "${APP_ROOT}/current" || true)"
+elif [[ -d "${APP_ROOT}/current" ]]; then
+  LEGACY_RELEASE="${RELEASES_ROOT}/legacy-$(date -u +%Y%m%dT%H%M%SZ)"
+  mv "${APP_ROOT}/current" "${LEGACY_RELEASE}"
+  if [[ -d "${APP_ROOT}/venv" ]]; then
+    mv "${APP_ROOT}/venv" "${LEGACY_RELEASE}/venv"
+  fi
+  PREVIOUS_RELEASE="${LEGACY_RELEASE}"
+fi
+
+install -o root -g root -m 0644   "${RELEASE_DIR}/deploy/0livia.service"   /etc/systemd/system/olivia.service
+install -o root -g root -m 0644   "${RELEASE_DIR}/deploy/llama-local.service"   /etc/systemd/system/llama-local.service
 
 if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
   # llama.cpp prebuilt is ~tens of MB, not a multi-GB runtime.
@@ -156,27 +181,66 @@ EOF
   chmod 0640 "${ETC_ROOT}/llama.env"
 fi
 
-TOKEN="$(python3 - <<'PY'
+ENV_FILE="${ETC_ROOT}/olivia.env"
+ENV_BACKUP="${tmp}/olivia.env.previous"
+
+if [[ -f "${ENV_FILE}" ]]; then
+  # Upgrade path: preserve the configured provider catalog and signing token.
+  cp -a "${ENV_FILE}" "${ENV_BACKUP}"
+  ENV_FILE="${ENV_FILE}" BUILD_SHA="${SOURCE_SHA}" python3 - <<'PY'
+import os
+from pathlib import Path
+
+path = Path(os.environ["ENV_FILE"])
+build_sha = os.environ["BUILD_SHA"]
+lines = path.read_text(encoding="utf-8").splitlines()
+
+def set_value(key: str, value: str) -> None:
+    prefix = key + "="
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[index] = prefix + value
+            return
+    lines.append(prefix + value)
+
+set_value("OLIVIA_BUILD_SHA", build_sha)
+set_value("OLIVIA_HARD_ZERO_COST", "1")
+tmp = path.with_name(path.name + ".tmp")
+tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+os.chmod(tmp, 0o640)
+os.replace(tmp, path)
+PY
+  REGISTRATION_TOKEN="$(sed -n 's/^OLIVIA_REGISTRATION_TOKEN=//p' "${ENV_FILE}" | head -n1)"
+  if [[ -z "${REGISTRATION_TOKEN}" ]]; then
+    REGISTRATION_TOKEN="$(python3 - <<'PY'
 import secrets
 print(secrets.token_urlsafe(32))
 PY
 )"
-REGISTRATION_TOKEN="$(python3 - <<'PY'
+    printf 'OLIVIA_REGISTRATION_TOKEN=%s\n' "${REGISTRATION_TOKEN}" >> "${ENV_FILE}"
+  fi
+else
+  TOKEN="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(32))
+PY
+)"
+  REGISTRATION_TOKEN="$(python3 - <<'PY'
 import secrets
 print(secrets.token_urlsafe(32))
 PY
 )"
 
-PROVIDERS_JSON='[]'
-if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
-  PROVIDERS_JSON='[{"name":"local-recovery-qwen","base_url":"http://127.0.0.1:11434/v1","model":"local-qwen","api_key_env":"","priority":1000,"daily_limit":0,"cost_mode":"local"}]'
-fi
+  PROVIDERS_JSON='[]'
+  if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
+    PROVIDERS_JSON='[{"name":"local-recovery-qwen","base_url":"http://127.0.0.1:11434/v1","model":"local-qwen","api_key_env":"","priority":1000,"daily_limit":0,"cost_mode":"local"}]'
+  fi
 
-cat > "${ETC_ROOT}/olivia.env" <<EOF
+  cat > "${ENV_FILE}" <<EOF
 OLIVIA_DATA_DIR=${STATE_ROOT}
 OLIVIA_BIND=127.0.0.1
 OLIVIA_PORT=8080
-OLIVIA_BUILD_SHA=${REF}
+OLIVIA_BUILD_SHA=${SOURCE_SHA}
 OLIVIA_HARD_ZERO_COST=1
 OLIVIA_GATEWAY_TOKEN=${TOKEN}
 OLIVIA_REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
@@ -186,8 +250,38 @@ OLIVIA_STREAM_IDLE_TIMEOUT_S=120
 OLIVIA_MAX_PROVIDER_ATTEMPTS=3
 OLIVIA_PROVIDERS_JSON=${PROVIDERS_JSON}
 EOF
-chown root:olivia "${ETC_ROOT}/olivia.env"
-chmod 0640 "${ETC_ROOT}/olivia.env"
+fi
+chown root:olivia "${ENV_FILE}"
+chmod 0640 "${ENV_FILE}"
+
+rollback_release() {
+  if [[ -n "${PREVIOUS_RELEASE}" && -d "${PREVIOUS_RELEASE}" ]]; then
+    rm -f "${APP_ROOT}/.current.rollback"
+    ln -s "${PREVIOUS_RELEASE}" "${APP_ROOT}/.current.rollback"
+    mv -Tf "${APP_ROOT}/.current.rollback" "${APP_ROOT}/current"
+    if [[ -f "${ENV_BACKUP}" ]]; then
+      cp -a "${ENV_BACKUP}" "${ETC_ROOT}/olivia.env"
+      chown root:olivia "${ETC_ROOT}/olivia.env"
+      chmod 0640 "${ETC_ROOT}/olivia.env"
+    fi
+    systemctl daemon-reload
+    systemctl restart olivia || true
+  fi
+}
+
+wait_for_core() {
+  for _ in $(seq 1 90); do
+    if curl -fsS --max-time 4 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+rm -f "${APP_ROOT}/.current.next"
+ln -s "${RELEASE_DIR}" "${APP_ROOT}/.current.next"
+mv -Tf "${APP_ROOT}/.current.next" "${APP_ROOT}/current"
 
 systemctl daemon-reload
 if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
@@ -203,7 +297,17 @@ else
   systemctl disable --now llama-local >/dev/null 2>&1 || true
 fi
 
-systemctl enable --now olivia
+systemctl enable olivia
+if ! systemctl restart olivia; then
+  rollback_release
+  echo "new 0liviA release failed to start; previous release restored" >&2
+  exit 1
+fi
+if ! wait_for_core; then
+  rollback_release
+  echo "new 0liviA release failed health check; previous release restored" >&2
+  exit 1
+fi
 
 # Direct-to-Oracle HTTPS. Cloudflare remains outside chat/voice/memory.
 PUBLIC_IP=""
@@ -248,18 +352,12 @@ MODEL_SHA256=${MODEL_SHA256}
 RUNTIME=llama.cpp-${LLAMA_BUILD}
 RUNTIME_SHA256=${llama_sha256}
 COST_MODE=$( [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]] && printf 'local-recovery' || printf 'no-provider' )
-SOURCE_REF=${REF}
+SOURCE_REF=${SOURCE_SHA}
 EOF
 chown root:root "${STATE_ROOT}/bootstrap-info"
 chmod 0600 "${STATE_ROOT}/bootstrap-info"
 unset TOKEN REGISTRATION_TOKEN
 
-for _ in $(seq 1 90); do
-  if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
 curl -fsS http://127.0.0.1:8080/healthz
 echo
 echo "0liviA bootstrap complete: https://${HOST}"
