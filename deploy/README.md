@@ -17,7 +17,7 @@ Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's P
 5. If adding external providers, edit `/etc/0livia/olivia.env` (0640 root:olivia) and add only routes with a verified hard-zero-cost boundary.
 6. Pick an HTTPS hostname. Preferred: a domain you control pointing DNS-only at the Oracle IP. The bootstrap can use an IP-derived DNS hostname if you deliberately accept that external DNS dependency.
 7. Keep port 8080 private. The browser authenticates with the registered owner email/password and receives only an HttpOnly/Secure/SameSite cookie; the bearer stays server/CLI-side.
-8. Run the CLI smoke with the server-side bearer obtained directly from `/etc/0livia/olivia.env`, never through a browser URL or UI.
+8. Run the CLI smoke with the server-side bearer obtained directly from `/etc/0livia/olivia.env`, never through a browser URL or UI. Pass the exact release SHA as the third argument: `sudo bash deploy/smoke.sh https://HOST "$TOKEN" <40-hex-SHA>`. The smoke fails unless the host reports that exact SHA, `api_mode=canonical`, `hard_zero_cost=true`, a ready safe-cost provider, closed registration/owner auth, and a completed streamed chat turn.
 
 ## Provider policy
 
