@@ -278,7 +278,7 @@ async def test_live_voice_is_fullscreen_and_chat_stays_available(client):
     assert 'id="voiceLive"' in html
     assert 'position:fixed;inset:0' in html
     assert 'class="orb"' in html
-    assert 'stroke:var(--cyan)' in html
+    assert 'stroke:#d7d7d7' in html
     assert '#voiceLive.open{display:grid' in html
     assert 'id="voiceBtn"' in html
     assert 'id="text"' in html
@@ -334,13 +334,17 @@ async def test_projects_and_chats_exist_without_visual_clutter(client):
 
 
 @pytest.mark.asyncio
-async def test_reference_inspired_violet_blue_cyan_visual_system(client):
+async def test_reference_inspired_monochrome_low_weight_visual_system(client):
     response = await client.get("/")
     html = await response.text()
-    for token in ("--violet:", "--magenta:", "--blue:", "--cyan:"):
-        assert token in html
-    assert "linear-gradient(180deg" in html
-    assert "radial-gradient" in html
+    assert '<meta name="theme-color" content="#000000">' in html
+    assert "font-family:system-ui" in html
+    assert "linear-gradient(" not in html
+    assert "radial-gradient(" not in html
+    assert "backdrop-filter" not in html
+    assert 'id="modeChat"' in html
+    assert 'id="modeWork"' in html
+    assert 'id="voiceBtn" class="composer-icon"' in html
     assert ".composer{" in html
     assert "#voiceLive{" in html
     assert ".voice-stage::before" in html
