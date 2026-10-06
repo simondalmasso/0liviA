@@ -96,3 +96,7 @@ The bootstrap now rejects mutable production refs, generates browser owner authe
 
 ### RUNTIME-ZERO-COST-GUARD — FIXED IN BRANCH
 The product runtime now forces hard-zero-cost mode on even if an environment variable attempts to disable it. `plan_included` is accepted only for the official `chatgpt_plan` provider kind, where `no_credit_overage_verified=true` is mandatory. Generic OpenAI-compatible routes cannot self-label as subscription-included to bypass the zero-cost filter.
+
+
+### SIDE-EFFECT-DISPATCH — FIXED / policy gate
+Coding and browser workers are dispatched only by explicit owner commands (`/code`, `/repair`, `/review`, `/browse`). Natural-language chat and model output cannot directly start those side-effectful workers. Regression tests cover both coding and browser dispatch boundaries. Future install/publish/write/click capabilities must preserve the same explicit-owner-action contract.
