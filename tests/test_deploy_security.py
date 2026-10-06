@@ -79,7 +79,8 @@ def test_chatgpt_plan_installer_requires_provider_health_confirmation():
 
 def test_bootstrap_exports_exact_build_sha():
     bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
-    assert "OLIVIA_BUILD_SHA=${REF}" in bootstrap
+    assert "SOURCE_SHA=" in bootstrap
+    assert "OLIVIA_BUILD_SHA=${SOURCE_SHA}" in bootstrap
 
 
 def test_release_smoke_requires_exact_canonical_zero_cost_build():
@@ -105,6 +106,8 @@ def test_bootstrap_uses_versioned_atomic_releases_and_per_release_venv():
     assert 'PREVIOUS_RELEASE=' in BOOTSTRAP
     assert 'rollback_release()' in BOOTSTRAP
     assert '"${RELEASE_DIR}/venv/bin/pip" install "${RELEASE_DIR}"' in BOOTSTRAP
+    assert 'touch "${RELEASE_DIR}/.ready"' in BOOTSTRAP
+    assert 'test -f "${RELEASE_DIR}/.ready"' in BOOTSTRAP
     assert "ExecStart=/opt/0livia/current/venv/bin/python -m olivia.server" in service
     assert "/opt/0livia/venv/bin/python" not in service
 
