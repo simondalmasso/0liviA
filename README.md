@@ -35,7 +35,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - `olivia/voice/` — transport/speech contracts and benchmark scaffolding
 - `web/` — current violet/blue/cyan browser product shell
 - `cloudflare/` — temporary public bridge; not durable product state
-- `deploy/` — Oracle A1 deployment/runtime material
+- `deploy/` — canonical host deployment/runtime material; Oracle A1 is the roomy preferred target and the existing 1 GB E2 micro path is supported as a constrained fallback
 - `.github/workflows/coding-agent.yml` — isolated burst coding worker
 - `tests/` — behavioral, security and repository-hygiene gates
 - `docs/` — architecture, decisions, research and current implementation state
@@ -65,13 +65,13 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 
 ## Still gated
 
-- Oracle A1 production availability and target-host benchmarks;
+- recurring-$0 production-host certification and target-host benchmarks; the current `olivia-text-free` E2.1.Micro candidate is agent-reachable but still needs privileged SSH/preflight before deployment;
 - production smoke of the isolated `/browse` worker and any future owner-approved click/write automation;
 - a production `/search` provider only after its exact account/provider route is proven zero-cost;
 - production STT/VAD/TTS selection and es-AR voice acceptance;
 - a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
-- exact-SHA **canonical Core** deployment and production smoke; the last verified public inert-shell deployment is source `a4cbecaf2665f5dc95536f3b21b5b78133bfbb9e` (Worker `4f7f2ba7-12cf-42aa-888a-05c7729b3d43`, tag `main-a4cbeca-v1`); newer anti-polling source changes are merged in `main` but are not claimed deployed without a fresh deployment record;
+- exact-SHA **canonical Core** deployment and production smoke; the last verified public inert-shell deployment is source `eee3f26885f13bc14073e3a7c1d7a1851e7a4883` (Worker `c582cf85-0b9e-4841-8392-f6169d1e4cf1`, deploy run `37401620923`), with inference/search disabled and the public composer explicitly offline until the Core exists;
 - any Cloudflare inference/search path whose account-level zero-cost behavior is not independently verified.
 
 ## Development
