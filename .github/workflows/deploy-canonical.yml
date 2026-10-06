@@ -1,0 +1,131 @@
+name: 0liviA Canonical Core Deploy
+run-name: "0liviA canonical ${{ inputs.release_sha }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Exact 40-hex commit SHA from canonical main"
+        required: true
+        type: string
+      local_recovery_enabled:
+        description: "Enable tiny local recovery model"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: olivia-canonical-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      DEPLOY_HOST: ${{ secrets.OLIVIA_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.OLIVIA_DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.OLIVIA_DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.OLIVIA_DEPLOY_KNOWN_HOSTS }}
+      LOCAL_RECOVERY_ENABLED: ${{ inputs.local_recovery_enabled && '1' || '0' }}
+
+    steps:
+      - name: Checkout canonical repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate immutable release and deploy secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          git fetch --no-tags origin main
+          git cat-file -e "$RELEASE_SHA^{commit}"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          git checkout --detach "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+
+      - name: Configure pinned SSH trust
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$HOME/.ssh"
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 -i "$HOME/.ssh/id_ed25519" \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'printf "ssh-ok\n"'
+
+      - name: Upload exact bootstrap script
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="/tmp/olivia-bootstrap-${RELEASE_SHA}.sh"
+          scp -q -o BatchMode=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 -i "$HOME/.ssh/id_ed25519" \
+            deploy/bootstrap-a1.sh "$DEPLOY_USER@$DEPLOY_HOST:$remote"
+
+      - name: Deploy exact canonical release
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="/tmp/olivia-bootstrap-${RELEASE_SHA}.sh"
+          ssh -o BatchMode=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 -i "$HOME/.ssh/id_ed25519" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "chmod 0700 '$remote' && sudo env REF='$RELEASE_SHA' LOCAL_RECOVERY_ENABLED='$LOCAL_RECOVERY_ENABLED' bash '$remote'; rc=\$?; rm -f '$remote'; exit \$rc"
+
+      - name: Verify loopback canonical health
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$(ssh -o BatchMode=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 -i "$HOME/.ssh/id_ed25519" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'curl -fsS --max-time 10 http://127.0.0.1:8080/healthz')"
+          HEALTH_JSON="$health" RELEASE_SHA="$RELEASE_SHA" python3 - <<'PY'
+          import json
+          import os
+
+          body = json.loads(os.environ["HEALTH_JSON"])
+          expected = os.environ["RELEASE_SHA"].lower()
+          checks = {
+              "process_alive": body.get("process_alive") is True,
+              "api_mode": body.get("api_mode") == "canonical",
+              "build_sha": str(body.get("build_sha") or "").lower() == expected,
+              "hard_zero_cost": body.get("hard_zero_cost") is True,
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              raise SystemExit("canonical bootstrap health failed: " + ", ".join(failed))
+          PY
+
+      - name: Report non-secret deployment checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 -i "$HOME/.ssh/id_ed25519" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "sudo awk -F= '/^(URL|SOURCE_REF|LOCAL_RECOVERY_ENABLED|COST_MODE)=/ {print}' /var/lib/0livia/bootstrap-info"
+          echo "CANONICAL_BOOTSTRAP_OK=YES"
+          echo "SOURCE_SHA=$RELEASE_SHA"
+          echo "NOTE=Provider readiness and owner registration still require the production smoke gate."
+
+      - name: Remove temporary SSH material
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"

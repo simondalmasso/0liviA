@@ -8,6 +8,10 @@ Internet → HTTPS/Caddy → `127.0.0.1:8080` → 0liviA Core → SQLite in `/va
 
 Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's PC is not part of the runtime.
 
+## GitHub Actions SSH deploy
+
+Once a host exists, `.github/workflows/deploy-canonical.yml` can deploy an exact canonical `main` SHA without depending on the owner's PC. It is manual-only and requires four repository secrets: `OLIVIA_DEPLOY_HOST`, `OLIVIA_DEPLOY_USER`, `OLIVIA_DEPLOY_SSH_KEY` and pinned `OLIVIA_DEPLOY_KNOWN_HOSTS`. It refuses mutable refs, password SSH and unpinned host trust. The workflow verifies loopback canonical health but deliberately does not claim production readiness; owner registration, provider readiness and the full `deploy/smoke.sh` gate remain separate.
+
 ## Bootstrap
 
 1. Provision the A1 VM with a public IPv4 and Ubuntu ARM64.
