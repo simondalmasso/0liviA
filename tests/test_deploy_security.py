@@ -45,9 +45,18 @@ def test_bootstrap_protects_first_registration_with_setup_link():
 
 def test_small_local_model_is_recovery_only_by_default():
     assert 'LOCAL_RECOVERY_ENABLED="${LOCAL_RECOVERY_ENABLED:-0}"' in BOOTSTRAP
-    assert 'PROVIDERS_JSON=\'[]\'' in BOOTSTRAP
-    assert 'if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then' in BOOTSTRAP
     assert '"name":"local-recovery-qwen"' in BOOTSTRAP
+    assert '"priority":1000' in BOOTSTRAP
+
+
+def test_new_install_has_explicit_anonymous_zero_cost_chat_lane():
+    assert 'ANON_CHAT_ENABLED="${ANON_CHAT_ENABLED:-1}"' in BOOTSTRAP
+    assert '"name":"pollinations-anon"' in BOOTSTRAP
+    assert '"base_url":"https://text.pollinations.ai/openai"' in BOOTSTRAP
+    assert '"model":"openai-fast"' in BOOTSTRAP
+    assert '"auth_mode":"none"' in BOOTSTRAP
+    assert '"cost_mode":"free_hard_cap"' in BOOTSTRAP
+    assert '"fallback_policy":"stop"' in BOOTSTRAP
     assert '"priority":1000' in BOOTSTRAP
     assert 'systemctl disable --now llama-local' in BOOTSTRAP
     assert "never silently downgrades normal chat quality" in BOOTSTRAP
