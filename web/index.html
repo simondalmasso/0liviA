@@ -526,7 +526,7 @@ function selectedChat(){
 function composerAvailable(){
   if(backendMode==='public_shell')return false;
   if(backendMode==='canonical')return ownerAuthReady&&coreHealth?.provider_ready===true;
-  return coreHealth?.provider_ready===true;
+  return true;
 }
 function updateComposerAvailability(){
   const available=composerAvailable();
