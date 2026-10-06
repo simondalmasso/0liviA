@@ -162,3 +162,13 @@ def test_canonical_host_preflight_fails_closed_before_bootstrap():
     assert "Preflight target before mutation" in CANONICAL_DEPLOY
     assert "'bash -s' < deploy/preflight.sh" in CANONICAL_DEPLOY
     assert CANONICAL_DEPLOY.index("Preflight target before mutation") < CANONICAL_DEPLOY.index("Upload exact bootstrap script")
+
+
+def test_bootstrap_rolls_back_first_install_and_public_https_failures():
+    assert 'rm -f "${APP_ROOT}/current"' in BOOTSTRAP
+    assert "systemctl stop olivia || true" in BOOTSTRAP
+    assert 'CADDY_BACKUP=' in BOOTSTRAP
+    assert 'cp -a "${CADDY_BACKUP}" "${CADDY_FILE}"' in BOOTSTRAP
+    assert "wait_for_public_https()" in BOOTSTRAP
+    assert 'if ! wait_for_public_https; then' in BOOTSTRAP
+    assert 'public HTTPS health check failed; previous release restored' in BOOTSTRAP
