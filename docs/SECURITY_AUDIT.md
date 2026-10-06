@@ -7,7 +7,7 @@ This document records which findings apply to canonical `main`. Historical branc
 ## Applies to the active branch
 
 ### PUBLIC-SHELL-STALE — FIXED / canonical backend still gated
-The historical public Worker was stale and model-capable. The last deployment with durable exact-source evidence is the **inert public shell** from `a4cbecaf2665f5dc95536f3b21b5b78133bfbb9e`, Cloudflare Worker `4f7f2ba7-12cf-42aa-888a-05c7729b3d43`, tag `main-a4cbeca-v1`, with only the `ASSETS` runtime binding. Fresh public verification still reports `api_mode:public_shell`, `bridge_enabled:false`, `provider_ready:false`, `inference_enabled:false`, `web_read:false`, `hard_zero_cost:true`, and `/api/chat` remains HTTP 503. The later anti-polling source checkpoint `67587abfec0bf776c19257e971675d7807f5fa24` was not a Cloudflare deployment and must not be cited as deployed provenance.
+The historical public Worker was stale and model-capable. The last deployment with durable exact-source evidence is the **inert public shell** from `eee3f26885f13bc14073e3a7c1d7a1851e7a4883`, Cloudflare Worker version `c582cf85-0b9e-4841-8392-f6169d1e4cf1`, GitHub Actions run `37401620923`, with only the `ASSETS` runtime binding. The deploy smoke recorded `PUBLIC_SHELL_OK=YES`, `INFERENCE_DISABLED=YES`, `bridge_enabled:false`, `provider_ready:false`, `inference_enabled:false`, `web_read:false`, and `/api/chat` HTTP 503. This source also includes the anti-polling runtime contract and disables the composer in `public_shell` mode instead of silently queueing user messages.
 
 This fixes the stale/shared-inference exposure of the **public shell**. It does **not** mean the canonical Python Core is deployed; authenticated durable chat/memory/voice still require the canonical host.
 

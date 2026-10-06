@@ -523,10 +523,27 @@ function selectedChat(){
   return p&&p.chats.find(c=>c.id===workspace.selectedChatId)||p&&p.chats[0];
 }
 
+function composerAvailable(){
+  if(backendMode==='public_shell')return false;
+  if(backendMode==='canonical')return ownerAuthReady&&coreHealth?.provider_ready===true;
+  return true;
+}
+function updateComposerAvailability(){
+  const available=composerAvailable();
+  textInput.disabled=!available;
+  sendBtn.disabled=!available;
+  textInput.setAttribute('aria-disabled',available?'false':'true');
+  if(backendMode==='public_shell')textInput.placeholder='Core canónico no conectado';
+  else if(backendMode==='canonical'&&!ownerAuthReady)textInput.placeholder='Iniciá sesión para usar 0liviA';
+  else if(coreHealth&&coreHealth.provider_ready!==true)textInput.placeholder='Sin proveedor $0 disponible';
+  else textInput.placeholder='Escribile a 0liviA…';
+  if(!available)closeSlashPalette();
+}
 function setCoreState(mode){
   coreOnline=mode==='online';
   coreDot.className='core-dot'+(mode==='online'?' online':mode==='locked'?' locked':'');
   coreDot.title=mode==='online'?'Core online':mode==='locked'?'Core limitado':'Core pendiente';
+  updateComposerAvailability();
 }
 async function canonicalAuthCheck(){
   if(backendMode!=='canonical')return true;
@@ -621,6 +638,7 @@ async function probeCore({force=false}={}){
     else backendMode='bridge';
     const authOk=await canonicalAuthCheck();
     setCoreState(body.provider_ready&&authOk?'online':body.provider_ready?'locked':'locked');
+    updateComposerAvailability();
     if(authOk){await loadSessionProfile();await loadTrustedDevices();await loadSecurityEvents()}
     if(workspace){renderConfig();renderSession()}
     return body.provider_ready===true&&authOk;
@@ -1380,6 +1398,7 @@ function setSendMode(active){
 }
 sendBtn.onclick=e=>{if(controller){e.preventDefault();controller.abort()}};
 async function sendChat(raw,{speak=false}={}){
+  if(!composerAvailable())return;
   const value=(raw||'').trim();if(!value)return;
   const chat=selectedChat();if(!chat)return;
   const msg={id:uid('m'),role:'user',text:value,status:'queued',ts:now()};
