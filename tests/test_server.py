@@ -1908,3 +1908,15 @@ async def test_ui_does_not_poll_cloudflare_runtime(client):
     assert "lastCoreProbeAt" in html
     assert "probeCore({force=false}" in html
     assert "window.addEventListener('online',()=>syncQueued({forceProbe:true}))" in html
+
+
+@pytest.mark.asyncio
+async def test_public_shell_disables_chat_instead_of_queueing_messages(client):
+    html = await (await client.get("/")).text()
+
+    assert "function updateComposerAvailability()" in html
+    assert "backendMode==='public_shell'" in html
+    assert "Core canónico no conectado" in html
+    assert "textInput.disabled=!available" in html
+    assert "sendBtn.disabled=!available" in html
+    assert "if(!composerAvailable())return" in html
