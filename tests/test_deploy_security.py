@@ -100,7 +100,7 @@ def test_bootstrap_uses_versioned_atomic_releases_and_per_release_venv():
     service = (ROOT / "deploy" / "0livia.service").read_text(encoding="utf-8")
     assert 'RELEASES_ROOT="${APP_ROOT}/releases"' in BOOTSTRAP
     assert 'RELEASE_DIR="${RELEASES_ROOT}/${SOURCE_SHA}"' in BOOTSTRAP
-    assert 'STAGE_DIR="${RELEASES_ROOT}/.${SOURCE_SHA}.stage.$$"' in BOOTSTRAP
+    assert 'STAGE_DIR="${RELEASES_ROOT}/.${SOURCE_SHA}.stage.${BASHPID}"' in BOOTSTRAP
     assert 'ln -s "${RELEASE_DIR}" "${APP_ROOT}/.current.next"' in BOOTSTRAP
     assert 'mv -Tf "${APP_ROOT}/.current.next" "${APP_ROOT}/current"' in BOOTSTRAP
     assert 'PREVIOUS_RELEASE=' in BOOTSTRAP
@@ -113,7 +113,8 @@ def test_bootstrap_uses_versioned_atomic_releases_and_per_release_venv():
 
 
 def test_bootstrap_preserves_existing_runtime_env_on_upgrade():
-    assert 'if [[ -f "${ETC_ROOT}/olivia.env" ]]; then' in BOOTSTRAP
+    assert 'ENV_FILE="${ETC_ROOT}/olivia.env"' in BOOTSTRAP
+    assert 'if [[ -f "${ENV_FILE}" ]]; then' in BOOTSTRAP
     assert 'OLIVIA_BUILD_SHA' in BOOTSTRAP
     assert 'OLIVIA_HARD_ZERO_COST' in BOOTSTRAP
     assert 'preserve the configured provider catalog and signing token' in BOOTSTRAP
