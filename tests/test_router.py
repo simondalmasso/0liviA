@@ -307,6 +307,7 @@ def test_provider_catalog_exposes_models_capabilities_without_secrets(tmp_path):
             "daily_limit": 0,
             "cost_mode": "free_hard_cap",
             "capabilities": ["chat", "research", "vision"],
+            "fallback_policy": "allow",
         }
     ]
     assert "VERY_SECRET_ENV_NAME" not in repr(catalog)
