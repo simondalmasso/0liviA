@@ -102,16 +102,23 @@ jobs:
           JSON
 
       - name: Deploy exact public shell
+        id: deploy
         shell: bash
         run: |
           set -euo pipefail
-          npm exec --yes wrangler@4.127.1 -- deploy             --config wrangler.deploy.runtime.jsonc             --keep-vars             --message "public shell main@${RELEASE_SHA}"
+          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.deploy.runtime.jsonc --keep-vars --message "public shell main@${RELEASE_SHA}" 2>&1 | tee /tmp/wrangler-deploy.log
+          public_url="$(grep -Eo 'https://[^[:space:]]+\.workers\.dev' /tmp/wrangler-deploy.log | tail -n1 || true)"
+          test -n "${public_url}"
+          echo "public_url=${public_url}" >> "${GITHUB_OUTPUT}"
 
       - name: Cache-busted production smoke
         shell: bash
+        env:
+          PUBLIC_SHELL_URL: ${{ steps.deploy.outputs.public_url }}
         run: |
           set -euo pipefail
-          base="https://0livia.simondalmasso44.workers.dev"
+          base="${PUBLIC_SHELL_URL}"
+          [[ "${base}" == https://*.workers.dev ]]
           cb="$(date +%s)"
           root="$(curl -fsS --max-time 20 "${base}/?cb=${cb}")"
           printf '%s' "${root}" | grep -Fq '0liviA — Tu IA personal'
