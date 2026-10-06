@@ -282,3 +282,14 @@ def test_active_code_and_tests_do_not_target_historical_arch_branch():
             if forbidden in text:
                 offenders.append(str(path.relative_to(ROOT)))
     assert offenders == []
+
+
+def test_docs_track_exact_release_smoke_and_plan_included_policy():
+    deploy = (ROOT / "deploy" / "README.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+
+    assert "cost_mode=plan_included" in deploy
+    assert "free_unverified" in deploy and "remain blocked" in deploy
+    assert "40-hex build SHA" in plan
+    assert "api_mode=canonical" in plan
+    assert "local/free_hard_cap/plan_included" in plan
