@@ -70,6 +70,8 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .copy-btn.copied{color:#fff}
 .copy-btn svg{width:15px;height:15px}
 .composer-wrap{position:absolute;left:0;right:0;bottom:0;padding:12px 16px max(18px,env(safe-area-inset-bottom));pointer-events:none;background:transparent}
+.composer-wrap.landing{top:44%;bottom:auto;transform:translateY(-50%)}
+.messages.landing .empty{transform:translateY(-76px)}
 .composer{pointer-events:auto;display:flex;align-items:center;gap:5px;width:min(100%,780px);min-height:52px;margin:auto;padding:5px 6px 5px 8px;border:1px solid var(--border);border-radius:27px;background:var(--panel-2)}
 .composer input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--ink);padding:11px 6px;font-size:14px}
 .composer input::placeholder{color:#9a9a9a}
@@ -183,6 +185,8 @@ button.side-card{text-align:left}
   .msg-body{max-width:94%}
   .msg-actions{opacity:.72}
   .composer-wrap{padding:8px 8px max(9px,env(safe-area-inset-bottom))}
+  .composer-wrap.landing{top:46%}
+  .messages.landing .empty{transform:translateY(-66px)}
   .composer{width:100%;max-width:none;min-height:50px;padding:4px 5px 4px 6px;border-radius:24px}
   .composer input{font-size:16px;padding:9px 4px}
   .composer-icon,.send{width:40px;height:40px}
@@ -787,7 +791,10 @@ function renderMessagesInto(root,chat){
 }
 function renderMessages(){
   const chat=selectedChat();
+  const landing=!chat||!chat.messages.length;
   chatTitleEl.textContent=chat&&chat.title!=='Nuevo chat'?chat.title:'';
+  messagesEl.classList.toggle('landing',landing);
+  $('#composer').classList.toggle('landing',landing);
   renderMessagesInto(messagesEl,chat);
   renderMessagesInto(voiceChat,chat);
 }
