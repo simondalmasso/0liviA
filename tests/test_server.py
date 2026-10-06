@@ -1896,3 +1896,15 @@ async def test_plain_language_cannot_dispatch_coding_side_effects(aiohttp_client
     assert "Te explico cómo hacerlo." in await response.text()
     assert worker.dispatched == []
     assert len(router.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_ui_does_not_poll_cloudflare_runtime(client):
+    html = await (await client.get("/")).text()
+
+    assert "setInterval(syncQueued,15000)" not in html
+    assert "window.addEventListener('focus',syncQueued)" not in html
+    assert "CORE_PROBE_MIN_INTERVAL_MS=5*60*1000" in html
+    assert "lastCoreProbeAt" in html
+    assert "probeCore({force=false}" in html
+    assert "window.addEventListener('online',()=>syncQueued({forceProbe:true}))" in html
