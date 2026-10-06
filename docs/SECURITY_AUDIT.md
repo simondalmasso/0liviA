@@ -7,7 +7,7 @@ This document records which findings apply to canonical `main`. Historical branc
 ## Applies to the active branch
 
 ### PUBLIC-SHELL-STALE — FIXED / canonical backend still gated
-The historical public Worker was stale and model-capable. The last deployment with durable exact-source evidence is the **inert public shell** from `eee3f26885f13bc14073e3a7c1d7a1851e7a4883`, Cloudflare Worker version `c582cf85-0b9e-4841-8392-f6169d1e4cf1`, GitHub Actions run `37401620923`, with only the `ASSETS` runtime binding. The deploy smoke recorded `PUBLIC_SHELL_OK=YES`, `INFERENCE_DISABLED=YES`, `bridge_enabled:false`, `provider_ready:false`, `inference_enabled:false`, `web_read:false`, and `/api/chat` HTTP 503. This source also includes the anti-polling runtime contract and disables the composer in `public_shell` mode instead of silently queueing user messages.
+The historical public Worker was stale and model-capable. The last deployment with durable exact-source evidence is the **inert public shell** from `b2decd3418e9a2f0f840115eeacd6350dfc2cc2d`, Cloudflare Worker version `36e32304-da90-42ed-a655-36d24d1a68bc`, with preview URLs disabled and only the `ASSETS` runtime binding. Fresh cache-busted verification recorded `api_mode:public_shell`, `bridge_enabled:false`, `provider_ready:false`, `inference_enabled:false`, `web_read:false`, `hard_zero_cost:true`, and `/api/chat` HTTP 503. The deployed UI is the lightweight monochrome shell from PR #54; the public Worker remains intentionally non-model-capable.
 
 This fixes the stale/shared-inference exposure of the **public shell**. It does **not** mean the canonical Python Core is deployed; authenticated durable chat/memory/voice still require the canonical host.
 
