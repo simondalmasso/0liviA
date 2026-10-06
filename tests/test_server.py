@@ -1873,3 +1873,26 @@ async def test_live_voice_prefers_canonical_wss_when_backend_exists(client):
     # Browser speech remains a graceful fallback while the server voice backend is gated.
     assert "SpeechRecognition" in html
     assert "speechSynthesis" in html
+
+
+@pytest.mark.asyncio
+async def test_plain_language_cannot_dispatch_coding_side_effects(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "explicit-code-command.sqlite3")
+    router = FakeRouter(parts=("Te explico cómo hacerlo.",))
+    agent = Agent(store, router, settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    session_id = store.create_session("explicit-command")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "Arreglá el repo, hacé cambios y publicalos."},
+        headers=auth(),
+    )
+    assert response.status == 200
+    assert "Te explico cómo hacerlo." in await response.text()
+    assert worker.dispatched == []
+    assert len(router.calls) == 1
