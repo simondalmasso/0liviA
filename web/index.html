@@ -417,6 +417,8 @@ let workspace=null;
 let coreOnline=false;
 let coreHealth=null;
 let backendMode='bridge';
+const CORE_PROBE_MIN_INTERVAL_MS=5*60*1000;
+let lastCoreProbeAt=0;
 // Runtime states: canonical | public_shell | bridge. Health probing selects the active state.
 let ownerAuthReady=false;
 let trustedDevices=[];
@@ -602,7 +604,12 @@ async function revokeTrustedDevice(deviceId){
   }catch(e){}
 }
 
-async function probeCore(){
+async function probeCore({force=false}={}){
+  const started=Date.now();
+  if(!force&&lastCoreProbeAt&&started-lastCoreProbeAt<CORE_PROBE_MIN_INTERVAL_MS){
+    return coreHealth?.provider_ready===true&&(backendMode!=='canonical'||ownerAuthReady);
+  }
+  lastCoreProbeAt=started;
   try{
     const r=await fetch('/healthz',{cache:'no-store',credentials:'same-origin'});
     if(!r.ok)throw new Error('offline');
@@ -658,7 +665,7 @@ ownerLoginForm.onsubmit=async e=>{
     ownerAuthReady=true;
     if(registering)setupToken='';
     hideOwnerLogin();
-    await probeCore();
+    await probeCore({force:true});
     await syncCanonicalWorkspace();
     syncQueued();
   }catch(e){ownerLoginError.textContent='Core no disponible'}
@@ -954,7 +961,7 @@ function renderSession(){
 async function logoutOwnerSession(){
   try{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'})}catch(e){}
   ownerAuthReady=false;ownerSessionEmail='';trustedDevices=[];securityEvents=[];
-  closeDrawer();await probeCore();
+  closeDrawer();await probeCore({force:true});
 }
 
 function renderAll(){renderChats();renderTree();renderLibrary();renderMemory();renderConfig();renderSession();renderMessages()}
@@ -1387,9 +1394,9 @@ $('#composer').onsubmit=async e=>{
   const value=textInput.value.trim();if(!value)return;
   textInput.value='';closeSlashPalette();await sendChat(value);
 };
-async function syncQueued(){
+async function syncQueued({forceProbe=false}={}){
   if(syncing||controller)return;
-  const ready=await probeCore();if(!ready)return;
+  const ready=await probeCore({force:forceProbe});if(!ready)return;
   syncing=true;
   try{
     for(const p of workspace.projects)for(const c of p.chats)for(const m of c.messages.filter(x=>x.role==='user'&&x.status==='queued')){
@@ -1727,14 +1734,14 @@ $('#voiceMain').onclick=async()=>{
 };
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();if(voiceLive.classList.contains('open'))closeVoice()}});
-window.addEventListener('online',syncQueued);window.addEventListener('focus',syncQueued);setInterval(syncQueued,15000);
+window.addEventListener('online',()=>syncQueued({forceProbe:true}));
 
 (async()=>{
   try{workspace=await readState()}catch(e){workspace=null}
   normalizeWorkspace();
   const p=selectedProject();if(!p.chats.length)p.chats.push({id:uid('c'),title:'Nuevo chat',messages:[]});
   if(!workspace.selectedChatId)workspace.selectedChatId=p.chats[0].id;
-  await saveState();renderAll();await probeCore();if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();syncQueued();
+  await saveState();renderAll();await probeCore({force:true});if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();syncQueued();
 })();
 </script>
 </body>
