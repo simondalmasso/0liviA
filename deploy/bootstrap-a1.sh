@@ -123,7 +123,7 @@ if [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]] && [[ "${SOURCE_SHA}" != "$REF" ]]; then
   exit 2
 fi
 RELEASE_DIR="${RELEASES_ROOT}/${SOURCE_SHA}"
-STAGE_DIR="${RELEASES_ROOT}/.${SOURCE_SHA}.stage.$"
+STAGE_DIR="${RELEASES_ROOT}/.${SOURCE_SHA}.stage.${BASHPID}"
 
 if [[ ! -f "${RELEASE_DIR}/.ready" ]]; then
   rm -rf "${STAGE_DIR}" "${RELEASE_DIR}"
