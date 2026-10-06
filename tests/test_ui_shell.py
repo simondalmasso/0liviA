@@ -29,3 +29,17 @@ def test_likegpt_navigation_and_composer_contract():
     assert 'id="voiceBtn" class="composer-icon"' in html
     assert "Listo cuando quieras." in html
     assert "setPrimaryMode(name==='chats'?'chat':'work')" in html
+
+
+def test_public_home_and_login_are_spanish_and_fail_closed():
+    html = _shell()
+    assert 'id="publicWelcome"' in html
+    assert 'id="publicLoginBtn"' in html
+    assert ">Trabajo</button>" in html
+    assert "Tu IA personal." in html
+    assert "Privada y rápida." in html
+    assert "El Core privado todavía no está conectado." in html
+    assert "if(backendMode==='public_shell')" in html
+    assert "publicWelcome.hidden=!isPublic" in html
+    assert 'class="brand-mini"' in html
+    assert 'class="auth-mark brand-auth"' in html
