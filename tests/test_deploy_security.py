@@ -118,8 +118,9 @@ def test_bootstrap_preserves_existing_runtime_env_on_upgrade():
     assert 'OLIVIA_BUILD_SHA' in BOOTSTRAP
     assert 'OLIVIA_HARD_ZERO_COST' in BOOTSTRAP
     assert 'preserve the configured provider catalog and signing token' in BOOTSTRAP
-    assert 'cp -a "${ETC_ROOT}/olivia.env" "${tmp}/olivia.env.previous"' in BOOTSTRAP
-    assert 'cp -a "${tmp}/olivia.env.previous" "${ETC_ROOT}/olivia.env"' in BOOTSTRAP
+    assert 'ENV_BACKUP="${tmp}/olivia.env.previous"' in BOOTSTRAP
+    assert 'cp -a "${ENV_FILE}" "${ENV_BACKUP}"' in BOOTSTRAP
+    assert 'cp -a "${ENV_BACKUP}" "${ETC_ROOT}/olivia.env"' in BOOTSTRAP
 
 
 def test_bootstrap_restarts_new_release_and_rolls_back_on_failed_health():
