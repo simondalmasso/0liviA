@@ -340,6 +340,44 @@ def test_openai_compatible_configured_state_is_transport_aware(tmp_path, monkeyp
     assert remote.configured is True
 
 
+def test_remote_zero_cost_provider_can_explicitly_disable_bearer_auth(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        hard_zero_cost=True,
+        providers=(
+            {
+                "name": "anonymous-free",
+                "base_url": "https://example.invalid/openai",
+                "model": "anonymous-model",
+                "auth_mode": "none",
+                "cost_mode": "free_hard_cap",
+                "fallback_policy": "stop",
+            },
+        ),
+    )
+    pool = ProviderPool.from_settings(settings, Store(tmp_path / "anon.sqlite3"))
+    assert len(pool.providers) == 1
+    provider = pool.providers[0]
+    assert provider.configured is True
+    assert provider.spec.auth_mode == "none"
+    assert provider.spec.api_key_env == ""
+    assert provider.fallback_policy == "stop"
+
+
+def test_no_auth_transport_rejects_unverified_or_paid_cost_modes():
+    for mode in ("free_unverified", "paid"):
+        with pytest.raises(Exception, match="auth_mode=none"):
+            ProviderSpec.from_dict(
+                {
+                    "name": "unsafe-anonymous",
+                    "base_url": "https://example.invalid/v1",
+                    "model": "m",
+                    "auth_mode": "none",
+                    "cost_mode": mode,
+                }
+            )
+
+
 @pytest.mark.asyncio
 async def test_strict_provider_failure_never_falls_back_to_another_model(tmp_path, settings):
     store = Store(tmp_path / "strict-fallback.sqlite3")
