@@ -1,0 +1,163 @@
+name: 0liviA Public Shell Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - web/**
+      - cloudflare/**
+      - .github/workflows/deploy-public-shell.yml
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Exact 40-hex canonical main SHA; defaults to the selected branch HEAD when omitted"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: olivia-public-shell-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve immutable canonical release
+        id: release
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${REQUESTED_SHA:-}" ]]; then
+            release_sha="${REQUESTED_SHA}"
+          else
+            release_sha="${GITHUB_SHA}"
+          fi
+          [[ "${release_sha}" =~ ^[0-9a-fA-F]{40}$ ]]
+          git cat-file -e "${release_sha}^{commit}"
+          git merge-base --is-ancestor "${release_sha}" origin/main
+          git checkout --detach "${release_sha}"
+          test "$(git rev-parse HEAD)" = "${release_sha}"
+          echo "release_sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+          echo "RELEASE_SHA=${release_sha}" >> "${GITHUB_ENV}"
+
+      - name: Require Cloudflare deployment credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+      - name: Verify inert public-shell source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'api_mode: "public_shell"' cloudflare/worker.mjs
+          grep -Fq 'inference_enabled: false' cloudflare/worker.mjs
+          grep -Fq 'web_read: false' cloudflare/worker.mjs
+          grep -Fq 'hard_zero_cost: true' cloudflare/worker.mjs
+          grep -Fq '0liviA — Tu IA personal' web/index.html
+          ! grep -Fq 'id="modeChat"' web/index.html
+          ! grep -Fq 'id="modeWork"' web/index.html
+
+      - name: Build exact Wrangler deployment config
+        shell: bash
+        run: |
+          cat > wrangler.deploy.runtime.jsonc <<'JSON'
+          {
+            "name": "0livia",
+            "main": "./cloudflare/worker.mjs",
+            "compatibility_date": "2026-10-04",
+            "compatibility_flags": ["global_fetch_strictly_public"],
+            "workers_dev": true,
+            "preview_urls": false,
+            "assets": {
+              "directory": "./web",
+              "binding": "ASSETS"
+            },
+            "exports": {
+              "CostGuard": {
+                "type": "durable-object",
+                "storage": "sqlite"
+              }
+            }
+          }
+          JSON
+
+      - name: Deploy exact public shell
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.deploy.runtime.jsonc --keep-vars --message "public shell main@${RELEASE_SHA}" 2>&1 | tee /tmp/wrangler-deploy.log
+          public_url="$(grep -Eo 'https://[^[:space:]]+\.workers\.dev' /tmp/wrangler-deploy.log | tail -n1 || true)"
+          test -n "${public_url}"
+          echo "public_url=${public_url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache-busted production smoke
+        shell: bash
+        env:
+          PUBLIC_SHELL_URL: ${{ steps.deploy.outputs.public_url }}
+        run: |
+          set -euo pipefail
+          base="${PUBLIC_SHELL_URL}"
+          [[ "${base}" == https://*.workers.dev ]]
+          cb="$(date +%s)"
+          root="$(curl -fsS --max-time 20 "${base}/?cb=${cb}")"
+          printf '%s' "${root}" | grep -Fq '0liviA — Tu IA personal'
+          ! printf '%s' "${root}" | grep -Fq 'id="modeChat"'
+          ! printf '%s' "${root}" | grep -Fq 'id="modeWork"'
+
+          health="$(curl -fsS --max-time 20 "${base}/healthz?cb=${cb}")"
+          HEALTH_JSON="${health}" python3 - <<'PY'
+          import json
+          import os
+
+          body = json.loads(os.environ["HEALTH_JSON"])
+          checks = {
+              "process_alive": body.get("process_alive") is True,
+              "api_mode": body.get("api_mode") == "public_shell",
+              "public_shell": body.get("public_shell") is True,
+              "bridge_enabled": body.get("bridge_enabled") is False,
+              "provider_ready": body.get("provider_ready") is False,
+              "inference_enabled": body.get("inference_enabled") is False,
+              "web_read": body.get("web_read") is False,
+              "hard_zero_cost": body.get("hard_zero_cost") is True,
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              raise SystemExit("public-shell smoke failed: " + ", ".join(failed))
+          PY
+
+          chat_status="$(curl -sS --max-time 20 -o /tmp/olivia-chat-response             -w '%{http_code}' -X POST "${base}/api/chat?cb=${cb}")"
+          test "${chat_status}" = "503"
+
+          {
+            echo "### 0liviA public shell"
+            echo "- source: \`main@${RELEASE_SHA}\`"
+            echo "- root: HTTP 200, Spanish single-surface UI"
+            echo "- health: inert public shell, hard zero cost"
+            echo "- /api/chat: HTTP 503"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Remove ephemeral deploy config
+        if: always()
+        shell: bash
+        run: rm -f wrangler.deploy.runtime.jsonc
