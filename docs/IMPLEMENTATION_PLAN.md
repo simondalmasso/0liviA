@@ -23,7 +23,13 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
 - Exact production smoke gate: target must report the requested 40-hex build SHA, `api_mode=canonical`, `hard_zero_cost=true`, completed owner registration, at least one available `local/free_hard_cap/plan_included` provider, and a routed+completed streamed chat turn.
 - Repository hygiene tests preventing stale build claims and active-doc duplication.
-- Public inert shell released from exact source `4ad53fdfd6e1664763c73ea5847582ba2ed99157`: core CI run `37266316863` PASS, mobile Playwright smoke run `37266316851` PASS at 360×800 and 430×900, public-shell deploy run `37266503642` PASS, Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, with `PUBLIC_SHELL_OK=YES` and `INFERENCE_DISABLED=YES`.
+- Public inert shell released from exact source `67587abfec0bf776c19257e971675d7807f5fa24`: core CI run `37266316863` PASS, mobile Playwright smoke run `37266316851` PASS at 360×800 and 430×900, public-shell deploy run `37266503642` PASS, Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, with `PUBLIC_SHELL_OK=YES` and `INFERENCE_DISABLED=YES`.
+
+Runtime-call discipline:
+- public shell has no periodic polling loop;
+- focus changes do not trigger health/sync calls;
+- health state is cached for five minutes;
+- retries are event-driven (`online`) or tied to explicit user actions.
 
 ## Productization gates
 
