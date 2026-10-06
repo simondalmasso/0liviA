@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
 CLOUD_INIT = (ROOT / "deploy" / "cloud-init-a1.yaml").read_text(encoding="utf-8")
 CHATGPT_INSTALLER = (ROOT / "scripts" / "install_chatgpt_plan_profile.sh").read_text(encoding="utf-8")
+SMOKE = (ROOT / "deploy" / "smoke.sh").read_text(encoding="utf-8")
 
 
 def test_cloud_init_requires_immutable_commit_ref_before_root_execution():
@@ -78,4 +79,52 @@ def test_chatgpt_plan_installer_requires_provider_health_confirmation():
 
 def test_bootstrap_exports_exact_build_sha():
     bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
-    assert "OLIVIA_BUILD_SHA=${REF}" in bootstrap
+    assert "SOURCE_SHA=" in bootstrap
+    assert "OLIVIA_BUILD_SHA=${SOURCE_SHA}" in bootstrap
+
+
+def test_release_smoke_requires_exact_canonical_zero_cost_build():
+    assert "EXPECTED_SHA" in SMOKE
+    assert '"api_mode": body.get("api_mode") == "canonical"' in SMOKE
+    assert '"build_sha": str(body.get("build_sha") or "").lower() == expected' in SMOKE
+    assert '"hard_zero_cost": body.get("hard_zero_cost") is True' in SMOKE
+    assert '"provider_ready": body.get("provider_ready") is True' in SMOKE
+    assert '"owner_auth_configured": body.get("owner_auth_configured") is True' in SMOKE
+    assert '"registration_closed": body.get("registration_open") is False' in SMOKE
+    assert 'allowed_modes = {"local", "free_hard_cap", "plan_included"}' in SMOKE
+    assert 'event.get("type") == "route"' in SMOKE
+    assert 'event.get("type") == "done"' in SMOKE
+
+
+def test_bootstrap_uses_versioned_atomic_releases_and_per_release_venv():
+    service = (ROOT / "deploy" / "0livia.service").read_text(encoding="utf-8")
+    assert 'RELEASES_ROOT="${APP_ROOT}/releases"' in BOOTSTRAP
+    assert 'RELEASE_DIR="${RELEASES_ROOT}/${SOURCE_SHA}"' in BOOTSTRAP
+    assert 'STAGE_DIR="${RELEASES_ROOT}/.${SOURCE_SHA}.stage.${BASHPID}"' in BOOTSTRAP
+    assert 'ln -s "${RELEASE_DIR}" "${APP_ROOT}/.current.next"' in BOOTSTRAP
+    assert 'mv -Tf "${APP_ROOT}/.current.next" "${APP_ROOT}/current"' in BOOTSTRAP
+    assert 'PREVIOUS_RELEASE=' in BOOTSTRAP
+    assert 'rollback_release()' in BOOTSTRAP
+    assert '"${RELEASE_DIR}/venv/bin/pip" install "${RELEASE_DIR}"' in BOOTSTRAP
+    assert 'touch "${RELEASE_DIR}/.ready"' in BOOTSTRAP
+    assert 'test -f "${RELEASE_DIR}/.ready"' in BOOTSTRAP
+    assert "ExecStart=/opt/0livia/current/venv/bin/python -m olivia.server" in service
+    assert "/opt/0livia/venv/bin/python" not in service
+
+
+def test_bootstrap_preserves_existing_runtime_env_on_upgrade():
+    assert 'ENV_FILE="${ETC_ROOT}/olivia.env"' in BOOTSTRAP
+    assert 'if [[ -f "${ENV_FILE}" ]]; then' in BOOTSTRAP
+    assert 'OLIVIA_BUILD_SHA' in BOOTSTRAP
+    assert 'OLIVIA_HARD_ZERO_COST' in BOOTSTRAP
+    assert 'preserve the configured provider catalog and signing token' in BOOTSTRAP
+    assert 'ENV_BACKUP="${tmp}/olivia.env.previous"' in BOOTSTRAP
+    assert 'cp -a "${ENV_FILE}" "${ENV_BACKUP}"' in BOOTSTRAP
+    assert 'cp -a "${ENV_BACKUP}" "${ETC_ROOT}/olivia.env"' in BOOTSTRAP
+
+
+def test_bootstrap_restarts_new_release_and_rolls_back_on_failed_health():
+    assert "systemctl restart olivia" in BOOTSTRAP
+    assert 'if ! wait_for_core; then' in BOOTSTRAP
+    assert 'rollback_release' in BOOTSTRAP
+    assert 'systemctl restart olivia || true' in BOOTSTRAP

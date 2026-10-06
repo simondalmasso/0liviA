@@ -1,7 +1,7 @@
 import pytest
 
 from olivia.config import Settings
-from olivia.router import OpenAICompatibleProvider, ProviderPool, ProviderSpec, ProviderStreamInterrupted
+from olivia.router import AllProvidersFailed, OpenAICompatibleProvider, ProviderPool, ProviderSpec, ProviderStreamInterrupted
 from olivia.store import Store
 
 
@@ -16,6 +16,7 @@ class FakeProvider:
         fail_before=False,
         fail_after=False,
         capabilities=("chat",),
+        fallback_policy="allow",
     ):
         self.name = name
         self.parts = parts
@@ -24,6 +25,7 @@ class FakeProvider:
         self.fail_before = fail_before
         self.fail_after = fail_after
         self.capabilities = tuple(capabilities)
+        self.fallback_policy = fallback_policy
 
     async def stream(self, messages):
         if self.fail_before:
@@ -305,6 +307,7 @@ def test_provider_catalog_exposes_models_capabilities_without_secrets(tmp_path):
             "daily_limit": 0,
             "cost_mode": "free_hard_cap",
             "capabilities": ["chat", "research", "vision"],
+            "fallback_policy": "allow",
         }
     ]
     assert "VERY_SECRET_ENV_NAME" not in repr(catalog)
@@ -335,3 +338,61 @@ def test_openai_compatible_configured_state_is_transport_aware(tmp_path, monkeyp
     assert remote.configured is False
     monkeypatch.setenv("REMOTE_KEY", "test-key")
     assert remote.configured is True
+
+
+@pytest.mark.asyncio
+async def test_strict_provider_failure_never_falls_back_to_another_model(tmp_path, settings):
+    store = Store(tmp_path / "strict-fallback.sqlite3")
+    fallback = FakeProvider("inferior", ["fallback"], priority=2)
+    pool = ProviderPool(
+        [
+            FakeProvider(
+                "astra",
+                [],
+                priority=1,
+                fail_before=True,
+                fallback_policy="stop",
+            ),
+            fallback,
+        ],
+        store,
+        settings,
+    )
+
+    with pytest.raises(AllProvidersFailed):
+        _ = [event async for event in pool.stream([{"role": "user", "content": "x"}])]
+
+    assert not any(
+        record.get("provider") == "inferior" and record.get("kind") == "attempt"
+        for record in pool.telemetry
+    )
+    assert any(record.get("kind") == "fallback.blocked" for record in pool.telemetry)
+
+
+def test_provider_catalog_exposes_fallback_policy_without_secrets(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path,
+        hard_zero_cost=True,
+        providers=(
+            {
+                "name": "frontier",
+                "base_url": "http://127.0.0.1:9999/v1",
+                "model": "frontier-model",
+                "cost_mode": "local",
+                "fallback_policy": "stop",
+            },
+        ),
+    )
+    pool = ProviderPool.from_settings(settings, Store(tmp_path / "fallback-catalog.sqlite3"))
+    assert pool.catalog()[0]["fallback_policy"] == "stop"
+
+
+def test_provider_rejects_unknown_fallback_policy():
+    with pytest.raises(Exception, match="fallback_policy"):
+        ProviderSpec.from_dict({
+            "name": "bad",
+            "base_url": "http://127.0.0.1:9999/v1",
+            "model": "m",
+            "cost_mode": "local",
+            "fallback_policy": "guess",
+        })

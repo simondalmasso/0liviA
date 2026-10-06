@@ -274,3 +274,31 @@ async def test_inspect_rejects_invalid_or_unfinished_browser_job_without_model(
     assert unfinished.status == 200
     assert "todavía está running" in await unfinished.text()
     assert router.calls == []
+
+
+@pytest.mark.asyncio
+async def test_plain_language_cannot_dispatch_browser_side_effects(aiohttp_client, tmp_path):
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "explicit-browser-command.sqlite3")
+    router = NoCallRouter()
+    agent = Agent(store, router, settings)
+    worker = FakeBrowserWorker()
+    client = await aiohttp_client(
+        create_app(
+            agent,
+            settings,
+            auth_token="test-token",
+            browser_worker=worker,
+        )
+    )
+    session_id = store.create_session("explicit-browser-command")
+
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "Abrí example.com, hacé click y publicá lo que encuentres."},
+        headers=auth(),
+    )
+    assert response.status == 200
+    assert "MODEL_SHOULD_NOT_RUN" in await response.text()
+    assert worker.requests == []
+    assert len(router.calls) == 1

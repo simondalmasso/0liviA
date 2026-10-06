@@ -135,6 +135,7 @@ providers.insert(0, {
     "cost_mode": "plan_included",
     "no_credit_overage_verified": True,
     "capabilities": ["chat", "research", "code", "review"],
+    "fallback_policy": "stop",
 })
 
 encoded = json.dumps(providers, separators=(",", ":"))

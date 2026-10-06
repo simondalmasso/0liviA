@@ -17,7 +17,7 @@ Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's P
 5. If adding external providers, edit `/etc/0livia/olivia.env` (0640 root:olivia) and add only routes with a verified hard-zero-cost boundary.
 6. Pick an HTTPS hostname. Preferred: a domain you control pointing DNS-only at the Oracle IP. The bootstrap can use an IP-derived DNS hostname if you deliberately accept that external DNS dependency.
 7. Keep port 8080 private. The browser authenticates with the registered owner email/password and receives only an HttpOnly/Secure/SameSite cookie; the bearer stays server/CLI-side.
-8. Run the CLI smoke with the server-side bearer obtained directly from `/etc/0livia/olivia.env`, never through a browser URL or UI.
+8. Run the CLI smoke with the server-side bearer obtained directly from `/etc/0livia/olivia.env`, never through a browser URL or UI. Pass the exact release SHA as the third argument: `sudo bash deploy/smoke.sh https://HOST "$TOKEN" <40-hex-SHA>`. The smoke fails unless the host reports that exact SHA, `api_mode=canonical`, `hard_zero_cost=true`, a ready safe-cost provider, closed registration/owner auth, and a completed streamed chat turn.
 
 ## Provider policy
 
@@ -40,12 +40,14 @@ sudo -E OLIVIA_RESTORE_OVERWRITE=1 bash deploy/restore.sh /var/lib/0livia/backup
 
 ## Rollback
 
-Deploys are branch/commit based. Keep the previous checkout under a versioned release path before production rollout; switch `/opt/0livia/current` only after compile/tests/smoke pass. `bootstrap-a1.sh` is the single canonical installer. Atomic release switching remains a deployment hardening gate.
+`bootstrap-a1.sh` stages immutable releases under `/opt/0livia/releases/<SHA>`, creates a per-release virtualenv, marks the release ready only after package installation succeeds, then atomically switches the `/opt/0livia/current` symlink. Existing provider configuration and the internal signing token are preserved across upgrades; only the exact build SHA and hard-zero-cost invariant are refreshed.
+
+If the newly switched Core cannot start or pass its loopback health check, bootstrap restores the previous `current` target, restores the previous environment file and restarts the old Core. A first installation has no previous release to restore, so it fails closed instead. `bootstrap-a1.sh` remains the single canonical installer.
 
 
 ## Zero-spend gate
 
-Production keeps `OLIVIA_HARD_ZERO_COST=1`. Provider entries are accepted only with `cost_mode=local` or `cost_mode=free_hard_cap`, where the upstream account/route has a verified hard boundary that cannot create a charge.
+Production keeps `OLIVIA_HARD_ZERO_COST=1`. Provider entries are accepted only with `cost_mode=local`, `cost_mode=free_hard_cap`, or the official `cost_mode=plan_included` route when its no-credit-overage condition is explicitly verified. `free_unverified` and `paid` remain blocked.
 
 An advertised free quota without a hard billing boundary is `free_unverified` and is blocked. When all verified-free lanes are unavailable or quota-exhausted, the expected behavior is **degraded/unavailable, USD 0 spend**.
 
