@@ -71,7 +71,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - production STT/VAD/TTS selection and es-AR voice acceptance;
 - a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
-- exact-SHA **canonical Core** deployment and production smoke; the last verified public inert-shell deployment is source `b2decd3418e9a2f0f840115eeacd6350dfc2cc2d` (Worker `dd644e13-a8bf-41b2-a1c7-9e2e8778b9a9`), with the ultra-light B&W shell live, inference/search disabled, `hard_zero_cost=true`, and `/api/chat` still fail-closed at HTTP 503 until the Core exists;
+- exact-SHA **canonical Core** deployment and production smoke; the last verified public inert-shell deployment is source `b2decd3418e9a2f0f840115eeacd6350dfc2cc2d` (Worker `36e32304-da90-42ed-a655-36d24d1a68bc`), with the ultra-light B&W shell live, inference/search disabled, `hard_zero_cost=true`, and `/api/chat` still fail-closed at HTTP 503 until the Core exists;
 - any Cloudflare inference/search path whose account-level zero-cost behavior is not independently verified.
 
 ## Development
