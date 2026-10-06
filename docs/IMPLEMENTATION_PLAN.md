@@ -23,7 +23,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
 - Exact production smoke gate: target must report the requested 40-hex build SHA, `api_mode=canonical`, `hard_zero_cost=true`, completed owner registration, at least one available `local/free_hard_cap/plan_included` provider, and a routed+completed streamed chat turn.
 - Repository hygiene tests preventing stale build claims and active-doc duplication.
-- Public inert shell released from exact source `67587abfec0bf776c19257e971675d7807f5fa24`: core CI run `37266316863` PASS, mobile Playwright smoke run `37266316851` PASS at 360×800 and 430×900, public-shell deploy run `37266503642` PASS, Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, with `PUBLIC_SHELL_OK=YES` and `INFERENCE_DISABLED=YES`.
+- Last verified public inert-shell deployment: exact source `a4cbecaf2665f5dc95536f3b21b5b78133bfbb9e`, Cloudflare Worker `4f7f2ba7-12cf-42aa-888a-05c7729b3d43`, tag `main-a4cbeca-v1`, `has_preview:false`, runtime binding only `ASSETS`; fresh public verification still reports `api_mode=public_shell`, `bridge_enabled=false`, `provider_ready=false`, `inference_enabled=false`, `web_read=false`, `hard_zero_cost=true`, and `/api/chat` remains HTTP 503. The anti-polling source contract landed later in `main@67587abfec0bf776c19257e971675d7807f5fa24`; PR #45 documented that checkpoint without deploying Cloudflare, so it is not a deployment-provenance claim.
 
 Runtime-call discipline:
 - public shell has no periodic polling loop;
