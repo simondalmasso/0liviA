@@ -21,6 +21,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Review mode may only create/update `AGENT_REVIEW.md`; any product mutation fails the job.
 - Authenticated `/api/voice/ws` direct-WSS endpoint plus a browser/mobile WSS client, voice contracts/pipeline/sequence/cancel tests and benchmark recorder. The UI selects canonical WSS only when `/healthz` reports `voice_backend_configured=true`; otherwise it keeps the existing browser speech path as a provisional fallback. The WSS endpoint itself still fails 503 until an approved speech backend factory is configured.
 - Production bootstrap source/artifact pinning, first-run registration bootstrap and Caddy hardening.
+- Exact production smoke gate: target must report the requested 40-hex build SHA, `api_mode=canonical`, `hard_zero_cost=true`, completed owner registration, at least one available `local/free_hard_cap/plan_included` provider, and a routed+completed streamed chat turn.
 - Repository hygiene tests preventing stale build claims and active-doc duplication.
 - Public inert shell released from exact source `4ad53fdfd6e1664763c73ea5847582ba2ed99157`: core CI run `37266316863` PASS, mobile Playwright smoke run `37266316851` PASS at 360×800 and 430×900, public-shell deploy run `37266503642` PASS, Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, with `PUBLIC_SHELL_OK=YES` and `INFERENCE_DISABLED=YES`.
 
@@ -91,7 +92,7 @@ External gates still required before a production-security claim:
 - MFA/2FA verified on GitHub/Oracle/any retained Cloudflare/provider account;
 - provider-side rotation for any real credential exposure alert;
 - disposable-host restore rehearsal;
-- exact production smoke.
+- exact production smoke using the repository gate; the gate exists, but no canonical production host has passed it yet.
 
 ## Repository discipline
 
