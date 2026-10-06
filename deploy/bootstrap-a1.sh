@@ -108,6 +108,14 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
+CADDY_FILE="/etc/caddy/Caddyfile"
+CADDY_BACKUP="${tmp}/Caddyfile.previous"
+CADDY_WAS_PRESENT=0
+if [[ -f "${CADDY_FILE}" ]]; then
+  cp -a "${CADDY_FILE}" "${CADDY_BACKUP}"
+  CADDY_WAS_PRESENT=1
+fi
+
 if [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
   git init -q "${tmp}/repo"
   git -C "${tmp}/repo" remote add origin "${REPO_URL}"
@@ -257,6 +265,14 @@ chown root:olivia "${ENV_FILE}"
 chmod 0640 "${ENV_FILE}"
 
 rollback_release() {
+  if [[ -f "${CADDY_BACKUP}" ]]; then
+    cp -a "${CADDY_BACKUP}" "${CADDY_FILE}"
+    systemctl restart caddy || true
+  elif [[ "${CADDY_WAS_PRESENT}" == "0" ]]; then
+    rm -f "${CADDY_FILE}"
+    systemctl stop caddy || true
+  fi
+
   if [[ -n "${PREVIOUS_RELEASE}" && -d "${PREVIOUS_RELEASE}" ]]; then
     rm -f "${APP_ROOT}/.current.rollback"
     ln -s "${PREVIOUS_RELEASE}" "${APP_ROOT}/.current.rollback"
@@ -268,12 +284,25 @@ rollback_release() {
     fi
     systemctl daemon-reload
     systemctl restart olivia || true
+  else
+    rm -f "${APP_ROOT}/current"
+    systemctl stop olivia || true
   fi
 }
 
 wait_for_core() {
   for _ in $(seq 1 90); do
     if curl -fsS --max-time 4 http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+wait_for_public_https() {
+  for _ in $(seq 1 60); do
+    if curl -fsS --max-time 5 "https://${HOST}/healthz" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -319,12 +348,13 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 if [[ -z "${PUBLIC_IP}" ]]; then
-  echo "could not determine public IPv4" >&2
+  rollback_release
+  echo "could not determine public IPv4; previous release restored" >&2
   exit 1
 fi
 HOST="${PUBLIC_IP}.nip.io"
 
-cat > /etc/caddy/Caddyfile <<EOF
+cat > "${CADDY_FILE}" <<EOF
 ${HOST} {
   encode zstd gzip
   reverse_proxy 127.0.0.1:8080 {
@@ -340,8 +370,16 @@ ${HOST} {
   }
 }
 EOF
-systemctl enable --now caddy
-systemctl restart caddy
+if ! systemctl enable caddy || ! systemctl restart caddy; then
+  rollback_release
+  echo "public HTTPS proxy failed to start; previous release restored" >&2
+  exit 1
+fi
+if ! wait_for_public_https; then
+  rollback_release
+  echo "public HTTPS health check failed; previous release restored" >&2
+  exit 1
+fi
 
 cat > "${STATE_ROOT}/bootstrap-info" <<EOF
 URL=https://${HOST}
