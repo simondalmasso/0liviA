@@ -125,16 +125,18 @@ fi
 RELEASE_DIR="${RELEASES_ROOT}/${SOURCE_SHA}"
 STAGE_DIR="${RELEASES_ROOT}/.${SOURCE_SHA}.stage.$"
 
-if [[ ! -d "${RELEASE_DIR}" ]]; then
-  rm -rf "${STAGE_DIR}"
+if [[ ! -f "${RELEASE_DIR}/.ready" ]]; then
+  rm -rf "${STAGE_DIR}" "${RELEASE_DIR}"
   install -d -o root -g root -m 0755 "${STAGE_DIR}"
   cp -a "${tmp}/repo/." "${STAGE_DIR}/"
   rm -rf "${STAGE_DIR}/.git"
-  python3 -m venv "${STAGE_DIR}/venv"
-  "${STAGE_DIR}/venv/bin/pip" install --upgrade pip
-  "${STAGE_DIR}/venv/bin/pip" install "${STAGE_DIR}"
   mv "${STAGE_DIR}" "${RELEASE_DIR}"
+  python3 -m venv "${RELEASE_DIR}/venv"
+  "${RELEASE_DIR}/venv/bin/pip" install --upgrade pip
+  "${RELEASE_DIR}/venv/bin/pip" install "${RELEASE_DIR}"
+  touch "${RELEASE_DIR}/.ready"
 fi
+test -f "${RELEASE_DIR}/.ready"
 test -x "${RELEASE_DIR}/venv/bin/python"
 test -f "${RELEASE_DIR}/deploy/0livia.service"
 
