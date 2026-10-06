@@ -35,10 +35,11 @@ def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     html = _shell()
     assert 'id="publicWelcome"' in html
     assert 'id="publicDemoBtn"' in html
-    assert 'id="publicLoginBtn"' in html
+    assert 'id="publicLoginBtn"' not in html
+    assert "Probar 0liviA ahora" in html
     assert "Tu IA personal." in html
     assert "Privada y rápida." in html
-    assert "Modo prueba $0 disponible" in html
+    assert "Modo prueba IA disponible sin cuenta" in html
     assert "publicDemoActive=false" in html
     assert "publicWelcome.hidden=!(isPublic&&!publicDemoActive)" in html
     assert "https://text.pollinations.ai/openai/chat/completions" in html
