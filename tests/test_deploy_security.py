@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
 CLOUD_INIT = (ROOT / "deploy" / "cloud-init-a1.yaml").read_text(encoding="utf-8")
 CHATGPT_INSTALLER = (ROOT / "scripts" / "install_chatgpt_plan_profile.sh").read_text(encoding="utf-8")
+SMOKE = (ROOT / "deploy" / "smoke.sh").read_text(encoding="utf-8")
 
 
 def test_cloud_init_requires_immutable_commit_ref_before_root_execution():
@@ -79,3 +80,16 @@ def test_chatgpt_plan_installer_requires_provider_health_confirmation():
 def test_bootstrap_exports_exact_build_sha():
     bootstrap = (ROOT / "deploy" / "bootstrap-a1.sh").read_text(encoding="utf-8")
     assert "OLIVIA_BUILD_SHA=${REF}" in bootstrap
+
+
+def test_release_smoke_requires_exact_canonical_zero_cost_build():
+    assert "EXPECTED_SHA" in SMOKE
+    assert '"api_mode": body.get("api_mode") == "canonical"' in SMOKE
+    assert '"build_sha": str(body.get("build_sha") or "").lower() == expected' in SMOKE
+    assert '"hard_zero_cost": body.get("hard_zero_cost") is True' in SMOKE
+    assert '"provider_ready": body.get("provider_ready") is True' in SMOKE
+    assert '"owner_auth_configured": body.get("owner_auth_configured") is True' in SMOKE
+    assert '"registration_closed": body.get("registration_open") is False' in SMOKE
+    assert 'allowed_modes = {"local", "free_hard_cap", "plan_included"}' in SMOKE
+    assert 'event.get("type") == "route"' in SMOKE
+    assert 'event.get("type") == "done"' in SMOKE
