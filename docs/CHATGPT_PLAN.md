@@ -88,7 +88,7 @@ The provider:
 - keeps conversation state in 0liviA, not OpenAI Responses storage;
 - refreshes OAuth tokens server-side, respects OpenAI's `earliest_refresh_at`, serializes rotation and writes the replacement refresh token atomically;
 - treats plan/app-limit exhaustion as quota failure;
-- may fail over only before visible output to another eligible provider;
+- is installed with `fallback_policy=stop`: if the selected ChatGPT-plan model is unavailable, quota-exhausted or fails before output, 0liviA reports degraded/unavailable instead of silently routing the turn to another model;
 - never accepts an OpenAI API key.
 
 The configured model slug must exist in the connected account's model catalog. `gpt-6-astra` is the default preference only when the account actually exposes it. 0liviA never silently falls back to the first visible model: if Astra is unavailable, installation stops until the owner supplies an explicit model override from the signed-in catalog.
