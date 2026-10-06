@@ -71,7 +71,7 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - production STT/VAD/TTS selection and es-AR voice acceptance;
 - a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
-- exact-SHA **canonical Core** deployment and production smoke; the public inert shell is current at source `67587abfec0bf776c19257e971675d7807f5fa24`;
+- exact-SHA **canonical Core** deployment and production smoke; the last verified public inert-shell deployment is source `a4cbecaf2665f5dc95536f3b21b5b78133bfbb9e` (Worker `4f7f2ba7-12cf-42aa-888a-05c7729b3d43`, tag `main-a4cbeca-v1`); newer anti-polling source changes are merged in `main` but are not claimed deployed without a fresh deployment record;
 - any Cloudflare inference/search path whose account-level zero-cost behavior is not independently verified.
 
 ## Development
