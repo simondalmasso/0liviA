@@ -45,7 +45,7 @@ Deploys are branch/commit based. Keep the previous checkout under a versioned re
 
 ## Zero-spend gate
 
-Production keeps `OLIVIA_HARD_ZERO_COST=1`. Provider entries are accepted only with `cost_mode=local` or `cost_mode=free_hard_cap`, where the upstream account/route has a verified hard boundary that cannot create a charge.
+Production keeps `OLIVIA_HARD_ZERO_COST=1`. Provider entries are accepted only with `cost_mode=local`, `cost_mode=free_hard_cap`, or the official `cost_mode=plan_included` route when its no-credit-overage condition is explicitly verified. `free_unverified` and `paid` remain blocked.
 
 An advertised free quota without a hard billing boundary is `free_unverified` and is blocked. When all verified-free lanes are unavailable or quota-exhausted, the expected behavior is **degraded/unavailable, USD 0 spend**.
 
