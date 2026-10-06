@@ -7,7 +7,7 @@ This document records which findings apply to canonical `main`. Historical branc
 ## Applies to the active branch
 
 ### PUBLIC-SHELL-STALE — FIXED / canonical backend still gated
-The historical public Worker was stale and model-capable. It has now been replaced by an exact-SHA **inert public shell** built from `4ad53fdfd6e1664763c73ea5847582ba2ed99157`. Core CI run `37266316863` and mobile Playwright run `37266316851` passed. Public-shell deploy run `37266503642` passed with Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, `PUBLIC_SHELL_OK=YES`, `INFERENCE_DISABLED=YES`, `bridge_enabled:false`, `provider_ready:false`, and `/api/chat` verified as `503 bridge_disabled`.
+The historical public Worker was stale and model-capable. It has now been replaced by an exact-SHA **inert public shell** built from `67587abfec0bf776c19257e971675d7807f5fa24`. Core CI run `37266316863` and mobile Playwright run `37266316851` passed. Public-shell deploy run `37266503642` passed with Cloudflare version `6648267c-f2fb-418a-9340-1fff63771ce8`, `PUBLIC_SHELL_OK=YES`, `INFERENCE_DISABLED=YES`, `bridge_enabled:false`, `provider_ready:false`, and `/api/chat` verified as `503 bridge_disabled`.
 
 This fixes the stale/shared-inference exposure of the **public shell**. It does **not** mean the canonical Python Core is deployed; authenticated durable chat/memory/voice still require the canonical host.
 
@@ -100,3 +100,7 @@ The product runtime now forces hard-zero-cost mode on even if an environment var
 
 ### SIDE-EFFECT-DISPATCH — FIXED / policy gate
 Coding and browser workers are dispatched only by explicit owner commands (`/code`, `/repair`, `/review`, `/browse`). Natural-language chat and model output cannot directly start those side-effectful workers. Regression tests cover both coding and browser dispatch boundaries. Future install/publish/write/click capabilities must preserve the same explicit-owner-action contract.
+
+
+### PUBLIC-SHELL-POLLING — FIXED IN MAIN
+The public shell no longer performs 15-second background sync/health polling or retry-on-focus. Health probes are cached for five minutes, with refresh only on boot, explicit auth transitions, user actions that require the Core, or connectivity recovery. This reduces Cloudflare request volume while keeping the inert shell fail-closed.
