@@ -1138,7 +1138,7 @@ function aiHistory(chat){
 function redactDemoText(value){
   let out=String(value||'');
   const rules=[
-    [/\bbearer\s+[A-Za-z0-9._~+/\-]{8,}=*/gi,'Bearer [redacted]'],
+    [/\bbearer\s+[A-Za-z0-9._~+\/\-]{8,}=*/gi,'Bearer [redacted]'],
     [/\bsk-[A-Za-z0-9._\-]{6,}/g,'[redacted]'],
     [/\b(?:gsk|AIza|hf|ghp|gho|xoxb|xoxp)[A-Za-z0-9._\-]{6,}/g,'[redacted]'],
     [/\bnvapi-[A-Za-z0-9._\-]{6,}/gi,'[redacted]'],
