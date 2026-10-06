@@ -102,9 +102,11 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .brand-symbol{width:58px;height:58px;border:1px solid #303030;border-radius:17px;background:#0f0f0f var(--brand-logo) center/44px 44px no-repeat;margin-bottom:20px}
 .public-home h1{margin:0;font-size:clamp(30px,5vw,48px);line-height:1.04;letter-spacing:-.045em;font-weight:650}
 .public-home p{max-width:560px;margin:14px 0 0;color:#999;font-size:15px;line-height:1.6}
-.public-home-actions{display:flex;gap:9px;margin-top:24px}
+.public-home-actions{display:flex;gap:9px;margin-top:24px;flex-wrap:wrap;justify-content:center}
 .public-login{min-width:128px;height:44px;border-radius:12px;background:#fff;color:#000;font-weight:650;padding:0 18px}
 .public-login:hover{background:#ededed}
+.public-login.secondary{background:#171717;color:#ddd;border:1px solid #303030}
+.public-login.secondary:hover{background:#202020;color:#fff}
 .public-status{font-size:12px!important;color:#6f6f6f!important;margin-top:14px!important}
 .auth-mark.brand-auth{background:#0f0f0f var(--brand-logo) center/30px 30px no-repeat;border:1px solid #303030}
 .rail-logo .brand-mini{width:24px;height:24px;display:block;flex:0 0 auto;background:var(--brand-logo) center/24px 24px no-repeat}
@@ -269,8 +271,11 @@ button.side-card{text-align:left}
         <div class="brand-symbol" aria-hidden="true"></div>
         <h1>Tu IA personal.<br>Privada y rápida.</h1>
         <p>Chat, proyectos, memoria, investigación, herramientas y voz en un solo lugar.</p>
-        <div class="public-home-actions"><button id="publicLoginBtn" class="public-login" type="button">Entrar</button></div>
-        <p id="publicStatus" class="public-status">Conectando con tu Core privado…</p>
+        <div class="public-home-actions">
+          <button id="publicDemoBtn" class="public-login" type="button">Probar ahora</button>
+          <button id="publicLoginBtn" class="public-login secondary" type="button">Entrar</button>
+        </div>
+        <p id="publicStatus" class="public-status">Preparando modo prueba $0…</p>
       </div>
     </section>
 
@@ -417,6 +422,10 @@ let workspace=null;
 let coreOnline=false;
 let coreHealth=null;
 let backendMode='bridge';
+const PUBLIC_DEMO_ENDPOINT='https://text.pollinations.ai/openai/chat/completions';
+const PUBLIC_DEMO_MODEL='openai-fast';
+const PUBLIC_DEMO_PROVIDER='pollinations-anon';
+let publicDemoActive=false;
 const CORE_PROBE_MIN_INTERVAL_MS=5*60*1000;
 let lastCoreProbeAt=0;
 // Runtime states: canonical | public_shell | bridge. Health probing selects the active state.
@@ -456,6 +465,7 @@ const voiceRingFill=$('#voiceRingFill');
 const voiceOrb=$('.orb');
 const publicWelcome=$('#publicWelcome');
 const publicStatus=$('#publicStatus');
+const publicDemoBtn=$('#publicDemoBtn');
 const ownerLogin=$('#ownerLogin');
 const ownerLoginForm=$('#ownerLoginForm');
 const ownerEmail=$('#ownerEmail');
@@ -526,27 +536,34 @@ function selectedChat(){
 }
 
 function composerAvailable(){
-  if(backendMode==='public_shell')return false;
+  if(backendMode==='public_shell')return publicDemoActive;
   if(backendMode==='canonical')return ownerAuthReady&&coreHealth?.provider_ready===true;
   return true;
 }
 function updatePublicHome(){
   const isPublic=backendMode==='public_shell';
-  publicWelcome.hidden=!isPublic;
-  if(isPublic)publicStatus.textContent='Core privado no conectado · el acceso se habilita cuando el backend canónico está disponible.';
+  publicWelcome.hidden=!(isPublic&&!publicDemoActive);
+  if(isPublic)publicStatus.textContent='Modo prueba $0 disponible · el Core privado sigue separado hasta completar su deploy.';
 }
 function updateComposerAvailability(){
   const available=composerAvailable();
   textInput.disabled=!available;
   sendBtn.disabled=!available;
   textInput.setAttribute('aria-disabled',available?'false':'true');
-  if(backendMode==='public_shell')textInput.placeholder='Core canónico no conectado';
+  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive?'Preguntale a 0liviA':'Entrá o probá 0liviA desde la home';
   else if(backendMode==='canonical'&&!ownerAuthReady)textInput.placeholder='Iniciá sesión para usar 0liviA';
   else if(coreHealth&&coreHealth.provider_ready!==true)textInput.placeholder='Sin proveedor $0 disponible';
-  else textInput.placeholder='Escribile a 0liviA…';
+  else textInput.placeholder='Preguntale a 0liviA';
   if(!available)closeSlashPalette();
 }
 function setCoreState(mode){
+  if(backendMode==='public_shell'&&publicDemoActive){
+    coreOnline=false;
+    coreDot.className='core-dot online';
+    coreDot.title='Modo prueba $0';
+    updateComposerAvailability();
+    return;
+  }
   coreOnline=mode==='online';
   coreDot.className='core-dot'+(mode==='online'?' online':mode==='locked'?' locked':'');
   coreDot.title=mode==='online'?'Core online':mode==='locked'?'Core limitado':'Core pendiente';
@@ -747,6 +764,7 @@ function chooseJobStatus(jobId){
 function providerPresentation(name){
   const providerName=String(name||'');
   if(!providerName||providerName==='import')return '';
+  if(providerName===PUBLIC_DEMO_PROVIDER)return 'Demo $0 · '+PUBLIC_DEMO_MODEL;
   const row=(coreHealth?.provider_catalog||[]).find(item=>String(item.name||'')===providerName);
   if(!row){
     return providerName==='chatgpt-plan'?'ChatGPT plan':'';
@@ -1032,6 +1050,13 @@ function activateSide(name,open=true){
 function openDrawer(){drawer.classList.add('open');backdrop.classList.add('open');drawer.setAttribute('aria-hidden','false')}
 function closeDrawer(){drawer.classList.remove('open');backdrop.classList.remove('open');drawer.setAttribute('aria-hidden','true')}
 $('#projectsBtn').onclick=()=>activateSide('projects');
+publicDemoBtn.onclick=()=>{
+  publicDemoActive=true;
+  updatePublicHome();
+  setCoreState('demo');
+  renderMessages();
+  textInput.focus();
+};
 $('#publicLoginBtn').onclick=showOwnerLogin;
 $('#drawerClose').onclick=closeDrawer;
 backdrop.onclick=closeDrawer;
@@ -1109,6 +1134,22 @@ $('#addMemory').onclick=async()=>{
 
 function aiHistory(chat){
   return chat.messages.filter(m=>m.role==='user'||m.role==='assistant').slice(-12).map(m=>({role:m.role,content:m.text}));
+}
+function redactDemoText(value){
+  let out=String(value||'');
+  const rules=[
+    [/\bbearer\s+[A-Za-z0-9._~+\/\-]{8,}=*/gi,'[redacted]'],
+    [/\bsk-[A-Za-z0-9._\-]{6,}/g,'[redacted]'],
+    [/\b(?:gsk|AIza|hf|ghp|gho|xoxb|xoxp)[A-Za-z0-9._\-]{6,}/g,'[redacted]'],
+    [/\bnvapi-[A-Za-z0-9._\-]{6,}/gi,'[redacted]'],
+    [/\b[A-Za-z0-9_\-]{40,}\b/g,'[redacted]'],
+    [/(api[_-]?key|secret|token|authorization|password)\s*[:=]\s*["']?[^"'\s,}]{4,}/gi,'$1=[redacted]']
+  ];
+  for(const [pattern,replacement] of rules)out=out.replace(pattern,replacement);
+  return out;
+}
+function demoHistory(chat){
+  return aiHistory(chat).map(item=>({role:item.role,content:redactDemoText(item.content)}));
 }
 function streamText(event){
   if(!event||typeof event!=='object')return '';
@@ -1286,6 +1327,34 @@ async function ensureRemoteSession(chat,excludeMessageId=null){
   return chat.remoteSessionId;
 }
 
+async function sendPublicDemo(chat,userMessage,speak){
+  controller=new AbortController();setSendMode(true);
+  try{
+    const system={
+      role:'system',
+      content:'Sos 0liviA, la IA personal de Simón. Respondé en español rioplatense argentino, claro y directo. No afirmes tener acceso a herramientas, memoria privada ni acciones del Core cuando estás en modo prueba.'
+    };
+    const r=await fetch(PUBLIC_DEMO_ENDPOINT,{
+      method:'POST',
+      mode:'cors',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:PUBLIC_DEMO_MODEL,messages:[system,...demoHistory(chat)],stream:false}),
+      signal:controller.signal
+    });
+    if(r.status===429)throw new Error('límite demo alcanzado');
+    if(!r.ok)throw new Error('ruta demo no disponible');
+    const body=await r.json();
+    const answer=String(body?.choices?.[0]?.message?.content||'').trim();
+    if(!answer)throw new Error('respuesta vacía');
+    userMessage.status='synced';
+    const assistant={id:uid('m'),role:'assistant',text:answer,status:'synced',provider:PUBLIC_DEMO_PROVIDER,ts:now()};
+    chat.messages.push(assistant);
+    await saveState();renderMessages();
+    if(speak)await speakEsAr(answer);
+    return true;
+  }finally{controller=null;setSendMode(false)}
+}
+
 async function sendRemote(chat,userMessage,speak){
   controller=new AbortController();setSendMode(true);let assistant=null;
   try{
@@ -1432,6 +1501,35 @@ async function sendChat(raw,{speak=false}={}){
   chat.messages.push(msg);
   if(chat.title==='Nuevo chat')chat.title=value.replace(/\s+/g,' ').slice(0,42);
   await saveState();renderAll();
+  if(backendMode==='public_shell'&&publicDemoActive){
+    if(value.startsWith('/')){
+      msg.status='synced';
+      chat.messages.push({
+        id:uid('m'),
+        role:'assistant',
+        text:'Ese comando necesita el Core privado. En modo prueba podés chatear; código, navegador, memoria durable y otras acciones siguen bloqueadas.',
+        status:'synced',
+        provider:PUBLIC_DEMO_PROVIDER,
+        ts:now()
+      });
+      await saveState();renderMessages();
+      return;
+    }
+    try{await sendPublicDemo(chat,msg,speak)}
+    catch(e){
+      msg.status='synced';
+      chat.messages.push({
+        id:uid('m'),
+        role:'assistant',
+        text:'La ruta de prueba $0 no respondió. Reintentá en unos segundos.',
+        status:'synced',
+        provider:PUBLIC_DEMO_PROVIDER,
+        ts:now()
+      });
+      await saveState();renderMessages();
+    }
+    return;
+  }
   const ready=coreOnline||await probeCore();if(!ready)return;
   try{await sendRemote(chat,msg,speak)}catch(e){msg.status='queued';await saveState();renderMessages()}
 }

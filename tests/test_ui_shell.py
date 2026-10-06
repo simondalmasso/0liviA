@@ -9,7 +9,7 @@ def _shell() -> str:
 
 def test_monochrome_shell_stays_dependency_free_and_low_weight():
     html = _shell()
-    assert len(html.encode("utf-8")) < 92_000
+    assert len(html.encode("utf-8")) < 96_000
     assert '<meta name="theme-color" content="#000000">' in html
     assert "font-family:system-ui" in html
     assert "linear-gradient(" not in html
@@ -31,15 +31,21 @@ def test_unified_navigation_and_composer_contract():
     assert "Listo cuando quieras." in html
 
 
-def test_public_home_and_login_are_spanish_and_fail_closed():
+def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     html = _shell()
     assert 'id="publicWelcome"' in html
+    assert 'id="publicDemoBtn"' in html
     assert 'id="publicLoginBtn"' in html
     assert "Tu IA personal." in html
     assert "Privada y rápida." in html
-    assert "El Core privado todavía no está conectado." in html
-    assert "if(backendMode==='public_shell')" in html
-    assert "publicWelcome.hidden=!isPublic" in html
+    assert "Modo prueba $0 disponible" in html
+    assert "publicDemoActive=false" in html
+    assert "publicWelcome.hidden=!(isPublic&&!publicDemoActive)" in html
+    assert "https://text.pollinations.ai/openai/chat/completions" in html
+    assert "PUBLIC_DEMO_MODEL='openai-fast'" in html
+    assert "mode:'cors'" in html
+    assert "function redactDemoText" in html
+    assert "Ese comando necesita el Core privado." in html
     assert 'class="brand-mini"' in html
     assert 'class="auth-mark brand-auth"' in html
     assert '--brand-logo:url("data:image/png;base64,' in html
