@@ -342,8 +342,8 @@ async def test_reference_inspired_monochrome_low_weight_visual_system(client):
     assert "linear-gradient(" not in html
     assert "radial-gradient(" not in html
     assert "backdrop-filter" not in html
-    assert 'id="modeChat"' in html
-    assert 'id="modeWork"' in html
+    assert 'id="modeChat"' not in html
+    assert 'id="modeWork"' not in html
     assert 'id="voiceBtn" class="composer-icon"' in html
     assert ".composer{" in html
     assert "#voiceLive{" in html
@@ -1826,9 +1826,9 @@ async def test_ui_surfaces_actual_zero_cost_route_per_answer(client):
 @pytest.mark.asyncio
 async def test_public_shell_has_product_metadata_without_personal_runtime_url(client):
     html = await (await client.get("/")).text()
-    assert "<title>0liviA — Self-hosted agentic AI workspace</title>" in html
+    assert "<title>0liviA — Tu IA personal</title>" in html
     assert 'name="description"' in html
-    assert "self-hosted agentic AI workspace" in html
+    assert "0liviA es tu IA personal" in html
     assert 'property="og:title"' in html
     assert 'property="og:description"' in html
     assert 'name="application-name" content="0liviA"' in html
