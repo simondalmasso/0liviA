@@ -272,10 +272,9 @@ button.side-card{text-align:left}
         <h1>Tu IA personal.<br>Privada y rápida.</h1>
         <p>Chat, proyectos, memoria, investigación, herramientas y voz en un solo lugar.</p>
         <div class="public-home-actions">
-          <button id="publicDemoBtn" class="public-login" type="button">Probar ahora</button>
-          <button id="publicLoginBtn" class="public-login secondary" type="button">Entrar</button>
+          <button id="publicDemoBtn" class="public-login" type="button">Probar 0liviA ahora</button>
         </div>
-        <p id="publicStatus" class="public-status">Preparando modo prueba $0…</p>
+        <p id="publicStatus" class="public-status">Modo prueba IA · sin cuenta · $0</p>
       </div>
     </section>
 
@@ -543,14 +542,14 @@ function composerAvailable(){
 function updatePublicHome(){
   const isPublic=backendMode==='public_shell';
   publicWelcome.hidden=!(isPublic&&!publicDemoActive);
-  if(isPublic)publicStatus.textContent='Modo prueba $0 disponible · el Core privado sigue separado hasta completar su deploy.';
+  if(isPublic)publicStatus.textContent='Modo prueba IA disponible sin cuenta · el Core privado se habilita aparte.';
 }
 function updateComposerAvailability(){
   const available=composerAvailable();
   textInput.disabled=!available;
   sendBtn.disabled=!available;
   textInput.setAttribute('aria-disabled',available?'false':'true');
-  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive?'Preguntale a 0liviA':'Entrá o probá 0liviA desde la home';
+  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive?'Preguntale a 0liviA':'Probá 0liviA desde la home';
   else if(backendMode==='canonical'&&!ownerAuthReady)textInput.placeholder='Iniciá sesión para usar 0liviA';
   else if(coreHealth&&coreHealth.provider_ready!==true)textInput.placeholder='Sin proveedor $0 disponible';
   else textInput.placeholder='Preguntale a 0liviA';
@@ -1057,7 +1056,6 @@ publicDemoBtn.onclick=()=>{
   renderMessages();
   textInput.focus();
 };
-$('#publicLoginBtn').onclick=showOwnerLogin;
 $('#drawerClose').onclick=closeDrawer;
 backdrop.onclick=closeDrawer;
 document.addEventListener('click',event=>{
