@@ -10,7 +10,7 @@ Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's P
 
 ## GitHub Actions SSH deploy
 
-Once a host exists, `.github/workflows/deploy-canonical.yml` can deploy an exact canonical `main` SHA without depending on the owner's PC. It is manual-only and requires four repository secrets: `OLIVIA_DEPLOY_HOST`, `OLIVIA_DEPLOY_USER`, `OLIVIA_DEPLOY_SSH_KEY` and pinned `OLIVIA_DEPLOY_KNOWN_HOSTS`. It refuses mutable refs, password SSH and unpinned host trust. The workflow verifies loopback canonical health but deliberately does not claim production readiness; owner registration, provider readiness and the full `deploy/smoke.sh` gate remain separate.
+Once a host exists, `.github/workflows/deploy-canonical.yml` can deploy an exact canonical `main` SHA without depending on the owner's PC. It is manual-only and requires four repository secrets: `OLIVIA_DEPLOY_HOST`, `OLIVIA_DEPLOY_USER`, `OLIVIA_DEPLOY_SSH_KEY` and pinned `OLIVIA_DEPLOY_KNOWN_HOSTS`. It refuses mutable refs, password SSH and unpinned host trust. Before uploading or executing the bootstrap it streams `deploy/preflight.sh` over the pinned SSH session and fails closed unless the target is supported Linux, has non-interactive root privilege, at least 768 MB RAM, at least 4 GB free root disk, and the swap utilities required by the 1 GB micro path. The workflow verifies loopback canonical health but deliberately does not claim production readiness; owner registration, provider readiness and the full `deploy/smoke.sh` gate remain separate.
 
 ## Bootstrap
 
