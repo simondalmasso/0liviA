@@ -40,7 +40,9 @@ sudo -E OLIVIA_RESTORE_OVERWRITE=1 bash deploy/restore.sh /var/lib/0livia/backup
 
 ## Rollback
 
-Deploys are branch/commit based. Keep the previous checkout under a versioned release path before production rollout; switch `/opt/0livia/current` only after compile/tests/smoke pass. `bootstrap-a1.sh` is the single canonical installer. Atomic release switching remains a deployment hardening gate.
+`bootstrap-a1.sh` stages immutable releases under `/opt/0livia/releases/<SHA>`, creates a per-release virtualenv, marks the release ready only after package installation succeeds, then atomically switches the `/opt/0livia/current` symlink. Existing provider configuration and the internal signing token are preserved across upgrades; only the exact build SHA and hard-zero-cost invariant are refreshed.
+
+If the newly switched Core cannot start or pass its loopback health check, bootstrap restores the previous `current` target, restores the previous environment file and restarts the old Core. A first installation has no previous release to restore, so it fails closed instead. `bootstrap-a1.sh` remains the single canonical installer.
 
 
 ## Zero-spend gate
