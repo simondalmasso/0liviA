@@ -25,6 +25,7 @@ _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
 ZERO_COST_ALLOWED_MODES = frozenset({"local", "free_hard_cap", "plan_included"})
 _PROVIDER_COST_MODES = ZERO_COST_ALLOWED_MODES | frozenset({"free_unverified", "paid"})
 _PROVIDER_CAPABILITIES = frozenset({"chat", "code", "review", "research", "vision"})
+_FALLBACK_POLICIES = frozenset({"allow", "stop"})
 
 
 def is_visible_segment(text: str | None) -> bool:
@@ -126,6 +127,7 @@ class ProviderSpec:
     profile_path: str = ""
     no_credit_overage_verified: bool = False
     capabilities: tuple[str, ...] = ("chat",)
+    fallback_policy: str = "allow"
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ProviderSpec":
@@ -173,6 +175,12 @@ class ProviderSpec:
                 f"invalid capabilities for {raw.get('name', 'provider')}: "
                 + ",".join(unknown)
             )
+        fallback_policy = str(raw.get("fallback_policy", "allow")).strip().lower()
+        if fallback_policy not in _FALLBACK_POLICIES:
+            raise ProviderConfigError(
+                f"invalid fallback_policy for {raw.get('name', 'provider')}: "
+                f"{fallback_policy}"
+            )
         return cls(
             name=str(raw["name"]),
             base_url=base_url,
@@ -187,6 +195,7 @@ class ProviderSpec:
                 raw.get("no_credit_overage_verified", False)
             ),
             capabilities=capabilities,
+            fallback_policy=fallback_policy,
         )
 
 
@@ -198,6 +207,7 @@ class OpenAICompatibleProvider:
         self.daily_limit = spec.daily_limit
         self.cost_mode = spec.cost_mode
         self.capabilities = spec.capabilities
+        self.fallback_policy = spec.fallback_policy
 
     @property
     def configured(self) -> bool:
@@ -296,6 +306,7 @@ class ChatGPTPlanProvider:
         self.daily_limit = spec.daily_limit
         self.cost_mode = spec.cost_mode
         self.capabilities = spec.capabilities
+        self.fallback_policy = spec.fallback_policy
         self.profile_path = Path(spec.profile_path).expanduser()
         self._session_factory = session_factory
         self._clock = clock or time.time
@@ -696,6 +707,9 @@ class ProviderPool:
                 "capabilities": list(
                     getattr(provider, "capabilities", ("chat",))
                 ),
+                "fallback_policy": str(
+                    getattr(provider, "fallback_policy", "allow")
+                ),
             })
         return rows
 
@@ -743,6 +757,9 @@ class ProviderPool:
         )
 
         for provider in selected_providers:
+            strict_fallback = (
+                str(getattr(provider, "fallback_policy", "allow")) == "stop"
+            )
             if attempts >= max_attempts:
                 self.emit(
                     "attempts.capped",
@@ -789,6 +806,15 @@ class ProviderPool:
                         reason=admission.reason,
                         cooldown_s=round(admission.cooldown_remaining_s, 1),
                     )
+                if strict_fallback:
+                    self.emit(
+                        "fallback.blocked",
+                        provider=provider.name,
+                        turn=turn_id,
+                        reason=admission.reason,
+                        detail="provider policy forbids fallback to another model",
+                    )
+                    break
                 continue
 
             attempted.add(provider.name)
@@ -873,6 +899,15 @@ class ProviderPool:
                     f"{provider.name}/{exc.kind}: "
                     f"{redact(exc.detail, max_len=120)}"
                 )
+                if strict_fallback:
+                    self.emit(
+                        "fallback.blocked",
+                        provider=provider.name,
+                        turn=turn_id,
+                        reason=exc.kind,
+                        detail="provider policy forbids fallback to another model",
+                    )
+                    break
                 continue
             finally:
                 self._health.release(provider.name)
