@@ -18,17 +18,10 @@ LLAMA_BUILD="${LLAMA_BUILD:-b11388}"
 MODEL_ROOT="${MODEL_ROOT:-${STATE_ROOT}/models}"
 MODEL_PROFILE="${MODEL_PROFILE:-auto}"
 LOCAL_RECOVERY_ENABLED="${LOCAL_RECOVERY_ENABLED:-0}"
-ANON_CHAT_ENABLED="${ANON_CHAT_ENABLED:-1}"
-
 case "${LOCAL_RECOVERY_ENABLED}" in
   0|1) ;;
   *) echo "LOCAL_RECOVERY_ENABLED must be 0 or 1" >&2; exit 2 ;;
 esac
-case "${ANON_CHAT_ENABLED}" in
-  0|1) ;;
-  *) echo "ANON_CHAT_ENABLED must be 0 or 1" >&2; exit 2 ;;
-esac
-
 if [[ "${EUID}" -ne 0 ]]; then
   echo "run as root" >&2
   exit 2
@@ -247,11 +240,7 @@ PY
 )"
 
   PROVIDERS_JSON='[]'
-  if [[ "${ANON_CHAT_ENABLED}" == "1" && "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
-    PROVIDERS_JSON='[{"name":"pollinations-anon","kind":"openai_compatible","base_url":"https://text.pollinations.ai/openai","model":"openai-fast","auth_mode":"none","priority":10,"daily_limit":500,"cost_mode":"free_hard_cap","capabilities":["chat","research","code","review"],"fallback_policy":"stop"},{"name":"local-recovery-qwen","base_url":"http://127.0.0.1:11434/v1","model":"local-qwen","api_key_env":"","priority":1000,"daily_limit":0,"cost_mode":"local"}]'
-  elif [[ "${ANON_CHAT_ENABLED}" == "1" ]]; then
-    PROVIDERS_JSON='[{"name":"pollinations-anon","kind":"openai_compatible","base_url":"https://text.pollinations.ai/openai","model":"openai-fast","auth_mode":"none","priority":10,"daily_limit":500,"cost_mode":"free_hard_cap","capabilities":["chat","research","code","review"],"fallback_policy":"stop"}]'
-  elif [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
+  if [[ "${LOCAL_RECOVERY_ENABLED}" == "1" ]]; then
     PROVIDERS_JSON='[{"name":"local-recovery-qwen","base_url":"http://127.0.0.1:11434/v1","model":"local-qwen","api_key_env":"","priority":1000,"daily_limit":0,"cost_mode":"local"}]'
   fi
 
