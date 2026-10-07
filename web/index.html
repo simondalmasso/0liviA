@@ -421,9 +421,9 @@ let workspace=null;
 let coreOnline=false;
 let coreHealth=null;
 let backendMode='bridge';
-const PUBLIC_DEMO_ENDPOINT='https://text.pollinations.ai/openai/chat/completions';
-const PUBLIC_DEMO_MODEL='openai-fast';
-const PUBLIC_DEMO_PROVIDER='pollinations-anon';
+const PUBLIC_DEMO_ENDPOINT='/api/demo-chat';
+const PUBLIC_DEMO_MODEL='GLM 4.7 Flash';
+const PUBLIC_DEMO_PROVIDER='workers-ai-demo';
 let publicDemoActive=false;
 const CORE_PROBE_MIN_INTERVAL_MS=5*60*1000;
 let lastCoreProbeAt=0;
@@ -535,31 +535,38 @@ function selectedChat(){
 }
 
 function composerAvailable(){
-  if(backendMode==='public_shell')return publicDemoActive;
+  if(backendMode==='public_shell')return publicDemoActive&&coreHealth?.demo_provider_ready===true;
   if(backendMode==='canonical')return ownerAuthReady&&coreHealth?.provider_ready===true;
   return true;
 }
 function updatePublicHome(){
   const isPublic=backendMode==='public_shell';
+  const demoReady=isPublic&&coreHealth?.demo_provider_ready===true;
   publicWelcome.hidden=!(isPublic&&!publicDemoActive);
-  if(isPublic)publicStatus.textContent='Modo prueba IA disponible sin cuenta · el Core privado se habilita aparte.';
+  if(isPublic){
+    publicDemoBtn.disabled=!demoReady;
+    publicDemoBtn.textContent=demoReady?'Probar 0liviA ahora':'IA demo no disponible';
+    publicStatus.textContent=demoReady
+      ?'Modo prueba IA · GLM 4.7 Flash · sin cuenta · cupo $0 hard-cap'
+      :'Modo prueba IA no disponible · el Core privado sigue separado.';
+  }
 }
 function updateComposerAvailability(){
   const available=composerAvailable();
   textInput.disabled=!available;
   sendBtn.disabled=!available;
   textInput.setAttribute('aria-disabled',available?'false':'true');
-  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive?'Preguntale a 0liviA':'Probá 0liviA desde la home';
+  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive&&coreHealth?.demo_provider_ready===true?'Preguntale a 0liviA':'IA demo no disponible';
   else if(backendMode==='canonical'&&!ownerAuthReady)textInput.placeholder='Iniciá sesión para usar 0liviA';
   else if(coreHealth&&coreHealth.provider_ready!==true)textInput.placeholder='Sin proveedor $0 disponible';
   else textInput.placeholder='Preguntale a 0liviA';
   if(!available)closeSlashPalette();
 }
 function setCoreState(mode){
-  if(backendMode==='public_shell'&&publicDemoActive){
+  if(backendMode==='public_shell'&&publicDemoActive&&coreHealth?.demo_provider_ready===true){
     coreOnline=false;
     coreDot.className='core-dot online';
-    coreDot.title='Modo prueba $0';
+    coreDot.title='Modo prueba $0 · '+PUBLIC_DEMO_MODEL;
     updateComposerAvailability();
     return;
   }
@@ -956,10 +963,10 @@ function renderConfig(){
   const active=available[0]||preferred;
   const route=available.length?available.join(' → '):'Se resuelve al conectar el core';
   const cards=[
-    ['Modelo activo',active],
+    ['Modelo activo',backendMode==='public_shell'&&coreHealth?.demo_provider_ready===true?PUBLIC_DEMO_MODEL:active],
     ['Preferido',preferred],
-    ['Ruta',route],
-    ['Backend',backendMode==='canonical'?'Core durable':backendMode==='public_shell'?'Shell público · Core desconectado':'Bridge temporal'],
+    ['Ruta',backendMode==='public_shell'&&coreHealth?.demo_provider_ready===true?'Demo $0 hard-cap → Core privado cuando esté disponible':route],
+    ['Backend',backendMode==='canonical'?'Core durable':backendMode==='public_shell'?'Shell público · demo aislado · Core desconectado':'Bridge temporal'],
     ['Idioma','es-AR'],
     ['Modo','$0 estricto · fail-closed'],
     ['Navegación','URLs públicas · solo lectura']
@@ -1050,6 +1057,7 @@ function openDrawer(){drawer.classList.add('open');backdrop.classList.add('open'
 function closeDrawer(){drawer.classList.remove('open');backdrop.classList.remove('open');drawer.setAttribute('aria-hidden','true')}
 $('#projectsBtn').onclick=()=>activateSide('projects');
 publicDemoBtn.onclick=()=>{
+  if(coreHealth?.demo_provider_ready!==true)return;
   publicDemoActive=true;
   updatePublicHome();
   setCoreState('demo');
@@ -1328,24 +1336,20 @@ async function ensureRemoteSession(chat,excludeMessageId=null){
 async function sendPublicDemo(chat,userMessage,speak){
   controller=new AbortController();setSendMode(true);
   try{
-    const system={
-      role:'system',
-      content:'Sos 0liviA, la IA personal de Simón. Respondé en español rioplatense argentino, claro y directo. No afirmes tener acceso a herramientas, memoria privada ni acciones del Core cuando estás en modo prueba.'
-    };
     const r=await fetch(PUBLIC_DEMO_ENDPOINT,{
       method:'POST',
-      mode:'cors',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:PUBLIC_DEMO_MODEL,messages:[system,...demoHistory(chat)],stream:false}),
+      credentials:'same-origin',
+      body:JSON.stringify({messages:demoHistory(chat)}),
       signal:controller.signal
     });
     if(r.status===429)throw new Error('límite demo alcanzado');
     if(!r.ok)throw new Error('ruta demo no disponible');
     const body=await r.json();
-    const answer=String(body?.choices?.[0]?.message?.content||'').trim();
+    const answer=String(body?.answer||'').trim();
     if(!answer)throw new Error('respuesta vacía');
     userMessage.status='synced';
-    const assistant={id:uid('m'),role:'assistant',text:answer,status:'synced',provider:PUBLIC_DEMO_PROVIDER,ts:now()};
+    const assistant={id:uid('m'),role:'assistant',text:answer,status:'synced',provider:String(body?.provider||PUBLIC_DEMO_PROVIDER),ts:now()};
     chat.messages.push(assistant);
     await saveState();renderMessages();
     if(speak)await speakEsAr(answer);
@@ -1519,7 +1523,7 @@ async function sendChat(raw,{speak=false}={}){
       chat.messages.push({
         id:uid('m'),
         role:'assistant',
-        text:'La ruta de prueba $0 no respondió. Reintentá en unos segundos.',
+        text:'La IA demo $0 no respondió. Reintentá en unos segundos.',
         status:'synced',
         provider:PUBLIC_DEMO_PROVIDER,
         ts:now()
