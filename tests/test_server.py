@@ -1921,9 +1921,10 @@ async def test_public_shell_demo_is_explicit_zero_cost_and_side_effect_free(clie
     assert "function updateComposerAvailability()" in html
     assert "backendMode==='public_shell'" in html
     assert "publicDemoActive=false" in html
-    assert "if(backendMode==='public_shell')return publicDemoActive" in html
-    assert "https://text.pollinations.ai/openai/chat/completions" in html
-    assert "PUBLIC_DEMO_PROVIDER='pollinations-anon'" in html
+    assert "if(backendMode==='public_shell')return publicDemoActive&&coreHealth?.demo_provider_ready===true" in html
+    assert "PUBLIC_DEMO_ENDPOINT='/api/demo-chat'" in html
+    assert "PUBLIC_DEMO_PROVIDER='workers-ai-demo'" in html
+    assert "https://text.pollinations.ai" not in html
     assert "function redactDemoText" in html
     assert "if(value.startsWith('/'))" in html
     assert "Ese comando necesita el Core privado." in html
