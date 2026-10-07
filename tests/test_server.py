@@ -1854,7 +1854,7 @@ async def test_ui_distinguishes_public_shell_from_transitional_bridge(client):
 
     assert "body.api_mode==='public_shell'" in html
     assert "backendMode='public_shell'" in html
-    assert "Shell público · Core desconectado" in html
+    assert "Shell público · demo aislado · Core desconectado" in html
 
 
 
