@@ -5,7 +5,7 @@ const DEMO_PROVIDER = "workers-ai-demo";
 const DEMO_DAILY_REQUEST_LIMIT = 25;
 const DEMO_MAX_TOTAL_CHARS = 8000;
 const DEMO_MAX_MESSAGES = 8;
-const DEMO_MAX_OUTPUT_TOKENS = 256;
+const DEMO_MAX_OUTPUT_TOKENS = 1024;
 
 function json(body, { status = 200, headers = {} } = {}) {
   return new Response(JSON.stringify(body), {

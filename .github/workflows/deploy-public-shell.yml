@@ -144,10 +144,10 @@ jobs:
           [[ "${base}" == https://*.workers.dev ]]
           cb="$(date +%s)"
           root="$(curl -fsS --max-time 20 "${base}/?cb=${cb}")"
-          printf '%s' "${root}" | grep -Fq '0liviA — Tu IA personal'
-          printf '%s' "${root}" | grep -Fq 'Probar 0liviA ahora'
-          ! printf '%s' "${root}" | grep -Fq 'id="modeChat"'
-          ! printf '%s' "${root}" | grep -Fq 'id="modeWork"'
+          grep -Fq '0liviA — Tu IA personal' <<<"${root}"
+          grep -Fq 'Probar 0liviA ahora' <<<"${root}"
+          ! grep -Fq 'id="modeChat"' <<<"${root}"
+          ! grep -Fq 'id="modeWork"' <<<"${root}"
 
           health="$(curl -fsS --max-time 20 "${base}/healthz?cb=${cb}")"
           HEALTH_JSON="${health}" python3 - <<'PY'
