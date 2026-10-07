@@ -27,14 +27,14 @@
 → isolated on-demand workers for coding, research/browser and voice
 → GitHub for durable engineering state.
 
-Cloudflare may host a thin public shell or temporary bridge, but it is not the canonical chat/memory/voice backend. The current Worker bridge is disabled by default and remains deployment-gated; inference/read routes stay unavailable until identity and zero-cost/account guards are explicitly proven.
+Cloudflare may host a thin public shell, but it is not the canonical chat/memory/voice backend. Canonical `/api/chat`, durable state, research and voice remain outside the Worker. The public shell may expose one isolated `/api/demo-chat` route only when account-level zero-cost behavior has been explicitly confirmed; that demo has no private memory/tools/search, uses a global server-side daily guard, and fails closed independently of the Python Core.
 
 ## Repository map
 
 - `olivia/` — canonical Python control plane, router, memory/jobs, research contracts and voice contracts
 - `olivia/voice/` — transport/speech contracts and benchmark scaffolding
-- `web/` — current violet/blue/cyan browser product shell
-- `cloudflare/` — temporary public bridge; not durable product state
+- `web/` — current ultra-light monochrome browser product shell
+- `cloudflare/` — thin public shell plus optional isolated demo inference; never durable product state
 - `deploy/` — canonical host deployment/runtime material; Oracle A1 is the roomy preferred target and the existing 1 GB E2 micro path is supported as a constrained fallback
 - `.github/workflows/coding-agent.yml` — isolated burst coding worker
 - `tests/` — behavioral, security and repository-hygiene gates
@@ -71,8 +71,8 @@ Cloudflare may host a thin public shell or temporary bridge, but it is not the c
 - production STT/VAD/TTS selection and es-AR voice acceptance;
 - a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
-- exact-SHA **canonical Core** deployment and production smoke; the last verified public inert-shell deployment is source `b2decd3418e9a2f0f840115eeacd6350dfc2cc2d` (Worker `36e32304-da90-42ed-a655-36d24d1a68bc`), with the ultra-light B&W shell live, preview URLs explicitly disabled, inference/search disabled, `hard_zero_cost=true`, and `/api/chat` still fail-closed at HTTP 503 until the Core exists;
-- any Cloudflare inference/search path whose account-level zero-cost behavior is not independently verified.
+- exact-SHA **canonical Core** deployment and production smoke; the last durably verified production Worker remains the older inert shell until the new demo candidate passes account-plan verification, live model smoke and tester-army/e2e against the permanent URL; canonical `/api/chat` must remain HTTP 503 on that public Worker;
+- the public Workers AI demo is deployment-gated by explicit zero-cost confirmation; without it `/api/demo-chat` returns 503 rather than consuming unverified capacity.
 
 ## Development
 
