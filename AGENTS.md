@@ -45,6 +45,7 @@ main is the only canonical integration branch. arch/gpt-synthesis-v1 is a compat
 
 - Project-scoped Agent Skills live under `.agents/skills/` and must remain optional to the 0liviA runtime.
 - `wolfram-setup` is vendored from `WolframResearch/skills` at the exact upstream commit recorded in `.agents/skills/wolfram-setup/UPSTREAM.md`.
+- `e2e` is vendored from `tester-army/e2e` at the exact upstream commit recorded in `.agents/skills/e2e/UPSTREAM.md`; use it to prove URLs and browser flows before any release/link claim.
 - Agents may use that skill to connect Wolfram's free remote MCP service or a local Engine, but must not make Wolfram a mandatory production dependency or claim a paid/commercial entitlement.
 
 ## Engineering behavior
