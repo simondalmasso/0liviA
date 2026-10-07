@@ -4,6 +4,8 @@ import { expect } from 'e2e';
 const mockDemo = process.env.OLIVIA_E2E_MOCK_DEMO === '1';
 
 test('public demo opens and returns an AI answer', async ({ app, screen, browser }) => {
+  await app.clearState();
+
   if (mockDemo) {
     await browser.route('**/healthz*', (route) =>
       route.fulfill({
