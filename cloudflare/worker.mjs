@@ -127,9 +127,19 @@ async function demoChat(request, env) {
     return json({ error: "body_too_large" }, { status: 413 });
   }
 
+  let rawBody;
+  try {
+    rawBody = await request.text();
+  } catch {
+    return json({ error: "invalid_body" }, { status: 400 });
+  }
+  if (rawBody.length > 16_384) {
+    return json({ error: "body_too_large" }, { status: 413 });
+  }
+
   let body;
   try {
-    body = await request.json();
+    body = JSON.parse(rawBody);
   } catch {
     return json({ error: "invalid_json" }, { status: 400 });
   }
