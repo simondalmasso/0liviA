@@ -12,7 +12,9 @@ def test_product_docs_do_not_claim_stale_build_state():
     assert "45 passed" not in plan
     assert "MiniMax — voice contracts" not in plan
     assert "olivia/voice/" in readme
-    assert "Temporary production bridge" in (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "Public shell and isolated demo route" in architecture
+    assert "not a replacement Core" in architecture
 
 
 def test_repository_has_one_canonical_super_order_and_archives_old_council_prompt():
