@@ -24,7 +24,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Manual exact-SHA canonical SSH deploy workflow (`.github/workflows/deploy-canonical.yml`) with pinned host trust, password SSH disabled, fail-closed host preflight, rollback-capable bootstrap and loopback canonical/hard-zero-cost health verification; a real recurring-$0 OCI host now exists, but the workflow remains unexecuted until privileged SSH and the four deploy secrets are established.
 - Exact production smoke gate: target must report the requested 40-hex build SHA, `api_mode=canonical`, `hard_zero_cost=true`, completed owner registration, at least one available `local/free_hard_cap/plan_included` provider, and a routed+completed streamed chat turn.
 - Repository hygiene tests preventing stale build claims and active-doc duplication.
-- Last verified public inert-shell deployment: exact source `b2decd3418e9a2f0f840115eeacd6350dfc2cc2d`, Cloudflare Worker version `36e32304-da90-42ed-a655-36d24d1a68bc`, runtime binding only `ASSETS`; cache-busted smoke returned root HTTP 200 with the monochrome `Chat / Work` shell, `/healthz` reported `api_mode=public_shell`, `bridge_enabled=false`, `provider_ready=false`, `inference_enabled=false`, `web_read=false`, `hard_zero_cost=true`, and `/api/chat` returned HTTP 503. Version metadata keeps `CostGuard` as an unbound historical SQLite Durable Object export, `has_preview:false`, and the same compatibility date/flags as the prior inert deployment.
+- Production still points at the previously verified inert public shell until a newer exact SHA completes deployment. The current repository candidate replaces the broken anonymous browser-direct demo with an isolated same-origin Workers AI route, binds `AI` plus SQLite `COST_GUARD`, requires explicit `OLIVIA_DEMO_ZERO_COST_CONFIRMED=1`, keeps canonical `/api/chat` at HTTP 503, and requires a live tester-army/e2e browser pass before a deployment can be called successful.
 
 Runtime-call discipline:
 - public shell has no periodic polling loop;
@@ -47,7 +47,7 @@ Provider routing must remain catalog-driven and fail closed:
 - `plan_included` is reserved for the official `chatgpt_plan` transport and requires explicit no-credit-overage verification;
 - official ChatGPT-plan usage is the preferred frontier-quality lane for eligible Plus/Pro owners once OAuth onboarding exists and no-credit-overage is explicitly verified; exhaustion must fail/degrade rather than use credits silently;
 - DeepSeek V4.1 Flash/NVIDIA NIM remains development/evaluation-only unless explicit production entitlement exists;
-- the transitional Cloudflare bridge is disabled by default; Workers AI/read routes remain unavailable until both identity and account-wide zero-cost behavior are independently verified;
+- canonical Cloudflare inference/read stays disabled; only the isolated public demo may use Workers AI, and only after account-wide zero-cost behavior is independently verified and the server-side daily cap is active;
 - local inference is allowed as a zero-cost fallback but is not the quality target for normal chat;
 - Intern Discovery / Intern InkStone is a promising GPU burst lane for Muse Glimmer, but remains `free_unverified` until its account-level point exhaustion/no-overage behavior and a real service response contract are proven.
 
@@ -130,4 +130,4 @@ Every meaningful mutation must preserve:
 6. Muse Glimmer remains a parked OpenAI-compatible challenger: no new Core module is needed. Promote only when a recurring-free/self-owned host with adequate GPU memory is proven; current public inference-provider availability does not satisfy that gate.
 7. Evaluate the Intern Discovery GPU burst lane only as a challenger: read point/hour estimates before creating resources and implement an adapter only after a real no-overage/account gate exists.
 8. Verify production entitlement/cost for every retained model/coding route and account-level MFA/2FA.
-9. The public shell is already exact-SHA and inert. Only after the remaining host/provider/voice gates, deploy the **canonical Python Core** at an exact SHA and smoke the authenticated product end to end.
+9. Keep the public shell non-canonical. A demo deployment is acceptable only after exact-SHA smoke plus live E2E; independently, deploy the **canonical Python Core** only after the remaining host/provider/voice gates and smoke the authenticated product end to end.

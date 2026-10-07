@@ -7,6 +7,8 @@ on:
     paths:
       - web/**
       - cloudflare/**
+      - e2e.config.ts
+      - tests-e2e/**
       - .github/workflows/deploy-public-shell.yml
   workflow_dispatch:
     inputs:
@@ -25,10 +27,11 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      OLIVIA_DEMO_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_ZERO_COST_CONFIRMED }}
 
     steps:
       - name: Checkout repository
@@ -64,15 +67,20 @@ jobs:
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          test "${OLIVIA_DEMO_ZERO_COST_CONFIRMED:-}" = "1"
 
-      - name: Verify inert public-shell source
+      - name: Verify public-shell source boundaries
         shell: bash
         run: |
           set -euo pipefail
           grep -Fq 'api_mode: "public_shell"' cloudflare/worker.mjs
+          grep -Fq 'provider_ready: false' cloudflare/worker.mjs
           grep -Fq 'inference_enabled: false' cloudflare/worker.mjs
           grep -Fq 'web_read: false' cloudflare/worker.mjs
           grep -Fq 'hard_zero_cost: true' cloudflare/worker.mjs
+          grep -Fq 'url.pathname === "/api/demo-chat"' cloudflare/worker.mjs
+          grep -Fq 'OLIVIA_DEMO_ZERO_COST_CONFIRMED' cloudflare/worker.mjs
+          grep -Fq '@cf/zai-org/glm-4.7-flash' cloudflare/worker.mjs
           grep -Fq '0liviA — Tu IA personal' web/index.html
           ! grep -Fq 'id="modeChat"' web/index.html
           ! grep -Fq 'id="modeWork"' web/index.html
@@ -92,6 +100,20 @@ jobs:
               "directory": "./web",
               "binding": "ASSETS"
             },
+            "vars": {
+              "OLIVIA_DEMO_ZERO_COST_CONFIRMED": "1"
+            },
+            "ai": {
+              "binding": "AI"
+            },
+            "durable_objects": {
+              "bindings": [
+                {
+                  "name": "COST_GUARD",
+                  "class_name": "CostGuard"
+                }
+              ]
+            },
             "exports": {
               "CostGuard": {
                 "type": "durable-object",
@@ -110,6 +132,7 @@ jobs:
           public_url="$(grep -Eo 'https://[^[:space:]]+\.workers\.dev' /tmp/wrangler-deploy.log | tail -n1 || true)"
           test -n "${public_url}"
           echo "public_url=${public_url}" >> "${GITHUB_OUTPUT}"
+          echo "PUBLIC_SHELL_URL=${public_url}" >> "${GITHUB_ENV}"
 
       - name: Cache-busted production smoke
         shell: bash
@@ -122,6 +145,7 @@ jobs:
           cb="$(date +%s)"
           root="$(curl -fsS --max-time 20 "${base}/?cb=${cb}")"
           printf '%s' "${root}" | grep -Fq '0liviA — Tu IA personal'
+          printf '%s' "${root}" | grep -Fq 'Probar 0liviA ahora'
           ! printf '%s' "${root}" | grep -Fq 'id="modeChat"'
           ! printf '%s' "${root}" | grep -Fq 'id="modeWork"'
 
@@ -138,6 +162,9 @@ jobs:
               "bridge_enabled": body.get("bridge_enabled") is False,
               "provider_ready": body.get("provider_ready") is False,
               "inference_enabled": body.get("inference_enabled") is False,
+              "demo_provider_ready": body.get("demo_provider_ready") is True,
+              "demo_provider": body.get("demo_provider") == "workers-ai-demo",
+              "demo_model": body.get("demo_model") == "@cf/zai-org/glm-4.7-flash",
               "web_read": body.get("web_read") is False,
               "hard_zero_cost": body.get("hard_zero_cost") is True,
           }
@@ -146,15 +173,70 @@ jobs:
               raise SystemExit("public-shell smoke failed: " + ", ".join(failed))
           PY
 
-          chat_status="$(curl -sS --max-time 20 -o /tmp/olivia-chat-response             -w '%{http_code}' -X POST "${base}/api/chat?cb=${cb}")"
+          chat_status="$(curl -sS --max-time 20 -o /tmp/olivia-chat-response -w '%{http_code}' -X POST "${base}/api/chat?cb=${cb}")"
           test "${chat_status}" = "503"
 
+          demo_status="$(curl -sS --max-time 45 -o /tmp/olivia-demo-response -w '%{http_code}' \
+            -X POST "${base}/api/demo-chat?cb=${cb}" \
+            -H 'Content-Type: application/json' \
+            --data '{"messages":[{"role":"user","content":"Respondé con una frase breve."}]}')"
+          test "${demo_status}" = "200"
+          DEMO_JSON="$(cat /tmp/olivia-demo-response)" python3 - <<'PY'
+          import json
+          import os
+
+          body = json.loads(os.environ["DEMO_JSON"])
+          if not str(body.get("answer", "")).strip():
+              raise SystemExit("demo answer empty")
+          if body.get("provider") != "workers-ai-demo":
+              raise SystemExit("unexpected demo provider")
+          if body.get("model") != "@cf/zai-org/glm-4.7-flash":
+              raise SystemExit("unexpected demo model")
+          if body.get("canonical") is not False:
+              raise SystemExit("demo incorrectly marked canonical")
+          PY
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.14.0"
+
+      - name: Install pinned e2e browser gate
+        run: |
+          npm install --no-save --package-lock=false \
+            e2e@0.18.0 \
+            @e2e-dev/web@0.13.0 \
+            playwright-core@1.63.0
+          npx e2e-web install chromium --with-deps
+
+      - name: Live production e2e
+        env:
+          E2E_TELEMETRY_DISABLED: "1"
+          OLIVIA_E2E_URL: ${{ steps.deploy.outputs.public_url }}
+          OLIVIA_E2E_LIVE: "1"
+        run: npx e2e run tests-e2e/public-demo.e2e.ts --reporter list
+
+      - name: Upload production e2e evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: olivia-production-e2e
+          path: |
+            .e2e/report.json
+            .e2e/artifacts
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Public-shell summary
+        if: success()
+        shell: bash
+        run: |
           {
             echo "### 0liviA public shell"
             echo "- source: \`main@${RELEASE_SHA}\`"
             echo "- root: HTTP 200, Spanish single-surface UI"
-            echo "- health: inert public shell, hard zero cost"
-            echo "- /api/chat: HTTP 503"
+            echo "- canonical /api/chat: HTTP 503"
+            echo "- demo: Workers AI GLM 4.7 Flash, server-side guard, live E2E PASS"
+            echo "- URL: ${PUBLIC_SHELL_URL}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Remove ephemeral deploy config

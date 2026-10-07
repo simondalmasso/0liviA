@@ -39,12 +39,13 @@ def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     assert "Probar 0liviA ahora" in html
     assert "Tu IA personal." in html
     assert "Privada y rápida." in html
-    assert "Modo prueba IA disponible sin cuenta" in html
+    assert "Modo prueba IA" in html
     assert "publicDemoActive=false" in html
     assert "publicWelcome.hidden=!(isPublic&&!publicDemoActive)" in html
-    assert "https://text.pollinations.ai/openai/chat/completions" in html
-    assert "PUBLIC_DEMO_MODEL='openai-fast'" in html
-    assert "mode:'cors'" in html
+    assert "PUBLIC_DEMO_ENDPOINT='/api/demo-chat'" in html
+    assert "PUBLIC_DEMO_MODEL='GLM 4.7 Flash'" in html
+    assert "PUBLIC_DEMO_PROVIDER='workers-ai-demo'" in html
+    assert "https://text.pollinations.ai" not in html
     assert "function redactDemoText" in html
     assert "Ese comando necesita el Core privado." in html
     assert 'class="brand-mini"' in html
