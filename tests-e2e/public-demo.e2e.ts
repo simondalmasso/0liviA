@@ -58,10 +58,10 @@ test('public demo opens and returns an AI answer', async ({ app, screen, browser
   );
   await screen.getByRole('button', { name: 'Enviar' }).tap();
 
-  const answer = browser.locator('.msg.assistant .bubble');
+  const answer = browser.locator('#messages .msg.assistant .bubble');
   await expect(answer).toHaveCount(1, { timeout: 30_000 });
   if (mockDemo) {
     await expect(answer).toContainText('OLIVIA_E2E_OK');
   }
-  await expect(browser.locator('.provider-pill')).toContainText('GLM 4.7 Flash');
+  await expect(browser.locator('#messages .provider-pill')).toContainText('GLM 4.7 Flash');
 });
