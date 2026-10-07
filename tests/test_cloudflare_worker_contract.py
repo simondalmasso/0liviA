@@ -53,7 +53,7 @@ def test_demo_bounds_context_output_and_daily_usage():
     assert "const DEMO_DAILY_REQUEST_LIMIT = 25;" in WORKER
     assert "const DEMO_MAX_TOTAL_CHARS = 8000;" in WORKER
     assert "const DEMO_MAX_MESSAGES = 8;" in WORKER
-    assert "const DEMO_MAX_OUTPUT_TOKENS = 256;" in WORKER
+    assert "const DEMO_MAX_OUTPUT_TOKENS = 1024;" in WORKER
     assert "contentLength > 16_384" in WORKER
     assert "if (totalChars > DEMO_MAX_TOTAL_CHARS)" in WORKER
     assert "if (count >= DEMO_DAILY_REQUEST_LIMIT)" in WORKER
