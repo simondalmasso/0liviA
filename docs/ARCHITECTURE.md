@@ -81,18 +81,22 @@ Current implemented design:
 
 The harness is replaceable. OpenCode/other coding agents remain challengers, not permanent dependencies.
 
-## Temporary production bridge
+## Public shell and isolated demo route
 
-`cloudflare/worker.mjs` exists as a transitional public bridge because Oracle A1 capacity has not yet been proven available for production. The bridge runtime is **disabled by default** and intentionally duplicates only a narrow subset of the canonical core:
+`cloudflare/worker.mjs` exists as a thin public shell while the canonical Python Core is not yet deployed. It is **not** a replacement Core: canonical `/api/chat`, Projects, Library, Memory, jobs, research, coding and voice remain disabled on this Worker.
 
-- stateless message history supplied by the browser;
-- provider catalog/failover before visible output;
-- read-only URL ingestion with SSRF/redirect/body limits;
-- a local request guard.
+The shell may expose one explicitly non-canonical `POST /api/demo-chat` route when all of these conditions hold:
 
-It is **not** the source of truth for Projects, Library, Memory or jobs. Its current account-level zero-cost status is unverified and it has no canonical owner-account store, so chat/read routes remain disabled until both identity and zero-cost/account guards are explicitly proven. This bridge may be removed without changing the canonical Python state formats.
+- Workers AI is bound as `AI`;
+- the SQLite Durable Object `COST_GUARD` is bound;
+- `OLIVIA_DEMO_ZERO_COST_CONFIRMED=1` exists only after account-level zero-cost behavior is verified;
+- requests are globally daily-capped, context/output bounded and secret-shaped text redacted before provider egress;
+- slash commands and all side effects remain rejected;
+- no demo conversation is persisted server-side.
 
-When the canonical Python Core is active, Projects, Chats, Library and Memory are server-side SQLite state and the browser reconciles them through authenticated workspace/session APIs. IndexedDB remains only a disposable cache and one-shot migration layer. In temporary bridge mode, workspace state remains local-only and must not be presented as durable multi-device state.
+The demo currently targets `@cf/zai-org/glm-4.7-flash`. It is a testable public conversation surface, not canonical provider state. `/healthz` therefore keeps `provider_ready:false` and `inference_enabled:false` for the canonical runtime while reporting separate `demo_provider_ready` metadata. `/api/chat` remains fail-closed at 503.
+
+When the canonical Python Core is active, Projects, Chats, Library and Memory are server-side SQLite state and the browser reconciles them through authenticated workspace/session APIs. IndexedDB remains only a disposable cache and one-shot migration layer. In public-demo mode, workspace state remains local-only and must not be presented as durable multi-device state.
 
 ## Owner identity
 

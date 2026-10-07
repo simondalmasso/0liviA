@@ -18,12 +18,10 @@ LLAMA_BUILD="${LLAMA_BUILD:-b11388}"
 MODEL_ROOT="${MODEL_ROOT:-${STATE_ROOT}/models}"
 MODEL_PROFILE="${MODEL_PROFILE:-auto}"
 LOCAL_RECOVERY_ENABLED="${LOCAL_RECOVERY_ENABLED:-0}"
-
 case "${LOCAL_RECOVERY_ENABLED}" in
   0|1) ;;
   *) echo "LOCAL_RECOVERY_ENABLED must be 0 or 1" >&2; exit 2 ;;
 esac
-
 if [[ "${EUID}" -ne 0 ]]; then
   echo "run as root" >&2
   exit 2

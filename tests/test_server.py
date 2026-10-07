@@ -342,8 +342,8 @@ async def test_reference_inspired_monochrome_low_weight_visual_system(client):
     assert "linear-gradient(" not in html
     assert "radial-gradient(" not in html
     assert "backdrop-filter" not in html
-    assert 'id="modeChat"' in html
-    assert 'id="modeWork"' in html
+    assert 'id="modeChat"' not in html
+    assert 'id="modeWork"' not in html
     assert 'id="voiceBtn" class="composer-icon"' in html
     assert ".composer{" in html
     assert "#voiceLive{" in html
@@ -1826,9 +1826,9 @@ async def test_ui_surfaces_actual_zero_cost_route_per_answer(client):
 @pytest.mark.asyncio
 async def test_public_shell_has_product_metadata_without_personal_runtime_url(client):
     html = await (await client.get("/")).text()
-    assert "<title>0liviA — Self-hosted agentic AI workspace</title>" in html
+    assert "<title>0liviA — Tu IA personal</title>" in html
     assert 'name="description"' in html
-    assert "self-hosted agentic AI workspace" in html
+    assert "0liviA es tu IA personal" in html
     assert 'property="og:title"' in html
     assert 'property="og:description"' in html
     assert 'name="application-name" content="0liviA"' in html
@@ -1854,7 +1854,7 @@ async def test_ui_distinguishes_public_shell_from_transitional_bridge(client):
 
     assert "body.api_mode==='public_shell'" in html
     assert "backendMode='public_shell'" in html
-    assert "Shell público · Core desconectado" in html
+    assert "Shell público · demo aislado · Core desconectado" in html
 
 
 
@@ -1915,12 +1915,19 @@ async def test_ui_does_not_poll_cloudflare_runtime(client):
 
 
 @pytest.mark.asyncio
-async def test_public_shell_disables_chat_instead_of_queueing_messages(client):
+async def test_public_shell_demo_is_explicit_zero_cost_and_side_effect_free(client):
     html = await (await client.get("/")).text()
 
     assert "function updateComposerAvailability()" in html
     assert "backendMode==='public_shell'" in html
-    assert "Core canónico no conectado" in html
+    assert "publicDemoActive=false" in html
+    assert "if(backendMode==='public_shell')return publicDemoActive&&coreHealth?.demo_provider_ready===true" in html
+    assert "PUBLIC_DEMO_ENDPOINT='/api/demo-chat'" in html
+    assert "PUBLIC_DEMO_PROVIDER='workers-ai-demo'" in html
+    assert "https://text.pollinations.ai" not in html
+    assert "function redactDemoText" in html
+    assert "if(value.startsWith('/'))" in html
+    assert "Ese comando necesita el Core privado." in html
     assert "textInput.disabled=!available" in html
     assert "sendBtn.disabled=!available" in html
     assert "if(!composerAvailable())return" in html

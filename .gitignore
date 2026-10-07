@@ -19,3 +19,5 @@ backups/
 secrets/
 *.pem
 *.key
+node_modules/
+.e2e/

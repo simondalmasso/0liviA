@@ -49,10 +49,11 @@
   - no auto-merge and no unrestricted model-authored shell in the Gateway.
 - Replaceability: Aider/DeepSeek are implementation choices, not product identity; other coding harnesses can challenge behind the same durable job contract.
 
-## ADR-0007 — Cloudflare deploy-only
+## ADR-0007 — Cloudflare is not the canonical Core
 - Date: 2026-10-04
-- Status: **accepted**
-- Decision: Cloudflare may host/deploy user applications and a thin frontend if desired, but normal 0liviA chat, memory, model and voice turns do not depend on Workers, Tunnel, DO, Containers or AI Gateway.
+- Status: **accepted; clarified 2026-10-07**
+- Decision: Cloudflare may host/deploy the thin public frontend, but normal authenticated 0liviA chat, durable memory, projects, research/tools and voice do not depend on Workers, Tunnel, DO, Containers or AI Gateway.
+- Narrow exception: the public shell may expose an explicitly non-canonical, no-account demo chat through Workers AI when account-level zero-cost behavior is independently verified. The demo must be stateless server-side, globally hard-capped, reject slash/tool commands, report separate demo readiness, and leave canonical `/api/chat` fail-closed.
 
 
 ## ADR-0008 — Provider catalog + pre-output failover contract

@@ -26,6 +26,7 @@ ZERO_COST_ALLOWED_MODES = frozenset({"local", "free_hard_cap", "plan_included"})
 _PROVIDER_COST_MODES = ZERO_COST_ALLOWED_MODES | frozenset({"free_unverified", "paid"})
 _PROVIDER_CAPABILITIES = frozenset({"chat", "code", "review", "research", "vision"})
 _FALLBACK_POLICIES = frozenset({"allow", "stop"})
+_AUTH_MODES = frozenset({"bearer", "none"})
 
 
 def is_visible_segment(text: str | None) -> bool:
@@ -128,6 +129,7 @@ class ProviderSpec:
     no_credit_overage_verified: bool = False
     capabilities: tuple[str, ...] = ("chat",)
     fallback_policy: str = "allow"
+    auth_mode: str = "bearer"
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ProviderSpec":
@@ -181,6 +183,17 @@ class ProviderSpec:
                 f"invalid fallback_policy for {raw.get('name', 'provider')}: "
                 f"{fallback_policy}"
             )
+        auth_mode = str(raw.get("auth_mode", "bearer")).strip().lower()
+        if auth_mode not in _AUTH_MODES:
+            raise ProviderConfigError(
+                f"invalid auth_mode for {raw.get('name', 'provider')}: {auth_mode}"
+            )
+        if kind == "chatgpt_plan" and auth_mode != "bearer":
+            raise ProviderConfigError("chatgpt_plan manages its own authenticated transport")
+        if auth_mode == "none" and cost_mode not in {"local", "free_hard_cap"}:
+            raise ProviderConfigError(
+                "auth_mode=none requires cost_mode=local or free_hard_cap"
+            )
         return cls(
             name=str(raw["name"]),
             base_url=base_url,
@@ -196,6 +209,7 @@ class ProviderSpec:
             ),
             capabilities=capabilities,
             fallback_policy=fallback_policy,
+            auth_mode=auth_mode,
         )
 
 
@@ -211,13 +225,17 @@ class OpenAICompatibleProvider:
 
     @property
     def configured(self) -> bool:
-        if self.cost_mode == "local":
+        if self.cost_mode == "local" or self.spec.auth_mode == "none":
             return True
         return bool(self.spec.api_key_env and os.getenv(self.spec.api_key_env))
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         api_key = os.getenv(self.spec.api_key_env) if self.spec.api_key_env else ""
-        if self.spec.cost_mode != "local" and not api_key:
+        if (
+            self.spec.auth_mode != "none"
+            and self.spec.cost_mode != "local"
+            and not api_key
+        ):
             raise ProviderConfigError(f"{self.name}: missing {self.spec.api_key_env}")
 
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=90)
