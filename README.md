@@ -71,7 +71,7 @@ Cloudflare may host a thin public shell, but it is not the canonical chat/memory
 - production STT/VAD/TTS selection and es-AR voice acceptance;
 - a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
-- exact-SHA **canonical Core** deployment and production smoke; the last durably verified production Worker remains the older inert shell until the new demo candidate passes account-plan verification, live model smoke and tester-army/e2e against the permanent URL; canonical `/api/chat` must remain HTTP 503 on that public Worker;
+- exact-SHA **canonical Core** deployment and production smoke; the public demo now has a verified real GLM-4.7-Flash response and a live tester-army/e2e browser pass (2026-10-08), but the exact Worker deployment SHA, account-level no-overage, owner login and canonical Core release remain uncertified; the public Worker must continue to reject canonical `/api/chat`;
 - the public Workers AI demo is deployment-gated by explicit zero-cost confirmation; without it `/api/demo-chat` returns 503 rather than consuming unverified capacity.
 
 ## Development
