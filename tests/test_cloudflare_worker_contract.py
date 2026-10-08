@@ -82,5 +82,14 @@ def test_cost_guard_is_active_only_for_explicit_demo_route():
     assert "export class CostGuard" in WORKER
     assert 'url.pathname !== "/allow"' in WORKER
     assert 'env.COST_GUARD.idFromName("public-demo-global")' in WORKER
-    assert "this.state.storage.get" in WORKER
-    assert "this.state.storage.put" in WORKER
+    assert "this.state.storage.transaction" in WORKER
+    assert "txn.get" in WORKER
+    assert "txn.put" in WORKER
+    assert "if (!allowance.allowed)" in WORKER
+
+
+def test_demo_rejects_cross_site_calls_and_spoofed_final_assistant():
+    assert 'request.headers.get("origin")' in WORKER
+    assert 'error: "cross_origin_denied"' in WORKER
+    assert 'error: "json_required"' in WORKER
+    assert 'messages[messages.length - 1].role !== "user"' in WORKER

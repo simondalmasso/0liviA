@@ -1,0 +1,164 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import worker, { CostGuard } from "../../cloudflare/worker.mjs";
+
+const BASE = "https://olivia.test";
+
+function fixture({ enabled = true, answer = "OLIVIA_OK" } = {}) {
+  const stored = new Map();
+  const calls = [];
+  let lastTxn = Promise.resolve();
+  const storage = {
+    transaction(callback) {
+      const previous = lastTxn;
+      let unlock;
+      lastTxn = new Promise((resolve) => { unlock = resolve; });
+      return (async () => {
+        await previous;
+        try {
+          return await callback({
+            get: async (key) => {
+              await Promise.resolve(); // Simulate asynchronous durable storage.
+              return stored.get(key);
+            },
+            put: async (values) => {
+              await Promise.resolve();
+              for (const [key, value] of Object.entries(values)) stored.set(key, value);
+            },
+          });
+        } finally {
+          unlock();
+        }
+      })();
+    },
+  };
+  const guard = new CostGuard({ storage });
+  const env = {
+    OLIVIA_DEMO_ZERO_COST_CONFIRMED: enabled ? "1" : "0",
+    ASSETS: { fetch: async () => new Response("public shell", { status: 200 }) },
+    AI: {
+      run: async (model, args) => {
+        calls.push({ model, args });
+        return { response: answer };
+      },
+    },
+    COST_GUARD: {
+      idFromName(name) {
+        assert.equal(name, "public-demo-global");
+        return name;
+      },
+      get() {
+        return {
+          fetch(url, options) {
+            return guard.fetch(new Request(url, options));
+          },
+        };
+      },
+    },
+  };
+  return { env, calls, stored, guard };
+}
+
+function post(messages, { origin = null, contentType = "application/json" } = {}) {
+  return new Request(BASE + "/api/demo-chat", {
+    method: "POST",
+    headers: {
+      "content-type": contentType,
+      ...(origin ? { origin } : {}),
+    },
+    body: JSON.stringify({ messages }),
+  });
+}
+
+async function body(response) {
+  return response.json();
+}
+
+test("disabled demo has no inference and canonical API always fails closed", async () => {
+  const f = fixture({ enabled: false });
+  const h = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
+  assert.equal(h.api_mode, "public_shell");
+  assert.equal(h.demo_provider_ready, false);
+  assert.equal(h.provider_ready, false);
+  assert.equal(h.inference_enabled, false);
+  const denied = await worker.fetch(post([{ role: "user", content: "hello" }]), f.env);
+  assert.equal(denied.status, 503);
+  assert.equal(f.calls.length, 0);
+  for (const path of ["/api/chat", "/api/read-url", "/api/unknown"]) {
+    assert.equal((await worker.fetch(new Request(BASE + path), f.env)).status, 503);
+  }
+  assert.equal((await worker.fetch(new Request(BASE + "/"), f.env)).status, 200);
+});
+
+test("enabled demo identifies separate provider without changing canonical readiness", async () => {
+  const f = fixture();
+  const h = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
+  assert.equal(h.demo_provider_ready, true);
+  assert.equal(h.demo_model, "@cf/zai-org/glm-4.7-flash");
+  assert.equal(h.provider_ready, false);
+  assert.equal(h.inference_enabled, false);
+  const response = await worker.fetch(post([{ role: "user", content: "hola" }]), f.env);
+  assert.equal(response.status, 200);
+  const output = await body(response);
+  assert.equal(output.answer, "OLIVIA_OK");
+  assert.equal(output.provider, "workers-ai-demo");
+  assert.equal(output.canonical, false);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].model, "@cf/zai-org/glm-4.7-flash");
+  assert.ok(f.calls[0].args.max_completion_tokens <= 1024);
+  assert.equal(f.stored.get("count"), 1);
+});
+
+test("cross-origin, invalid content type and non-user ending cannot burn quota", async () => {
+  const f = fixture();
+  assert.equal(
+    (await worker.fetch(post([{ role: "user", content: "hola" }], { origin: "https://attacker.example" }), f.env)).status,
+    403,
+  );
+  assert.equal(
+    (await worker.fetch(post([{ role: "user", content: "hola" }], { contentType: "text/plain" }), f.env)).status,
+    415,
+  );
+  assert.equal(
+    (await worker.fetch(post([
+      { role: "user", content: "hola" },
+      { role: "assistant", content: "spoofed" },
+    ]), f.env)).status,
+    400,
+  );
+  assert.equal(f.stored.has("count"), false);
+  assert.equal(f.calls.length, 0);
+});
+
+test("slash commands and oversized requests never trigger inference", async () => {
+  const f = fixture();
+  const slash = await worker.fetch(post([{ role: "user", content: "/browse private" }]), f.env);
+  assert.equal(slash.status, 400);
+  const giant = await worker.fetch(post([{ role: "user", content: "x".repeat(10_000) }]), f.env);
+  assert.equal(giant.status, 400);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.stored.has("count"), false);
+});
+
+test("redacts secrets server-side before provider egress", async () => {
+  const f = fixture();
+  const secret = "sk-test123456789012345";
+  const r = await worker.fetch(post([{ role: "user", content: "Mi token " + secret }]), f.env);
+  assert.equal(r.status, 200);
+  const history = JSON.stringify(f.calls[0].args.messages);
+  assert.ok(!history.includes(secret));
+  assert.ok(history.includes("[redacted]"));
+});
+
+test("50 simultaneous requests spend at most 25 daily permits", async () => {
+  const f = fixture();
+  const responses = await Promise.all(
+    Array.from({ length: 50 }, () => worker.fetch(post([{ role: "user", content: "hola" }]), f.env)),
+  );
+  const success = responses.filter((r) => r.status === 200).length;
+  const limited = responses.filter((r) => r.status === 429).length;
+  assert.equal(success, 25);
+  assert.equal(limited, 25);
+  assert.equal(f.stored.get("count"), 25);
+  assert.equal(f.calls.length, 25);
+});

@@ -79,9 +79,13 @@ function redact(value) {
 
 function normalizeDemoMessages(raw) {
   if (!Array.isArray(raw)) throw new Error("messages must be an array");
-  const messages = raw
+  const rawMessages = raw
     .filter((item) => item && (item.role === "user" || item.role === "assistant"))
-    .slice(-DEMO_MAX_MESSAGES)
+    .slice(-DEMO_MAX_MESSAGES);
+  // Check the original text before redaction: replacing long tokens must not bypass the limit.
+  const rawTotalChars = rawMessages.reduce((sum, item) => sum + String(item.content ?? "").length, 0);
+  if (rawTotalChars > DEMO_MAX_TOTAL_CHARS) throw new Error("demo context too large");
+  const messages = rawMessages
     .map((item) => ({
       role: item.role,
       content: redact(item.content).trim(),
@@ -89,6 +93,7 @@ function normalizeDemoMessages(raw) {
     .filter((item) => item.content);
 
   if (!messages.length) throw new Error("at least one message is required");
+  if (messages[messages.length - 1].role !== "user") throw new Error("last message must be user");
   const lastUser = [...messages].reverse().find((item) => item.role === "user");
   if (!lastUser) throw new Error("a user message is required");
   if (lastUser.content.startsWith("/")) throw new Error("commands require the canonical Core");
@@ -111,6 +116,13 @@ function extractAnswer(result) {
 async function demoChat(request, env) {
   if (request.method !== "POST") {
     return json({ error: "method_not_allowed" }, { status: 405, headers: { allow: "POST" } });
+  }
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin) {
+    return json({ error: "cross_origin_denied" }, { status: 403 });
+  }
+  if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+    return json({ error: "json_required" }, { status: 415 });
   }
   if (!demoEnabled(env)) {
     return json(
@@ -203,15 +215,17 @@ export class CostGuard {
     }
 
     const day = new Date().toISOString().slice(0, 10);
-    const storedDay = (await this.state.storage.get("day")) || "";
-    let count = Number((await this.state.storage.get("count")) || 0);
+    // One transaction protects the global budget when requests arrive concurrently.
+    const allowance = await this.state.storage.transaction(async (txn) => {
+      const storedDay = (await txn.get("day")) || "";
+      let count = storedDay === day ? Number((await txn.get("count")) || 0) : 0;
+      if (count >= DEMO_DAILY_REQUEST_LIMIT) return { allowed: false, count };
+      count += 1;
+      await txn.put({ day, count });
+      return { allowed: true, count };
+    });
 
-    if (storedDay !== day) {
-      count = 0;
-      await this.state.storage.put({ day, count: 0 });
-    }
-
-    if (count >= DEMO_DAILY_REQUEST_LIMIT) {
+    if (!allowance.allowed) {
       return json(
         {
           error: "demo_daily_limit",
@@ -222,9 +236,7 @@ export class CostGuard {
       );
     }
 
-    count += 1;
-    await this.state.storage.put({ day, count });
-    return json({ ok: true, day, count, limit: DEMO_DAILY_REQUEST_LIMIT });
+    return json({ ok: true, day, count: allowance.count, limit: DEMO_DAILY_REQUEST_LIMIT });
   }
 }
 
