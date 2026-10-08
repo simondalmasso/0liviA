@@ -68,3 +68,32 @@ test('public demo opens and returns an AI answer', async ({ app, screen, browser
   }
   await expect(browser.locator('#messages .provider-pill')).toContainText('GLM 4.7 Flash');
 });
+
+if (mockDemo) {
+  test('provider failure is an alert, never a successful AI answer', async ({ app, screen, browser }) => {
+    await app.clearState();
+    await browser.route('**/healthz*', (route) =>
+      route.fulfill({
+        json: {
+          api_mode: 'public_shell',
+          demo_provider_ready: true,
+          hard_zero_cost: true,
+          demo_provider: 'workers-ai-demo',
+        },
+      }),
+    );
+    await browser.route('**/api/demo-chat*', (route) =>
+      route.fulfill({
+        status: 503,
+        json: { error: 'demo_provider_unavailable' },
+      }),
+    );
+    await app.open('/');
+    await screen.getByRole('button', { name: 'Probar 0liviA ahora' }).tap();
+    await screen.getByRole('textbox', { name: 'Mensaje' }).fill('Verificar fallo explícito');
+    await screen.getByRole('button', { name: 'Enviar' }).tap();
+    await expect(browser.locator('#messages [role="alert"]')).toContainText('La IA demo $0 no respondió');
+    await expect(browser.locator('#messages .msg.assistant:not(.error)')).toHaveCount(0);
+    await expect(browser.locator('#messages .provider-pill')).toHaveCount(0);
+  });
+}
