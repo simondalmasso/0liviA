@@ -47,5 +47,7 @@ jobs:
           node --check /tmp/olivia-ui.js
       - name: Check Cloudflare Worker syntax
         run: node --check cloudflare/worker.mjs
+      - name: Test Cloudflare Worker behavior without external inference
+        run: node --test tests/node/test_cloudflare_worker.mjs
       - name: Test
         run: pytest -q
