@@ -79,9 +79,13 @@ function redact(value) {
 
 function normalizeDemoMessages(raw) {
   if (!Array.isArray(raw)) throw new Error("messages must be an array");
-  const messages = raw
+  const rawMessages = raw
     .filter((item) => item && (item.role === "user" || item.role === "assistant"))
-    .slice(-DEMO_MAX_MESSAGES)
+    .slice(-DEMO_MAX_MESSAGES);
+  // Check the original text before redaction: replacing long tokens must not bypass the limit.
+  const rawTotalChars = rawMessages.reduce((sum, item) => sum + String(item.content ?? "").length, 0);
+  if (rawTotalChars > DEMO_MAX_TOTAL_CHARS) throw new Error("demo context too large");
+  const messages = rawMessages
     .map((item) => ({
       role: item.role,
       content: redact(item.content).trim(),
