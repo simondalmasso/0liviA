@@ -75,10 +75,20 @@ if (mockDemo) {
     await browser.route('**/healthz*', (route) =>
       route.fulfill({
         json: {
+          process_alive: true,
           api_mode: 'public_shell',
+          public_shell: true,
+          bridge_enabled: false,
+          provider_ready: false,
+          inference_enabled: false,
+          demo_inference_enabled: true,
           demo_provider_ready: true,
-          hard_zero_cost: true,
           demo_provider: 'workers-ai-demo',
+          demo_model: '@cf/zai-org/glm-4.7-flash',
+          demo_daily_request_limit: 25,
+          web_read: false,
+          hard_zero_cost: true,
+          canonical_backend: 'self_hosted_python_core',
         },
       }),
     );
