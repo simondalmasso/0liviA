@@ -58,8 +58,11 @@ test('public demo opens and returns an AI answer', async ({ app, screen, browser
   );
   await screen.getByRole('button', { name: 'Enviar' }).tap();
 
-  const answer = browser.locator('#messages .msg.assistant .bubble');
+  // Failures render as alerts, never as successful model answers.
+  const answer = browser.locator('#messages .msg.assistant:not(.error) .bubble');
   await expect(answer).toHaveCount(1, { timeout: 30_000 });
+  await expect(browser.locator('#messages .msg.error')).toHaveCount(0);
+  await expect(browser.locator('#messages [role="alert"]')).toHaveCount(0);
   if (mockDemo) {
     await expect(answer).toContainText('OLIVIA_E2E_OK');
   }
