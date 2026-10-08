@@ -51,6 +51,49 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify configured permanent production URL
+        if: inputs.live == true
+        env:
+          TARGET: ${{ vars.OLIVIA_PUBLIC_SHELL_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${TARGET:-}" =~ ^https://[a-zA-Z0-9.-]+\\.workers\\.dev/?$ ]]; then
+            echo "::error::Set OLIVIA_PUBLIC_SHELL_URL to the permanent Cloudflare Workers URL."
+            exit 1
+          fi
+          base="${TARGET%/}"
+          health="$(curl -fsS --max-time 20 "${base}/healthz?e2e=${GITHUB_RUN_ID}")"
+          HEALTH_JSON="${health}" python3 - <<'PY'
+          import json
+          import os
+          state = json.loads(os.environ["HEALTH_JSON"])
+          expected = {
+              "api_mode": "public_shell",
+              "demo_provider_ready": True,
+              "hard_zero_cost": True,
+              "demo_provider": "workers-ai-demo",
+          }
+          for key, value in expected.items():
+              if state.get(key) != value:
+                  raise SystemExit(f"Production is not demo-ready: {key}={state.get(key)!r}, expected {value!r}")
+          PY
+
+          # A healthy shell alone is not proof of a functional AI response.
+          demo="$(curl -fsS --max-time 45 --retry 0 -X POST "${base}/api/demo-chat" \\
+            -H "Origin: ${base}" \\
+            -H "Content-Type: application/json" \\
+            --data '{"messages":[{"role":"user","content":"Respondé brevemente en español."}]}')"
+          DEMO_JSON="${demo}" python3 - <<'PY'
+          import json
+          import os
+          body = json.loads(os.environ["DEMO_JSON"])
+          if body.get("provider") != "workers-ai-demo" or body.get("canonical") is not False:
+              raise SystemExit("Production returned the wrong provider contract")
+          if not isinstance(body.get("answer"), str) or not body["answer"].strip():
+              raise SystemExit("Production AI did not return a real answer")
+          PY
+
       - name: Install pinned e2e runner
         run: |
           npm install --no-save --package-lock=false \
@@ -82,16 +125,6 @@ jobs:
           OLIVIA_E2E_URL: "http://127.0.0.1:8767"
           OLIVIA_E2E_MOCK_DEMO: "1"
         run: npx e2e run tests-e2e/public-demo.e2e.ts --reporter list
-
-      - name: Verify configured permanent production URL
-        if: inputs.live == true
-        env:
-          TARGET: ${{ vars.OLIVIA_PUBLIC_SHELL_URL }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "${TARGET}" =~ ^https://[a-zA-Z0-9.-]+\\.workers\\.dev/?$ ]]
-          curl -fsS --max-time 20 "${TARGET%/}/healthz" | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s.get("demo_provider_ready") is True and s.get("hard_zero_cost") is True'
 
       - name: Live E2E against permanent 0liviA
         if: inputs.live == true

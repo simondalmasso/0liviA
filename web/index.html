@@ -792,7 +792,7 @@ function renderMessagesInto(root,chat){
   }
   for(const m of chat.messages){
     const row=document.createElement('div');
-    row.className='msg '+m.role+(m.status==='queued'?' pending':m.status==='partial'?' partial':'');
+    row.className='msg '+m.role+(m.status==='queued'?' pending':m.status==='partial'?' partial':m.status==='error'?' error':'');
     if(m.status==='queued'&&m.role==='user'){
       const mark=document.createElement('span');
       mark.className='pending-mark';
@@ -803,6 +803,7 @@ function renderMessagesInto(root,chat){
     const bubble=document.createElement('div');
     bubble.className='bubble';
     bubble.textContent=String(m.text||'');
+    if(m.status==='error')bubble.setAttribute('role','alert');
     body.appendChild(bubble);
 
     if(m.role==='assistant'){
@@ -1524,8 +1525,8 @@ async function sendChat(raw,{speak=false}={}){
         id:uid('m'),
         role:'assistant',
         text:'La IA demo $0 no respondió. Reintentá en unos segundos.',
-        status:'synced',
-        provider:PUBLIC_DEMO_PROVIDER,
+        status:'error',
+        provider:null,
         ts:now()
       });
       await saveState();renderMessages();
