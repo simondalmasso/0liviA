@@ -83,11 +83,21 @@ jobs:
           OLIVIA_E2E_MOCK_DEMO: "1"
         run: npx e2e run tests-e2e/public-demo.e2e.ts --reporter list
 
+      - name: Verify configured permanent production URL
+        if: inputs.live == true
+        env:
+          TARGET: ${{ vars.OLIVIA_PUBLIC_SHELL_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${TARGET}" =~ ^https://[a-zA-Z0-9.-]+\\.workers\\.dev/?$ ]]
+          curl -fsS --max-time 20 "${TARGET%/}/healthz" | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s.get("demo_provider_ready") is True and s.get("hard_zero_cost") is True'
+
       - name: Live E2E against permanent 0liviA
         if: inputs.live == true
         env:
           E2E_TELEMETRY_DISABLED: "1"
-          OLIVIA_E2E_URL: "https://0livia.simondalmasso44.workers.dev"
+          OLIVIA_E2E_URL: ${{ vars.OLIVIA_PUBLIC_SHELL_URL }}
           OLIVIA_E2E_LIVE: "1"
         run: npx e2e run tests-e2e/public-demo.e2e.ts --reporter list
 
