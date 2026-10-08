@@ -52,3 +52,16 @@ def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     assert 'class="auth-mark brand-auth"' in html
     assert '--brand-logo:url("data:image/png;base64,' in html
     assert "<title>0liviA — Tu IA personal</title>" in html
+
+
+def test_demo_errors_are_not_presented_as_model_answers():
+    html = _shell()
+    assert "m.status==='error'?' error'" in html
+    assert "bubble.setAttribute('role','alert')" in html
+    assert "text:'La IA demo $0 no respondió. Reintentá en unos segundos.'" in html
+    assert "status:'error',\n        provider:null," in html
+
+    e2e = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")
+    assert "provider failure is an alert, never a successful AI answer" in e2e
+    assert "assistant:not(.error)" in e2e
+    assert "toHaveCount(0)" in e2e
