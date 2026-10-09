@@ -1,5 +1,5 @@
 name: 0liviA Canonical Core Deploy
-run-name: "0liviA canonical ${{ inputs.release_sha }}"
+run-name: "0liviA canonical ${{ inputs.preflight_only && 'PREFLIGHT' || 'DEPLOY' }} ${{ inputs.release_sha }}"
 
 on:
   workflow_dispatch:
@@ -12,6 +12,11 @@ on:
         description: "Enable tiny local recovery model"
         required: true
         default: false
+        type: boolean
+      preflight_only:
+        description: "Safe default: verify pinned SSH, privilege and capacity without deploying"
+        required: true
+        default: true
         type: boolean
 
 permissions:
@@ -76,7 +81,16 @@ jobs:
             -o ConnectTimeout=10 -i "$HOME/.ssh/id_ed25519" \
             "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' < deploy/preflight.sh
 
+      - name: Report read-only preflight result
+        if: ${{ inputs.preflight_only }}
+        shell: bash
+        run: |
+          echo "PREFLIGHT_ONLY=YES"
+          echo "CHECKED_SHA=$RELEASE_SHA"
+          echo "NOTE=No bootstrap uploaded, Core service mutated, or deploy attempted."
+
       - name: Upload exact bootstrap script
+        if: ${{ !inputs.preflight_only }}
         shell: bash
         run: |
           set -euo pipefail
@@ -86,6 +100,7 @@ jobs:
             deploy/bootstrap-a1.sh "$DEPLOY_USER@$DEPLOY_HOST:$remote"
 
       - name: Deploy exact canonical release
+        if: ${{ !inputs.preflight_only }}
         shell: bash
         run: |
           set -euo pipefail
@@ -96,6 +111,7 @@ jobs:
             "chmod 0700 '$remote' && sudo env REF='$RELEASE_SHA' LOCAL_RECOVERY_ENABLED='$LOCAL_RECOVERY_ENABLED' bash '$remote'; rc=\$?; rm -f '$remote'; exit \$rc"
 
       - name: Verify loopback canonical health
+        if: ${{ !inputs.preflight_only }}
         shell: bash
         run: |
           set -euo pipefail
@@ -121,6 +137,7 @@ jobs:
           PY
 
       - name: Report non-secret deployment checkpoint
+        if: ${{ !inputs.preflight_only }}
         shell: bash
         run: |
           set -euo pipefail
