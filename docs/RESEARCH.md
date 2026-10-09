@@ -474,3 +474,12 @@ What it does **not** establish:
 - that 0liviA should depend on OpenClaw.
 
 0liviA therefore keeps the native official ChatGPT-plan transport as the preferred plan-included path and treats OpenClaw only as external interoperability evidence.
+
+
+## 2026-10-09 — world-intel-mcp and optional Workers AI Qwen
+
+- [world-intel-mcp](https://github.com/marc-shade/world-intel-mcp) is MIT-licensed, a single-user, local-first MCP/CLI/server tool kit; its SECURITY.md documents untrusted public feeds, local SQLite storage, a dashboard without auth, and optional Qdrant/Ollama. It is an architectural reference, **not** a deployment candidate for the thin Worker.
+- Implemented narrow source-attributed concepts in `olivia/world_intel.py`, **not** a wholesale copy of third-party code. Sources: [USGS GeoJSON summary feeds](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php) and [NASA EONET API](https://eonet.gsfc.nasa.gov/docs/v3). Public data can be delayed, missing, inaccurate, or altered upstream. Stale results and missing sources are explicitly reported.
+- [Cloudflare Workers AI Qwen3 30B A3B FP8](https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/) is a supported model; support does not prove an account has a non-billable production entitlement. Its generation token option is `max_tokens`, while the pre-existing GLM demo uses `max_completion_tokens`.
+- Added `OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED` as a separate deployment gate, default OFF. GitHub Actions must never carry forward an older enabled value when repo vars no longer verify the gate.
+- Not established: Qwen real account-level hard-zero billing policy, actual availability on target Cloudflare account, live model quality, live canonical `/intel` execution, production deployment SHA. No such claims should be made until observed.
