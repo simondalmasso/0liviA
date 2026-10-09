@@ -84,6 +84,7 @@ jobs:
           grep -Fq '@cf/zai-org/glm-4.7-flash' cloudflare/worker.mjs
           grep -Fq '@cf/qwen/qwen3-30b-a3b-fp8' cloudflare/worker.mjs
           grep -Fq '0liviA — Tu IA personal' web/index.html
+          grep -Fq 'Content-Security-Policy:' web/_headers
           ! grep -Fq 'id="modeChat"' web/index.html
           ! grep -Fq 'id="modeWork"' web/index.html
 
@@ -135,6 +136,7 @@ jobs:
           config["vars"]["OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED"] = (
               "1" if os.getenv("OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED") == "1" else "0"
           )
+          config["vars"]["OLIVIA_RELEASE_SHA"] = os.environ["RELEASE_SHA"]
           path.write_text(json.dumps(config, indent=2) + "\n")
           PY
 
@@ -163,6 +165,11 @@ jobs:
           grep -Fq 'Probar 0liviA ahora' <<<"${root}"
           ! grep -Fq 'id="modeChat"' <<<"${root}"
           ! grep -Fq 'id="modeWork"' <<<"${root}"
+          grep -Fq 'id="demoModelSelect"' <<<"${root}"
+          root_headers="$(curl -fsS -D - -o /dev/null --max-time 20 "${base}/?cb=${cb}")"
+          for name in x-content-type-options x-frame-options referrer-policy strict-transport-security content-security-policy; do
+            grep -iq "^${name}:" <<<"${root_headers}"
+          done
 
           health="$(curl -fsS --max-time 20 "${base}/healthz?cb=${cb}")"
           HEALTH_JSON="${health}" python3 - <<'PY'
@@ -172,6 +179,7 @@ jobs:
           body = json.loads(os.environ["HEALTH_JSON"])
           checks = {
               "process_alive": body.get("process_alive") is True,
+              "release_sha": body.get("release_sha") == os.environ["RELEASE_SHA"],
               "api_mode": body.get("api_mode") == "public_shell",
               "public_shell": body.get("public_shell") is True,
               "bridge_enabled": body.get("bridge_enabled") is False,
