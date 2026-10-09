@@ -490,3 +490,11 @@ What it does **not** establish:
 - Cloudflare Workers AI supports Qwen3.8 27B with `max_completion_tokens` and optional `reasoning_effort`; Workers Free applies 10,000 neurons/day at no charge and blocked overages. Some *other* models require paid plans, so model identity alone does not prove entitlement.
 - NVIDIA NIM's listed model string is `deepseek-ai/deepseek-v4.1-flash` at `integrate.api.nvidia.com/v1/chat/completions`, not a Cloudflare `@cf/` model. GitHub secrets are not automatically injected into Cloudflare Workers. Free trial rights do not include production use; an optional manual trial-only workflow is safer than exposing a trial key in a public chat route.
 - Evidence sources: Cloudflare docs and NVIDIA official API + trial terms. Actual key validity and trial credits **not tested** at commit time. No production NVIDIA deployment, no paid entitlement inferred.
+
+
+## 2026-10-09 — Gemini and Gemma no-charge candidates
+- `gemini-3.8-flash` and `gemini-3.5-flash-lite` are Google AI Studio API Free Tier choices, if the specific Google project is on Free Tier; rate limits apply per project. The Free Tier may use prompts and responses to improve Google products. Existing GitHub secret `GEMINI_API_KEY` only proves a secret entry exists, not key validity, model access, quota or no-billing controls.
+- Google-hosted `gemma-4-26b-a4b-it` and `gemma-4-31b-it` are shown as Free Tier in the official API pricing table. They require an independent Google API entitlement and have the same free-tier data-use concern.
+- Cloudflare lists `@cf/google/gemma-4-26b-a4b-it` as its active replacement for older Gemma 3 12B. Workers Free includes 10k neurons/day and errors after exhausting its allocation; the cited current pricing page identifies some paid-only models, excluding Gemma 4.
+- The public demo integrates Gemma 4 from the **existing Workers AI binding**, not via Google's `GEMINI_API_KEY` secret. The secret remains only in GitHub and is never exposed in frontend, logs, or Wrangler variables.
+- Do not claim successful Gemma 4 production inference solely from source/CI: actual free-account admission and a live `/api/demo-chat` response must be verified after deployment.
