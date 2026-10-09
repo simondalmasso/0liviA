@@ -133,6 +133,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     repo TEXT,
     worktree TEXT,
     checkpoint_json TEXT NOT NULL DEFAULT '{}',
+    lease_token TEXT,
+    lease_expires_at REAL,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );
@@ -212,6 +214,17 @@ class Store:
                 # Before this column existed every trusted_devices row represented
                 # an explicitly remembered device; preserve that legacy meaning.
                 self._conn.execute("UPDATE trusted_devices SET remembered=1")
+
+            # Additive and backwards-compatible. Old binaries ignore these nullable columns;
+            # no running Core uses leases unless its worker explicitly opts in.
+            job_columns = {
+                str(row["name"])
+                for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()
+            }
+            if "lease_token" not in job_columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN lease_token TEXT")
+            if "lease_expires_at" not in job_columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN lease_expires_at REAL")
 
             self._conn.execute(
                 """CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
@@ -719,10 +732,10 @@ class Store:
 
     def checkpoint_job(self, job_id: str, status: str, checkpoint: dict[str, Any]) -> None:
         with self._lock:
-            self._conn.execute(
+            cur = self._conn.execute(
                 """UPDATE jobs
                    SET status=?,checkpoint_json=?,updated_at=?
-                   WHERE id=?""",
+                   WHERE id=? AND lease_token IS NULL""",
                 (
                     status,
                     json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
@@ -730,6 +743,85 @@ class Store:
                     job_id,
                 ),
             )
+            if cur.rowcount == 0:
+                row = self._conn.execute(
+                    "SELECT lease_token FROM jobs WHERE id=?", (job_id,)
+                ).fetchone()
+                if row is not None and row["lease_token"] is not None:
+                    raise PermissionError("job is leased; use checkpoint_leased_job")
+
+    def claim_queued_job(
+        self, job_id: str, *, lease_seconds: float = 120, now: float | None = None
+    ) -> str | None:
+        """Claim a queued job once. Never replay expired running jobs automatically.
+
+        Inspired by OpenMuse's CAS/lease pattern, without bringing in its runtime.
+        SQLite's conditional UPDATE is atomic across separate Store processes.
+        """
+        if not 1 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600")
+        clock = time.time() if now is None else float(now)
+        token = uuid.uuid4().hex
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE jobs SET status='running',
+                   lease_token=?, lease_expires_at=?, updated_at=?
+                   WHERE id=? AND status='queued' AND lease_token IS NULL""",
+                (token, clock + lease_seconds, clock, job_id),
+            )
+        return token if cur.rowcount == 1 else None
+
+    def renew_job_lease(
+        self, job_id: str, token: str, *, lease_seconds: float = 120,
+        now: float | None = None
+    ) -> bool:
+        """A worker may renew its own unexpired lease, never another worker's."""
+        if not 1 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600")
+        clock = time.time() if now is None else float(now)
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE jobs SET lease_expires_at=?, updated_at=?
+                   WHERE id=? AND status='running' AND lease_token=?
+                     AND lease_expires_at>?""",
+                (clock + lease_seconds, clock, job_id, token, clock),
+            )
+        return cur.rowcount == 1
+
+    def checkpoint_leased_job(
+        self, job_id: str, token: str, checkpoint: dict[str, Any],
+        *, now: float | None = None
+    ) -> bool:
+        """Persist progress only while the worker still owns an unexpired lease."""
+        clock = time.time() if now is None else float(now)
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE jobs SET checkpoint_json=?, updated_at=?
+                   WHERE id=? AND status='running' AND lease_token=?
+                     AND lease_expires_at>?""",
+                (json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
+                 clock, job_id, token, clock),
+            )
+        return cur.rowcount == 1
+
+    def finish_leased_job(
+        self, job_id: str, token: str, status: str, checkpoint: dict[str, Any],
+        *, now: float | None = None
+    ) -> bool:
+        """Commit terminal result once; reject expired/foreign worker results."""
+        if status not in {"complete", "failed", "cancelled"}:
+            raise ValueError("invalid terminal job status")
+        clock = time.time() if now is None else float(now)
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE jobs SET status=?, checkpoint_json=?,
+                   lease_token=NULL, lease_expires_at=NULL, updated_at=?
+                   WHERE id=? AND status='running' AND lease_token=?
+                     AND lease_expires_at>?""",
+                (status, json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
+                 clock, job_id, token, clock),
+            )
+        return cur.rowcount == 1
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -737,5 +829,7 @@ class Store:
         if row is None:
             return None
         out = dict(row)
+        # Lease tokens are worker capabilities; never expose them in /api/jobs.
+        out.pop("lease_token", None)
         out["checkpoint"] = json.loads(out.pop("checkpoint_json"))
         return out
