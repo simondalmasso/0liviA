@@ -98,3 +98,14 @@
 - Security: no API key, refresh token or OAuth access token appears in the browser, chat, Library, Memory or Git.
 - Reason: uses a documented OpenAI path, preserves provider replaceability, avoids reverse-engineered consumer APIs, and removes an unnecessary full-framework dependency.
 - Rollback: delete the catalog entry/provider adapter without changing sessions, memory, UI or other routes.
+
+
+## ADR-0011 — Bounded public intelligence, optional Qwen demo, compact responsive shell
+- Date: 2026-10-09
+- Status: **implementation proposed / production gated**
+- `/intel` is an authenticated, on-demand, deterministic Core command; it only reads fixed public USGS and NASA EONET HTTPS JSON feeds (no redirect, arbitrary URL, background poll, agent permission or additional inference spend).
+- Every item is tied to an official source; failure is an explicit data gap and a short stale fallback is labeled. Public data is not independently authenticated.
+- Do not transplant the whole `world-intel-mcp` Python/MCP runtime, Qdrant, collector daemon or military feeds into the Core without separate review.
+- Cloudflare public demo remains an isolated Worker, not the durable Core. Its Qwen model is opt-in with a **separate** account-level verified no-overage gate and the same Durable Object daily allowance; unapproved requests fail before consuming quota.
+- Browser UI keeps its strict lightweight asset budget; drawer is invisible when closed, compact rail is used on medium screens, and actual inference model identifiers are exposed to users.
+- Rollback: omit Qwen gate, remove the optional `/intel` command, or revert the UI stylesheet without schema migrations.
