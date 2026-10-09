@@ -21,7 +21,7 @@ def test_no_request_when_entitlement_not_verified(monkeypatch, capsys):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-do-not-log-this-secret")
     def no_network(*args, **kwargs):
         raise AssertionError("trial-only eval must not call network without approval")
-    monkeypatch.setattr(module.urllib.request, "urlopen", no_network)
+    monkeypatch.setattr(module.http.client, "HTTPSConnection", no_network)
     assert module.main() == 2
     assert "nvapi-" not in capsys.readouterr().err
 
@@ -31,7 +31,7 @@ def test_no_request_without_api_key(monkeypatch):
     monkeypatch.setenv("NVIDIA_NIM_TRIAL_NONBILLABLE_CONFIRMED", "1")
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     monkeypatch.setattr(
-        module.urllib.request, "urlopen",
+        module.http.client, "HTTPSConnection",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("network must not run")),
     )
     assert module.main() == 2
