@@ -809,6 +809,7 @@ function providerPresentation(name,model){
   const providerName=String(name||'');
   if(!providerName||providerName==='import')return '';
   if(providerName===PUBLIC_DEMO_PROVIDER)return 'Demo $0 · '+(model==='@cf/qwen/qwen3-30b-a3b-fp8'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
+  if(providerName==='local-demo')return 'Sistema · '+(model==='@cf/qwen/qwen3-30b-a3b-fp8'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
   const row=(coreHealth?.provider_catalog||[]).find(item=>String(item.name||'')===providerName);
   if(!row){
     return providerName==='chatgpt-plan'?'ChatGPT plan':'';
