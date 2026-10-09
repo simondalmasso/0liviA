@@ -823,6 +823,28 @@ class Store:
             )
         return cur.rowcount == 1
 
+    def handoff_leased_job(
+        self, job_id: str, token: str, checkpoint: dict[str, Any],
+        *, now: float | None = None,
+    ) -> bool:
+        """Atomically hand off an acknowledged external dispatch for status polling.
+
+        Exactly one worker may finalize a dispatch. An expired or foreign
+        capability is rejected. Never infer that an unacknowledged dispatch
+        failed or that it is safe to reissue an external side effect.
+        """
+        clock = time.time() if now is None else float(now)
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE jobs SET status='dispatched', checkpoint_json=?,
+                   lease_token=NULL, lease_expires_at=NULL, updated_at=?
+                   WHERE id=? AND status='running' AND lease_token=?
+                     AND lease_expires_at>?""",
+                (json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
+                 clock, job_id, token, clock),
+            )
+        return cur.rowcount == 1
+
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
