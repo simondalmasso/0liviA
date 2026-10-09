@@ -117,9 +117,11 @@ class WorldIntel:
             ) as response:
                 if response.status != 200:
                     raise ValueError(f"feed_http_{response.status}")
-                raw = await response.content.read(MAX_RESPONSE_BYTES + 1)
-                if len(raw) > MAX_RESPONSE_BYTES:
-                    raise ValueError("feed_too_large")
+                raw = bytearray()
+                async for chunk in response.content.iter_chunked(16_384):
+                    raw.extend(chunk)
+                    if len(raw) > MAX_RESPONSE_BYTES:
+                        raise ValueError("feed_too_large")
         value = json.loads(raw)
         if not isinstance(value, dict):
             raise ValueError("feed_bad_shape")
