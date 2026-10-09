@@ -149,10 +149,11 @@ test("Qwen is selectable only after independently verified no-overage admission"
   const response = await worker.fetch(post([{ role: "user", content: "hola" }], { model: "qwen" }), approved.env);
   assert.equal(response.status, 200);
   const output = await body(response);
-  assert.equal(output.model, "@cf/qwen/qwen3-30b-a3b-fp8");
+  assert.equal(output.model, "@cf/qwen/qwen3.8-27b");
   assert.equal(approved.calls[0].model, output.model);
-  assert.equal(approved.calls[0].args.max_tokens, 1024);
-  assert.equal(approved.calls[0].args.max_completion_tokens, undefined);
+  assert.equal(approved.calls[0].args.max_completion_tokens, 512);
+  assert.equal(approved.calls[0].args.reasoning_effort, "low");
+  assert.equal(approved.calls[0].args.max_tokens, undefined);
   assert.equal(approved.stored.get("count"), 1);
   assert.ok(approved.calls[0].args.messages[0].content.includes(output.model));
 });
