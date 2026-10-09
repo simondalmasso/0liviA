@@ -51,6 +51,7 @@ Cloudflare may host a thin public shell, but it is not the canonical chat/memory
 - pre-visible-output failover with cancellation/partial-answer safety;
 - aiohttp browser/API gateway with first-run single-owner registration, email+password login, Secure/HttpOnly/SameSite cookies, login throttling, revocable remembered devices, bounded request bodies and one active turn per session;
 - canonical SSRF-safe `/read` command with untrusted page content injected only as ephemeral model context;
+- on-demand `/intel` command in the authenticated Python Core: bounded public USGS earthquakes and NASA EONET events, cited original sources, cache, explicit stale/data-gap markers; no daemon or model inference;
 - replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
 - bounded `/research` tool: one search plus safe reads of up to three results, injected only as ephemeral untrusted context;
 - opt-in `/browse` GitHub Actions burst worker with JavaScript rendering, GET/HEAD-only navigation, reserved/private-network egress guards and bounded artifacts; `/inspect <job_id>` can explicitly analyze a completed render as ephemeral untrusted model context without persisting page text into chat/memory;
@@ -73,6 +74,7 @@ Cloudflare may host a thin public shell, but it is not the canonical chat/memory
 - production entitlement for any retained DeepSeek NIM coding/model route;
 - exact-SHA **canonical Core** deployment and production smoke; the public demo now has a verified real GLM-4.7-Flash response and a live tester-army/e2e browser pass (2026-10-08), but the exact Worker deployment SHA, account-level no-overage, owner login and canonical Core release remain uncertified; the public Worker must continue to reject canonical `/api/chat`;
 - the public Workers AI demo is deployment-gated by explicit zero-cost confirmation; without it `/api/demo-chat` returns 503 rather than consuming unverified capacity.
+- the optional Qwen3 30B public-demo lane remains disabled unless `OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED=1` is independently justified by a verified account-level no-overage boundary; enabling GLM is not sufficient. The demo returns the real model ID and answers direct model-identity questions locally.
 
 ## Development
 
