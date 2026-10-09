@@ -82,7 +82,7 @@ jobs:
           grep -Fq 'url.pathname === "/api/demo-chat"' cloudflare/worker.mjs
           grep -Fq 'OLIVIA_DEMO_ZERO_COST_CONFIRMED' cloudflare/worker.mjs
           grep -Fq '@cf/zai-org/glm-4.7-flash' cloudflare/worker.mjs
-          grep -Fq '@cf/qwen/qwen3-30b-a3b-fp8' cloudflare/worker.mjs
+          grep -Fq '@cf/qwen/qwen3.8-27b' cloudflare/worker.mjs
           grep -Fq '0liviA — Tu IA personal' web/index.html
           grep -Fq 'Content-Security-Policy:' web/_headers
           ! grep -Fq 'id="modeChat"' web/index.html
