@@ -109,3 +109,13 @@
 - Cloudflare public demo remains an isolated Worker, not the durable Core. Its Qwen model is opt-in with a **separate** account-level verified no-overage gate and the same Durable Object daily allowance; unapproved requests fail before consuming quota.
 - Browser UI keeps its strict lightweight asset budget; drawer is invisible when closed, compact rail is used on medium screens, and actual inference model identifiers are exposed to users.
 - Rollback: omit Qwen gate, remove the optional `/intel` command, or revert the UI stylesheet without schema migrations.
+
+
+## ADR-0012 — Public security headers without always-on Worker invocations
+- Date: 2026-10-09
+- Status: **implemented in source / live production verification pending**
+- Workers static assets are normally served without executing the Worker. Applying response headers only in `cloudflare/worker.mjs` would leave the homepage unprotected. Use `web/_headers` for assets, and the Worker `hardened(response)` wrapper for API and health routes, preserving the static assets free-tier optimization.
+- CSP forbids framing, objects, external origins and insecure requests; it temporarily permits inline JavaScript and CSS because the current <96 KB product shell embeds them. A future dedicated CSP-hash or external-asset change is required to remove `unsafe-inline` without breaking the UI.
+- An exact immutable `OLIVIA_RELEASE_SHA` injected by the deployment workflow is returned by public `/healthz`; the release smoke gate compares this with the checked-out canonical SHA. This stamp has no credentials or private runtime metadata.
+- Production header and desktop/mobile behavior must be checked after the canonical deployment. No Qwen billing approval is implied.
+- Sources: [Cloudflare Workers Static Asset Headers](https://developers.cloudflare.com/workers/static-assets/headers/) and [Routing / run_worker_first](https://developers.cloudflare.com/workers/static-assets/binding/).
