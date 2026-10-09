@@ -751,20 +751,24 @@ class Gateway:
         self.coding_worker.validate_request(request_data)
 
         job_id = self.agent.store.create_job("code", repo=self.coding_worker.repo)
-        self.agent.store.checkpoint_job(job_id, "dispatching", {
+        token = self.agent.store.claim_queued_job(job_id)
+        if token is None:
+            raise CodingWorkerError("job_dispatch_claim_failed")
+        initial = {
             "base_ref": base_ref,
             "mode": mode,
             "publish_branch": publish_branch,
-        })
+        }
+        if not self.agent.store.checkpoint_leased_job(job_id, token, initial):
+            raise CodingWorkerError("job_dispatch_lease_expired")
         try:
             remote = await self.coding_worker.dispatch(job_id, request_data)
         except CodingWorkerError as exc:
-            self.agent.store.checkpoint_job(job_id, "failed", {
-                "base_ref": base_ref,
-                "mode": mode,
-                "publish_branch": publish_branch,
-                "error": str(exc)[:500],
-            })
+            # Remote API failures are not proof the dispatch was not accepted.
+            # Preserve a failure receipt and never retry automatically.
+            self.agent.store.finish_leased_job(
+                job_id, token, "failed", {**initial, "error": str(exc)[:500]}
+            )
             raise
 
         checkpoint = {
@@ -773,7 +777,8 @@ class Gateway:
             "publish_branch": publish_branch,
             **remote,
         }
-        self.agent.store.checkpoint_job(job_id, "dispatched", checkpoint)
+        if not self.agent.store.handoff_leased_job(job_id, token, checkpoint):
+            raise CodingWorkerError("job_dispatch_ack_lease_expired")
         return {
             "job_id": job_id,
             "status": "dispatched",
@@ -800,24 +805,28 @@ class Gateway:
         )
         self.browser_worker.validate_request(request)
         job_id = self.agent.store.create_job("browser", repo=self.browser_worker.repo)
+        token = self.agent.store.claim_queued_job(job_id)
+        if token is None:
+            raise BrowserWorkerError("job_dispatch_claim_failed")
         checkpoint = {
             "base_ref": base_ref,
             "url": url,
             "objective": safe_objective,
             "workflow": self.browser_worker.workflow,
         }
-        self.agent.store.checkpoint_job(job_id, "dispatching", checkpoint)
+        if not self.agent.store.checkpoint_leased_job(job_id, token, checkpoint):
+            raise BrowserWorkerError("job_dispatch_lease_expired")
         try:
             remote = await self.browser_worker.dispatch(job_id, request)
         except BrowserWorkerError as exc:
-            self.agent.store.checkpoint_job(
-                job_id,
-                "failed",
+            self.agent.store.finish_leased_job(
+                job_id, token, "failed",
                 {**checkpoint, "error": str(exc)[:500]},
             )
             raise
         checkpoint = {**checkpoint, **remote}
-        self.agent.store.checkpoint_job(job_id, "dispatched", checkpoint)
+        if not self.agent.store.handoff_leased_job(job_id, token, checkpoint):
+            raise BrowserWorkerError("job_dispatch_ack_lease_expired")
         return {
             "job_id": job_id,
             "status": "dispatched",
