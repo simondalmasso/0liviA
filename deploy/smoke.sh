@@ -74,14 +74,35 @@ for line in os.environ["CHAT_STREAM"].splitlines():
     if not raw:
         continue
     try:
-        events.append(json.loads(raw))
-    except json.JSONDecodeError:
-        pass
+        event = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit("chat gate failed: malformed SSE event") from exc
+    if not isinstance(event, dict):
+        raise SystemExit("chat gate failed: invalid event shape")
+    events.append(event)
 
-if not any(event.get("type") == "route" and event.get("provider") for event in events):
+if any(event.get("type") == "error" for event in events):
+    raise SystemExit("chat gate failed: provider/stream error present")
+route_events = [
+    i for i, event in enumerate(events)
+    if event.get("type") == "route" and str(event.get("provider") or "").strip()
+]
+delta_events = [
+    i for i, event in enumerate(events)
+    if event.get("type") == "delta" and str(event.get("text") or "").strip()
+]
+done_events = [i for i, event in enumerate(events) if event.get("type") == "done"]
+
+if not route_events:
     raise SystemExit("chat gate failed: no provider route event")
-if not any(event.get("type") == "done" for event in events):
-    raise SystemExit("chat gate failed: stream did not complete")
+if not delta_events:
+    raise SystemExit("chat gate failed: no nonempty assistant answer")
+if len(done_events) != 1:
+    raise SystemExit("chat gate failed: expected exactly one completion")
+if not (route_events[0] < delta_events[0] < done_events[0] == len(events) - 1):
+    raise SystemExit("chat gate failed: incorrect stream event order")
+if any(i > delta_events[0] for i in route_events):
+    raise SystemExit("chat gate failed: provider switched after visible output")
 PY
 
 printf '\nsmoke complete: exact canonical zero-cost build verified\n'
