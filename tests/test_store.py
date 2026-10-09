@@ -284,3 +284,104 @@ def test_trusted_device_last_seen_touch_is_bounded(tmp_path: Path):
             (device_id,),
         ).fetchone()["last_seen_at"]
     assert second == 1_900_000_301.0
+
+
+def test_job_lease_single_owner_and_no_implicit_replay(tmp_path: Path):
+    path = tmp_path / "leased.sqlite3"
+    owner_a = Store(path)
+    owner_b = Store(path)
+    job_id = owner_a.create_job("code")
+    token = owner_a.claim_queued_job(job_id, lease_seconds=120, now=100)
+    assert isinstance(token, str) and len(token) == 32
+    assert owner_b.claim_queued_job(job_id, now=101) is None
+    assert owner_b.renew_job_lease(job_id, "wrong-owner", now=101) is False
+    assert owner_b.checkpoint_leased_job(job_id, "wrong-owner", {"bad": True}, now=101) is False
+    with pytest.raises(PermissionError, match="leased"):
+        owner_b.checkpoint_job(job_id, "complete", {"bad": True})
+    assert "lease_token" not in owner_b.get_job(job_id)
+    assert owner_a.renew_job_lease(job_id, token, lease_seconds=120, now=110) is True
+    assert owner_a.checkpoint_leased_job(job_id, token, {"step": 1}, now=115) is True
+    # An expired running lease cannot be silently stolen and replayed.
+    assert owner_a.renew_job_lease(job_id, token, now=231) is False
+    assert owner_b.claim_queued_job(job_id, now=232) is None
+    assert owner_a.finish_leased_job(job_id, token, "complete", {}, now=231) is False
+    assert owner_a.get_job(job_id)["status"] == "running"
+    # An operator must resolve the uncertain outcome; never re-dispatch here.
+    owner_a.close()
+    owner_b.close()
+
+
+def test_job_lease_terminal_receipt_and_secret_redaction(tmp_path: Path):
+    store = Store(tmp_path / "job-receipt.sqlite3")
+    job_id = store.create_job("browser")
+    secret = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+    token = store.claim_queued_job(job_id, now=10, lease_seconds=200)
+    assert token is not None
+    assert store.checkpoint_leased_job(job_id, token, {"note": f"secret {secret}"}, now=20)
+    assert store.finish_leased_job(job_id, "invalid", "complete", {}, now=25) is False
+    with pytest.raises(ValueError):
+        store.finish_leased_job(job_id, token, "dispatched", {}, now=25)
+    assert store.finish_leased_job(job_id, token, "complete", {"result": f"redacted {secret}"}, now=30)
+    assert store.finish_leased_job(job_id, token, "failed", {}, now=31) is False
+    result = store.get_job(job_id)
+    assert result["status"] == "complete"
+    assert "lease_token" not in result
+    assert "lease_expires_at" in result and result["lease_expires_at"] is None
+    assert secret not in str(result)
+    assert "[REDACTED_SECRET]" in str(result)
+    store.close()
+
+
+def test_job_leases_migrate_existing_schema_without_discarding_legacy_jobs(tmp_path: Path):
+    path = tmp_path / "old-jobs.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """CREATE TABLE jobs (
+            id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL,
+            repo TEXT, worktree TEXT, checkpoint_json TEXT NOT NULL DEFAULT '{}',
+            created_at REAL NOT NULL, updated_at REAL NOT NULL
+        )"""
+    )
+    conn.execute(
+        "INSERT INTO jobs(id,kind,status,checkpoint_json,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+        ("legacy-job", "code", "queued", '{"legacy": true}', 1, 1)
+    )
+    conn.commit()
+    conn.close()
+    store = Store(path)
+    assert store.get_job("legacy-job")["checkpoint"]["legacy"] is True
+    token = store.claim_queued_job("legacy-job", now=100)
+    assert token is not None
+    store.close()
+    reopened = Store(path)
+    assert reopened.get_job("legacy-job")["status"] == "running"
+    assert reopened.finish_leased_job("legacy-job", token, "failed", {"reason": "manual"}, now=120)
+    reopened.close()
+
+
+def test_job_claim_is_atomic_across_connections(tmp_path: Path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = tmp_path / "job-race.sqlite3"
+    stores = [Store(path) for _ in range(6)]
+    job_id = stores[0].create_job("code")
+    try:
+        with ThreadPoolExecutor(max_workers=len(stores)) as executor:
+            claims = list(executor.map(lambda s: s.claim_queued_job(job_id), stores))
+        assert sum(value is not None for value in claims) == 1
+        assert stores[0].get_job(job_id)["status"] == "running"
+    finally:
+        for store in stores:
+            store.close()
+
+
+def test_job_lease_duration_fails_closed(tmp_path: Path):
+    store = Store(tmp_path / "invalid-lease.sqlite3")
+    job_id = store.create_job("code")
+    for invalid in (0, -1, 3601):
+        with pytest.raises(ValueError, match="lease_seconds"):
+            store.claim_queued_job(job_id, lease_seconds=invalid)
+        with pytest.raises(ValueError, match="lease_seconds"):
+            store.renew_job_lease(job_id, "token", lease_seconds=invalid)
+    assert store.get_job(job_id)["status"] == "queued"
+    store.close()

@@ -138,3 +138,13 @@
 - NVIDIA API Trial Terms §§1.2 and 1.4 explicitly disallow production. Never route live user chats through NVIDIA trial or claim $0 simply because the model is offered under a "Free Endpoint" banner.
 - Existing canonical `OpenAICompatibleProvider` remains sufficient to connect a future compliant production endpoint; new router forks are unnecessary.
 - Detailed evidence, legal downloads and footprint boundaries: `docs/MUSE_GLIMMER.md`.
+
+
+## ADR-0015 — Atomic, opt-in job leases; portable sandbox infrastructure only when cost-certified
+- Date: 2026-10-09
+- Status: **SQLite primitive implemented; coding/browser call-site migration and OpenShell runtime gated**
+- [CopilotKit/OpenMuse](https://github.com/CopilotKit/OpenMuse) informs the CAS-lease design, but its CopilotKit Intelligence service, external thread persistence, Node 24/pnpm stack and optional browser/computer services are **not** imported. `Store` adds lease-aware atomic claim, checkpoint, renew and finish operations for future workers.
+- Unlike blind replay, expired in-progress leases **must not be automatically reclaimed** after an uncertain side effect. Owners reconcile the external run receipt first. Historical unleased jobs retain their behavior; leased tokens are never exposed through `get_job`.
+- [NVIDIA/OpenShell](https://github.com/NVIDIA/OpenShell) is the preferred future *optional* policy-enforcing sandbox challenger for code/browser workers. The current OCI micro's privileged access, RAM and kernel/runtime requirements remain unverified, so neither its gateway nor Docker is deployed now. A stable pinned runtime and fail-closed capability proof are prerequisites.
+- InternAI A100 dev machines can be evaluated for short-lived, synthetic Muse Glimmer benchmarks when credit points are confirmed; DigitalOcean MicroVMs charge for compute/storage/egress, Dame is paid, MillionSend depends on email infrastructure, and neither DEV-OS nor getvmio supplies useful $0 compute.
+- Detailed source evidence, pricing and integration sequence: `docs/OSS_COMPUTE_INTEGRATION_2026-10-09.md`.
