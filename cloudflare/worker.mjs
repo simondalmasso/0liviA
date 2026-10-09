@@ -19,6 +19,36 @@ function json(body, { status = 200, headers = {} } = {}) {
   });
 }
 
+// Response hardening for the thin public shell. Inline UI CSS/JS remains
+// intentionally permitted until the single-file frontend is split into assets.
+const PUBLIC_CSP = [
+  "default-src 'self'",
+  "base-uri 'none'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self' wss:",
+  "upgrade-insecure-requests",
+].join("; ");
+
+function hardened(response) {
+  // Static-assets responses can have immutable headers; clone before editing.
+  const out = new Response(response.body, response);
+  out.headers.set("X-Content-Type-Options", "nosniff");
+  out.headers.set("X-Frame-Options", "DENY");
+  out.headers.set("Referrer-Policy", "no-referrer");
+  out.headers.set("Strict-Transport-Security", "max-age=31536000");
+  out.headers.set("Content-Security-Policy", PUBLIC_CSP);
+  out.headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  out.headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)");
+  return out;
+}
+
 function demoEnabled(env) {
   return (
     env?.OLIVIA_DEMO_ZERO_COST_CONFIRMED === "1" &&
@@ -37,6 +67,7 @@ function health(env) {
   const qwenReady = qwenEnabled(env);
   return json({
     process_alive: true,
+    release_sha: /^[0-9a-f]{40}$/.test(String(env?.OLIVIA_RELEASE_SHA || "")) ? env.OLIVIA_RELEASE_SHA : null,
     api_mode: "public_shell",
     public_shell: PUBLIC_SHELL_ONLY,
     bridge_enabled: TRANSITIONAL_BRIDGE_ENABLED,
@@ -277,22 +308,20 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    let result;
     if (url.pathname === "/healthz") {
-      return health(env);
-    }
-
-    if (url.pathname === "/api/demo-chat") {
-      return demoChat(request, env);
-    }
-
-    if (
+      result = health(env);
+    } else if (url.pathname === "/api/demo-chat") {
+      result = await demoChat(request, env);
+    } else if (
       url.pathname === "/api/chat" ||
       url.pathname === "/api/read-url" ||
       url.pathname.startsWith("/api/")
     ) {
-      return disabledApi();
+      result = disabledApi();
+    } else {
+      result = await env.ASSETS.fetch(request);
     }
-
-    return env.ASSETS.fetch(request);
+    return hardened(result);
   },
 };
