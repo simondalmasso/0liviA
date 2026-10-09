@@ -180,3 +180,32 @@ def test_bootstrap_rolls_back_first_install_and_public_https_failures():
     assert "wait_for_public_https()" in BOOTSTRAP
     assert 'if ! wait_for_public_https; then' in BOOTSTRAP
     assert 'public HTTPS health check failed; previous release restored' in BOOTSTRAP
+
+
+def test_safe_host_probe_is_default_and_never_runs_mutating_steps():
+    """An accidental manual dispatch must not install or restart the Core."""
+    assert "preflight_only:" in CANONICAL_DEPLOY
+    assert 'default: true\n        type: boolean' in CANONICAL_DEPLOY
+    assert 'run-name: "0liviA canonical' in CANONICAL_DEPLOY
+    assert "Report read-only preflight result" in CANONICAL_DEPLOY
+    mutation_steps = [
+        "Upload exact bootstrap script",
+        "Deploy exact canonical release",
+        "Verify loopback canonical health",
+        "Report non-secret deployment checkpoint",
+    ]
+    for name in mutation_steps:
+        marker = f"- name: {name}\n        if: ${{{{ !inputs.preflight_only }}}}"
+        assert marker in CANONICAL_DEPLOY
+    assert CANONICAL_DEPLOY.index("Preflight target before mutation") < CANONICAL_DEPLOY.index("Report read-only preflight result")
+    assert CANONICAL_DEPLOY.index("Report read-only preflight result") < CANONICAL_DEPLOY.index("Upload exact bootstrap script")
+    assert "Remove temporary SSH material\n        if: always()" in CANONICAL_DEPLOY
+
+
+def test_exact_sha_smoke_requires_real_visible_success_without_errors():
+    assert 'if any(event.get("type") == "error" for event in events):' in SMOKE
+    assert 'event.get("type") == "delta"' in SMOKE
+    assert 'str(event.get("text") or "").strip()' in SMOKE
+    assert 'len(done_events) != 1' in SMOKE
+    assert "malformed SSE event" in SMOKE
+    assert "provider switched after visible output" in SMOKE

@@ -12,6 +12,12 @@ Only ports 80/443 should be public. Port 8080 stays loopback-only. The owner's P
 
 Once privileged SSH exists on a candidate host, `.github/workflows/deploy-canonical.yml` can deploy an exact canonical `main` SHA without depending on the owner's PC. The current recurring-$0 candidate is the existing `olivia-text-free` E2 micro VM; A1 remains the preferred roomier target when available. The workflow is manual-only and requires four repository secrets: `OLIVIA_DEPLOY_HOST`, `OLIVIA_DEPLOY_USER`, `OLIVIA_DEPLOY_SSH_KEY` and pinned `OLIVIA_DEPLOY_KNOWN_HOSTS`. It refuses mutable refs, password SSH and unpinned host trust. Before uploading or executing the bootstrap it streams `deploy/preflight.sh` over the pinned SSH session and fails closed unless the target is supported Linux, has non-interactive root privilege, at least 768 MB RAM, at least 4 GB free root disk, and the swap utilities required by the 1 GB micro path. The workflow verifies loopback canonical health but deliberately does not claim production readiness; owner registration, provider readiness and the full `deploy/smoke.sh` gate remain separate.
 
+## Safe preflight-only check (before first deploy)
+
+The canonical workflow now defaults `preflight_only=true` for manual runs. It checks immutable `main` SHA, all four private deploy inputs, pinned SSH host trust, `ssh` reachability, passwordless `sudo -n`, RAM, root disk and micro swap utilities. It **does not** transfer bootstrap code, install packages, edit host files or restart services. When all checks pass, rerun the workflow with `preflight_only=false` to explicitly authorize the deployment stage.
+
+**Current blocker (2026-10-09):** OCI `olivia-text-free` exists but privileged SSH is not yet recovered. The former read-only Oracle agent runs as `ocarun` and must not be turned into a privilege bypass. Recover or install an authorized `ubuntu` SSH key via the owner's Oracle administrative console while preserving existing keys; host key pinning must be based on trusted evidence, not unverified `ssh-keyscan` output. No recovery reboot/console key replacement is authorized without owner approval.
+
 ## Bootstrap
 
 1. Provision the A1 VM with a public IPv4 and Ubuntu ARM64.
