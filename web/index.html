@@ -273,7 +273,7 @@ button.side-card{text-align:left}
       <div id="chatTitle" class="chat-title"></div>
       <select id="demoModelSelect" aria-label="Modelo de la demo" title="Modelo de la demo" hidden>
         <option value="glm">GLM 4.7 Flash</option>
-        <option value="qwen" disabled>Qwen3 30B · pendiente $0</option>
+        <option value="qwen" disabled>Qwen3.8 27B · inactivo</option>
       </select>
       <span id="coreDot" class="core-dot" title="Core pendiente"></span>
     </header>
@@ -435,7 +435,7 @@ let coreHealth=null;
 let backendMode='bridge';
 const PUBLIC_DEMO_ENDPOINT='/api/demo-chat';
 const PUBLIC_DEMO_MODEL='GLM 4.7 Flash';
-const PUBLIC_DEMO_QWEN_MODEL='Qwen3 30B';
+const PUBLIC_DEMO_QWEN_MODEL='Qwen3.8 27B';
 const PUBLIC_DEMO_PROVIDER='workers-ai-demo';
 let publicDemoActive=false;
 const CORE_PROBE_MIN_INTERVAL_MS=5*60*1000;
@@ -559,14 +559,14 @@ function updatePublicHome(){
   const qwenReady=demoReady&&coreHealth?.demo_qwen_ready===true;
   demoModelSelect.hidden=!(isPublic&&publicDemoActive&&demoReady);
   demoModelSelect.options[1].disabled=!qwenReady;
-  demoModelSelect.options[1].textContent=qwenReady?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · pendiente $0';
+  demoModelSelect.options[1].textContent=qwenReady?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · inactivo';
   if(!qwenReady&&demoModelSelect.value==='qwen')demoModelSelect.value='glm';
   publicWelcome.hidden=!(isPublic&&!publicDemoActive);
   if(isPublic){
     publicDemoBtn.disabled=!demoReady;
     publicDemoBtn.textContent=demoReady?'Probar 0liviA ahora':'IA demo no disponible';
     publicStatus.textContent=demoReady
-      ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3':'GLM 4.7 Flash')+' · sin cuenta · cupo $0 hard-cap'
+      ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+' · sin cuenta · cupo $0 hard-cap'
       :'Modo prueba IA no disponible · el Core privado sigue separado.';
   }
 }
@@ -789,8 +789,8 @@ function chooseJobStatus(jobId){
 function providerPresentation(name,model){
   const providerName=String(name||'');
   if(!providerName||providerName==='import')return '';
-  if(providerName===PUBLIC_DEMO_PROVIDER)return 'Demo $0 · '+(model==='@cf/qwen/qwen3-30b-a3b-fp8'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
-  if(providerName==='local-demo')return 'Sistema · '+(model==='@cf/qwen/qwen3-30b-a3b-fp8'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
+  if(providerName===PUBLIC_DEMO_PROVIDER)return 'Demo $0 · '+(model==='@cf/qwen/qwen3.8-27b'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
+  if(providerName==='local-demo')return 'Sistema · '+(model==='@cf/qwen/qwen3.8-27b'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
   const row=(coreHealth?.provider_catalog||[]).find(item=>String(item.name||'')===providerName);
   if(!row){
     return providerName==='chatgpt-plan'?'ChatGPT plan':'';
