@@ -135,7 +135,7 @@ jobs:
           config["vars"]["OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED"] = (
               "1" if os.getenv("OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED") == "1" else "0"
           )
-          path.write_text(json.dumps(config, indent=2) + "\\n")
+          path.write_text(json.dumps(config, indent=2) + "\n")
           PY
 
       - name: Deploy exact public shell
