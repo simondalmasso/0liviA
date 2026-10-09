@@ -1,7 +1,7 @@
 const PUBLIC_SHELL_ONLY = true;
 const TRANSITIONAL_BRIDGE_ENABLED = false;
 const DEMO_MODEL = "@cf/zai-org/glm-4.7-flash";
-const DEMO_QWEN_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
+const DEMO_QWEN_MODEL = "@cf/qwen/qwen3.8-27b";
 const DEMO_PROVIDER = "workers-ai-demo";
 const DEMO_DAILY_REQUEST_LIMIT = 25;
 const DEMO_MAX_TOTAL_CHARS = 8000;
@@ -80,7 +80,7 @@ function health(env) {
     demo_qwen_ready: qwenReady,
     demo_models: [
       { id: "glm", model: DEMO_MODEL, label: "GLM 4.7 Flash", available: demoReady },
-      { id: "qwen", model: DEMO_QWEN_MODEL, label: "Qwen3 30B", available: qwenReady },
+      { id: "qwen", model: DEMO_QWEN_MODEL, label: "Qwen3.8 27B", available: qwenReady },
     ],
     demo_daily_request_limit: DEMO_DAILY_REQUEST_LIMIT,
     web_read: false,
@@ -244,7 +244,7 @@ async function demoChat(request, env) {
   try {
     const result = await env.AI.run(model, {
       messages: [system, ...messages],
-      ...(selected === "qwen" ? { max_tokens: DEMO_MAX_OUTPUT_TOKENS } : { max_completion_tokens: DEMO_MAX_OUTPUT_TOKENS }),
+      ...(selected === "qwen" ? { max_completion_tokens: 512, reasoning_effort: "low" } : { max_completion_tokens: DEMO_MAX_OUTPUT_TOKENS }),
       temperature: 0.4,
       stream: false,
     });

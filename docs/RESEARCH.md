@@ -483,3 +483,10 @@ What it does **not** establish:
 - [Cloudflare Workers AI Qwen3 30B A3B FP8](https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/) is a supported model; support does not prove an account has a non-billable production entitlement. Its generation token option is `max_tokens`, while the pre-existing GLM demo uses `max_completion_tokens`.
 - Added `OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED` as a separate deployment gate, default OFF. GitHub Actions must never carry forward an older enabled value when repo vars no longer verify the gate.
 - Not established: Qwen real account-level hard-zero billing policy, actual availability on target Cloudflare account, live model quality, live canonical `/intel` execution, production deployment SHA. No such claims should be made until observed.
+
+
+## 2026-10-09 — corrected model endpoints and production-usage boundary
+- Earlier public Qwen integration pointed to `@cf/qwen/qwen3-30b-a3b-fp8` and labeled it Qwen3 30B. The intended requested model was Qwen3.8 27B: `@cf/qwen/qwen3.8-27b`. Both appear in the Cloudflare catalog but are different models with different pricing and parameters.
+- Cloudflare Workers AI supports Qwen3.8 27B with `max_completion_tokens` and optional `reasoning_effort`; Workers Free applies 10,000 neurons/day at no charge and blocked overages. Some *other* models require paid plans, so model identity alone does not prove entitlement.
+- NVIDIA NIM's listed model string is `deepseek-ai/deepseek-v4.1-flash` at `integrate.api.nvidia.com/v1/chat/completions`, not a Cloudflare `@cf/` model. GitHub secrets are not automatically injected into Cloudflare Workers. Free trial rights do not include production use; an optional manual trial-only workflow is safer than exposing a trial key in a public chat route.
+- Evidence sources: Cloudflare docs and NVIDIA official API + trial terms. Actual key validity and trial credits **not tested** at commit time. No production NVIDIA deployment, no paid entitlement inferred.
