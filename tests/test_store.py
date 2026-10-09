@@ -385,3 +385,21 @@ def test_job_lease_duration_fails_closed(tmp_path: Path):
             store.renew_job_lease(job_id, "token", lease_seconds=invalid)
     assert store.get_job(job_id)["status"] == "queued"
     store.close()
+
+
+def test_lease_handoff_requires_owner_and_unexpired_clock(tmp_path):
+    store = Store(tmp_path / "handoff.sqlite3")
+    job_id = store.create_job("code")
+    token = store.claim_queued_job(job_id, lease_seconds=100, now=10)
+    assert token is not None
+    assert store.handoff_leased_job(job_id, "wrong", {"bad": True}, now=20) is False
+    assert store.handoff_leased_job(job_id, token, {"accepted": True}, now=111) is False
+    assert store.handoff_leased_job(job_id, token, {"accepted": True}, now=25) is True
+    assert store.handoff_leased_job(job_id, token, {"accepted": True}, now=26) is False
+    job = store.get_job(job_id)
+    assert job["status"] == "dispatched"
+    assert job["checkpoint"]["accepted"] is True
+    assert job["lease_expires_at"] is None
+    assert "lease_token" not in job
+    assert store.claim_queued_job(job_id) is None
+    store.close()
