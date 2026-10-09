@@ -136,7 +136,9 @@ test("Qwen is selectable only after independently verified no-overage admission"
   const f = fixture();
   const health = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
   assert.equal(health.demo_qwen_ready, false);
-  assert.equal(health.demo_models.length, 2);
+  assert.equal(health.demo_models.length, 3);
+  assert.equal(health.demo_models[2].model, "@cf/google/gemma-4-26b-a4b-it");
+  assert.equal(health.demo_models[2].available, true);
   assert.equal(health.demo_models[1].available, false);
   const qwen = post([{ role: "user", content: "hola" }], { model: "qwen" });
   assert.equal((await worker.fetch(qwen, f.env)).status, 503);
@@ -156,6 +158,26 @@ test("Qwen is selectable only after independently verified no-overage admission"
   assert.equal(approved.calls[0].args.max_tokens, undefined);
   assert.equal(approved.stored.get("count"), 1);
   assert.ok(approved.calls[0].args.messages[0].content.includes(output.model));
+});
+
+test("Gemma 4 on Workers Free shares global 25/day guard and has bounded output", async () => {
+  const f = fixture();
+  const health = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
+  assert.equal(health.demo_gemma_ready, true);
+  const response = await worker.fetch(
+    post([{ role: "user", content: "hola" }], { model: "gemma" }), f.env
+  );
+  assert.equal(response.status, 200);
+  const output = await body(response);
+  assert.equal(output.provider, "workers-ai-demo");
+  assert.equal(output.model, "@cf/google/gemma-4-26b-a4b-it");
+  assert.equal(f.calls[0].model, output.model);
+  assert.equal(f.calls[0].args.max_completion_tokens, 512);
+  assert.equal(f.stored.get("count"), 1);
+  const disabled = fixture({ enabled: false });
+  const denial = await worker.fetch(post([{ role: "user", content: "hola" }], { model: "gemma" }), disabled.env);
+  assert.equal(denial.status, 503);
+  assert.equal(disabled.calls.length, 0);
 });
 
 test("the model identity answer is deterministic and does not consume AI quota", async () => {
