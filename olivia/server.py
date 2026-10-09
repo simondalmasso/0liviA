@@ -31,6 +31,7 @@ from .research import SearchUnavailable, WebSearch, web_search_from_env
 from .security import make_password_verifier, redact_secrets, verify_password
 from .store import Store
 from .web import SafeWebReader, WebReadError, has_sensitive_query_parameters
+from .world_intel import WorldIntel
 from .voice.adapters.transport import AiohttpWebSocketTransport, DirectWssConfig
 from .voice.pipeline import VoicePipeline
 
@@ -162,6 +163,7 @@ class Gateway:
         self.browser_base_ref = os.getenv("OLIVIA_BROWSER_BASE_REF", "main").strip() or "main"
         self.web_reader = web_reader or SafeWebReader()
         self.web_search = web_search
+        self.world_intel = WorldIntel()  # No network traffic until /intel is invoked.
         self.voice_pipeline_factory = voice_pipeline_factory
         self.voice_wss_config = voice_wss_config or DirectWssConfig()
         self._turns: dict[str, ActiveTurn] = {}
@@ -967,7 +969,7 @@ class Gateway:
     def _parse_chat_command(text: str) -> tuple[str, str] | None:
         command, separator, argument = text.partition(" ")
         command = command.lower()
-        if command in {"/code", "/repair", "/review", "/read", "/search", "/research", "/browse", "/inspect"}:
+        if command in {"/code", "/repair", "/review", "/read", "/search", "/research", "/browse", "/inspect", "/intel"}:
             if not separator or not argument.strip():
                 return command, ""
             return command, argument.strip()
@@ -987,6 +989,21 @@ class Gateway:
     ) -> None:
         name, argument = command
         safe_user = redact_secrets(text.strip())
+
+        if name == "/intel":
+            # Deterministic, citation-bearing official data; no inference or background polling.
+            # Ignore free-form arguments rather than treating them as an arbitrary feed URL.
+            assistant = await self.world_intel.brief()
+            if argument:
+                assistant += "\n\nNota: /intel muestra eventos mundiales; filtros geográficos aún no disponibles."
+            self.agent.store.append_message(session_id, "user", safe_user)
+            self.agent.store.append_message(
+                session_id, "assistant", assistant, provider="world-intel", status="complete"
+            )
+            await self._write_event(response, {"type": "delta", "text": assistant, "turn_id": turn_id})
+            await self._write_event(response, {"type": "done", "turn_id": turn_id})
+            await response.write_eof()
+            return
 
         if name == "/read":
             if not argument:

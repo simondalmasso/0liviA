@@ -1,6 +1,7 @@
 const PUBLIC_SHELL_ONLY = true;
 const TRANSITIONAL_BRIDGE_ENABLED = false;
 const DEMO_MODEL = "@cf/zai-org/glm-4.7-flash";
+const DEMO_QWEN_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
 const DEMO_PROVIDER = "workers-ai-demo";
 const DEMO_DAILY_REQUEST_LIMIT = 25;
 const DEMO_MAX_TOTAL_CHARS = 8000;
@@ -26,8 +27,14 @@ function demoEnabled(env) {
   );
 }
 
+function qwenEnabled(env) {
+  // Independent approval: GLM entitlement does not prove Qwen has a no-overage boundary.
+  return Boolean(demoEnabled(env) && env?.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED === "1");
+}
+
 function health(env) {
   const demoReady = Boolean(demoEnabled(env));
+  const qwenReady = qwenEnabled(env);
   return json({
     process_alive: true,
     api_mode: "public_shell",
@@ -39,6 +46,11 @@ function health(env) {
     demo_provider_ready: demoReady,
     demo_provider: demoReady ? DEMO_PROVIDER : null,
     demo_model: demoReady ? DEMO_MODEL : null,
+    demo_qwen_ready: qwenReady,
+    demo_models: [
+      { id: "glm", model: DEMO_MODEL, label: "GLM 4.7 Flash", available: demoReady },
+      { id: "qwen", model: DEMO_QWEN_MODEL, label: "Qwen3 30B", available: qwenReady },
+    ],
     demo_daily_request_limit: DEMO_DAILY_REQUEST_LIMIT,
     web_read: false,
     hard_zero_cost: true,
@@ -163,6 +175,27 @@ async function demoChat(request, env) {
     return json({ error: "invalid_demo_request", message: String(error?.message || error) }, { status: 400 });
   }
 
+  // Validate model before burning daily quota; no arbitrary model IDs reach Workers AI.
+  const selected = body?.model === undefined ? "glm" : body.model;
+  if (selected !== "glm" && selected !== "qwen") {
+    return json({ error: "invalid_demo_model" }, { status: 400 });
+  }
+  if (selected === "qwen" && !qwenEnabled(env)) {
+    return json({ error: "qwen_unavailable", message: "Qwen needs separately verified zero-cost admission." }, { status: 503 });
+  }
+  const model = selected === "qwen" ? DEMO_QWEN_MODEL : DEMO_MODEL;
+  const lastQuestion = messages[messages.length - 1]?.content || "";
+  // Model identity is a shell fact, not generative text. Do not spend public quota
+  // on an answer that the provider might misidentify.
+  if (/^\s*(?:(?:q|qu[eé])\s+)?modelo\s+(?:sos|us[aá]s|utiliz[aá]s|ten[eé]s)\s*\??\s*$/i.test(lastQuestion)) {
+    return json({
+      answer: `Esta es la demo pública de 0liviA. Modelo seleccionado: ${model} (Cloudflare Workers AI). El Core privado no está conectado a esta demo.`,
+      provider: "local-demo",
+      model,
+      canonical: false,
+    });
+  }
+
   const id = env.COST_GUARD.idFromName("public-demo-global");
   const guard = env.COST_GUARD.get(id);
   const allowance = await guard.fetch("https://cost-guard/allow", { method: "POST" });
@@ -174,13 +207,13 @@ async function demoChat(request, env) {
   const system = {
     role: "system",
     content:
-      "Sos 0liviA, la IA personal de Simón. Respondé en español rioplatense argentino, claro y directo. Estás en un modo de prueba sin memoria privada ni herramientas. Nunca afirmes haber ejecutado acciones, leído archivos privados o usado el Core canónico.",
+      `Sos 0liviA en modo prueba, con el modelo ${model}. Respondé en español de Argentina con voseo natural, claridad y respeto, sin apodos ni familiaridad forzada. Si te preguntan qué modelo sos, identificá exactamente ${model} (Cloudflare Workers AI, demo), sin inventar otro. No tenés memoria privada, acceso a herramientas ni conexión al Core canónico. Nunca afirmes haber ejecutado acciones, leído archivos privados o usado el Core canónico.`,
   };
 
   try {
-    const result = await env.AI.run(DEMO_MODEL, {
+    const result = await env.AI.run(model, {
       messages: [system, ...messages],
-      max_completion_tokens: DEMO_MAX_OUTPUT_TOKENS,
+      ...(selected === "qwen" ? { max_tokens: DEMO_MAX_OUTPUT_TOKENS } : { max_completion_tokens: DEMO_MAX_OUTPUT_TOKENS }),
       temperature: 0.4,
       stream: false,
     });
@@ -189,7 +222,7 @@ async function demoChat(request, env) {
     return json({
       answer,
       provider: DEMO_PROVIDER,
-      model: DEMO_MODEL,
+      model,
       canonical: false,
     });
   } catch {

@@ -65,3 +65,16 @@ def test_demo_errors_are_not_presented_as_model_answers():
     assert "provider failure is an alert, never a successful AI answer" in e2e
     assert "assistant:not(.error)" in e2e
     assert "toHaveCount(0)" in e2e
+
+
+def test_closed_drawer_hidden_at_all_widths_and_model_select_is_gate_driven():
+    html = _shell()
+    assert ".drawer{visibility:hidden;opacity:0" in html
+    assert ".drawer.open{visibility:visible;opacity:1" in html
+    assert "@media(min-width:721px) and (max-width:1100px)" in html
+    assert 'id="demoModelSelect"' in html
+    assert 'value="qwen" disabled' in html
+    assert "coreHealth?.demo_qwen_ready===true" in html
+    assert "model:demoModelSelect.value" in html
+    assert "function providerPresentation(name,model)" in html
+    assert "{command:'/intel',label:" in html

@@ -1931,3 +1931,26 @@ async def test_public_shell_demo_is_explicit_zero_cost_and_side_effect_free(clie
     assert "textInput.disabled=!available" in html
     assert "sendBtn.disabled=!available" in html
     assert "if(!composerAvailable())return" in html
+
+
+@pytest.mark.asyncio
+async def test_intel_command_uses_public_feeds_without_consuming_model_quota(client, gateway):
+    app, store, router = gateway
+    class StubWorldIntel:
+        async def brief(self):
+            return "Inteligencia pública · USGS / NASA EONET · fuentes y lagunas."
+    app["gateway"].world_intel = StubWorldIntel()
+    session_id = store.create_session()
+    response = await client.post(
+        f"/api/chat/{session_id}",
+        json={"text": "/intel"},
+        headers=auth(),
+    )
+    assert response.status == 200
+    stream = await response.text()
+    assert "Inteligencia pública" in stream
+    assert '"type": "done"' in stream
+    assert router.calls == []
+    messages = store.recent_messages(session_id, 4)
+    assert messages[-1]["provider"] == "world-intel"
+    assert messages[-1]["content"].startswith("Inteligencia pública")

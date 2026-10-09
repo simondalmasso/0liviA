@@ -225,7 +225,15 @@ button.side-card{text-align:left}
   .orb-wrap{width:min(86vw,330px)}
 }
 @media(max-height:720px) and (max-width:720px){.rail{gap:2px}.rail-logo,.rail-btn{width:38px;height:38px}.voice-grid{grid-template-rows:minmax(0,44dvh) minmax(0,1fr)}.auth-card .auth-mark{margin-bottom:10px}.auth-card p{margin-bottom:12px}}
-@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+.drawer{visibility:hidden;opacity:0}
+.drawer.open{visibility:visible;opacity:1;transform:none}
+#demoModelSelect{max-width:44vw;border:1px solid #343434;border-radius:10px;background:#191919;color:#eee;padding:0 8px}
+#demoModelSelect[hidden]{display:none}
+.msg{animation:msg-in .2s ease-out both}
+@keyframes msg-in{from{opacity:.5;transform:translateY(5px)}to{opacity:1;transform:none}}
+.assistant .bubble{font-size:15px}
+@media(min-width:721px) and (max-width:1100px){.shell{grid-template-columns:64px minmax(0,1fr)}.rail{align-items:center}.rail-btn,.rail-logo{width:44px;justify-content:center;padding:0}.rail-label{display:none}.drawer{left:64px}.topbar .brand{display:block}.messages{padding-left:4vw;padding-right:4vw}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
@@ -263,6 +271,10 @@ button.side-card{text-align:left}
       </button>
       <div class="brand">0liviA</div>
       <div id="chatTitle" class="chat-title"></div>
+      <select id="demoModelSelect" aria-label="Modelo de la demo" title="Modelo de la demo" hidden>
+        <option value="glm">GLM 4.7 Flash</option>
+        <option value="qwen" disabled>Qwen3 30B · pendiente $0</option>
+      </select>
       <span id="coreDot" class="core-dot" title="Core pendiente"></span>
     </header>
 
@@ -423,6 +435,7 @@ let coreHealth=null;
 let backendMode='bridge';
 const PUBLIC_DEMO_ENDPOINT='/api/demo-chat';
 const PUBLIC_DEMO_MODEL='GLM 4.7 Flash';
+const PUBLIC_DEMO_QWEN_MODEL='Qwen3 30B';
 const PUBLIC_DEMO_PROVIDER='workers-ai-demo';
 let publicDemoActive=false;
 const CORE_PROBE_MIN_INTERVAL_MS=5*60*1000;
@@ -465,6 +478,7 @@ const voiceOrb=$('.orb');
 const publicWelcome=$('#publicWelcome');
 const publicStatus=$('#publicStatus');
 const publicDemoBtn=$('#publicDemoBtn');
+const demoModelSelect=$('#demoModelSelect');
 const ownerLogin=$('#ownerLogin');
 const ownerLoginForm=$('#ownerLoginForm');
 const ownerEmail=$('#ownerEmail');
@@ -542,12 +556,17 @@ function composerAvailable(){
 function updatePublicHome(){
   const isPublic=backendMode==='public_shell';
   const demoReady=isPublic&&coreHealth?.demo_provider_ready===true;
+  const qwenReady=demoReady&&coreHealth?.demo_qwen_ready===true;
+  demoModelSelect.hidden=!(isPublic&&publicDemoActive&&demoReady);
+  demoModelSelect.options[1].disabled=!qwenReady;
+  demoModelSelect.options[1].textContent=qwenReady?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · pendiente $0';
+  if(!qwenReady&&demoModelSelect.value==='qwen')demoModelSelect.value='glm';
   publicWelcome.hidden=!(isPublic&&!publicDemoActive);
   if(isPublic){
     publicDemoBtn.disabled=!demoReady;
     publicDemoBtn.textContent=demoReady?'Probar 0liviA ahora':'IA demo no disponible';
     publicStatus.textContent=demoReady
-      ?'Modo prueba IA · GLM 4.7 Flash · sin cuenta · cupo $0 hard-cap'
+      ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3':'GLM 4.7 Flash')+' · sin cuenta · cupo $0 hard-cap'
       :'Modo prueba IA no disponible · el Core privado sigue separado.';
   }
 }
@@ -566,7 +585,7 @@ function setCoreState(mode){
   if(backendMode==='public_shell'&&publicDemoActive&&coreHealth?.demo_provider_ready===true){
     coreOnline=false;
     coreDot.className='core-dot online';
-    coreDot.title='Modo prueba $0 · '+PUBLIC_DEMO_MODEL;
+    coreDot.title='Modo prueba $0 · '+(demoModelSelect.value==='qwen'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
     updateComposerAvailability();
     return;
   }
@@ -767,18 +786,19 @@ function chooseJobStatus(jobId){
   closeSlashPalette();
   textInput.focus();
 }
-function providerPresentation(name){
+function providerPresentation(name,model){
   const providerName=String(name||'');
   if(!providerName||providerName==='import')return '';
-  if(providerName===PUBLIC_DEMO_PROVIDER)return 'Demo $0 · '+PUBLIC_DEMO_MODEL;
+  if(providerName===PUBLIC_DEMO_PROVIDER)return 'Demo $0 · '+(model==='@cf/qwen/qwen3-30b-a3b-fp8'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
+  if(providerName==='local-demo')return 'Sistema · '+(model==='@cf/qwen/qwen3-30b-a3b-fp8'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
   const row=(coreHealth?.provider_catalog||[]).find(item=>String(item.name||'')===providerName);
   if(!row){
     return providerName==='chatgpt-plan'?'ChatGPT plan':'';
   }
-  const model=String(row.model||providerName);
-  if(row.cost_mode==='plan_included')return 'ChatGPT plan · '+model;
-  if(row.cost_mode==='local')return 'Local · '+model;
-  if(row.cost_mode==='free_hard_cap')return model+' · $0';
+  const configuredModel=String(row.model||providerName);
+  if(row.cost_mode==='plan_included')return 'ChatGPT plan · '+configuredModel;
+  if(row.cost_mode==='local')return 'Local · '+configuredModel;
+  if(row.cost_mode==='free_hard_cap')return configuredModel+' · $0';
   return '';
 }
 function renderMessagesInto(root,chat){
@@ -807,7 +827,7 @@ function renderMessagesInto(root,chat){
     body.appendChild(bubble);
 
     if(m.role==='assistant'){
-      const providerLabel=providerPresentation(m.provider);
+      const providerLabel=providerPresentation(m.provider,m.model);
       if(providerLabel){
         const provider=document.createElement('span');
         provider.className='provider-pill';
@@ -964,7 +984,7 @@ function renderConfig(){
   const active=available[0]||preferred;
   const route=available.length?available.join(' → '):'Se resuelve al conectar el core';
   const cards=[
-    ['Modelo activo',backendMode==='public_shell'&&coreHealth?.demo_provider_ready===true?PUBLIC_DEMO_MODEL:active],
+    ['Modelo activo',backendMode==='public_shell'&&coreHealth?.demo_provider_ready===true?(demoModelSelect.value==='qwen'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL):active],
     ['Preferido',preferred],
     ['Ruta',backendMode==='public_shell'&&coreHealth?.demo_provider_ready===true?'Demo $0 hard-cap → Core privado cuando esté disponible':route],
     ['Backend',backendMode==='canonical'?'Core durable':backendMode==='public_shell'?'Shell público · demo aislado · Core desconectado':'Bridge temporal'],
@@ -1056,6 +1076,7 @@ function activateSide(name,open=true){
 }
 function openDrawer(){drawer.classList.add('open');backdrop.classList.add('open');drawer.setAttribute('aria-hidden','false')}
 function closeDrawer(){drawer.classList.remove('open');backdrop.classList.remove('open');drawer.setAttribute('aria-hidden','true')}
+demoModelSelect.addEventListener('change',()=>{setCoreState('demo');if(workspace)renderConfig()});
 $('#projectsBtn').onclick=()=>activateSide('projects');
 publicDemoBtn.onclick=()=>{
   if(coreHealth?.demo_provider_ready!==true)return;
@@ -1341,7 +1362,7 @@ async function sendPublicDemo(chat,userMessage,speak){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       credentials:'same-origin',
-      body:JSON.stringify({messages:demoHistory(chat)}),
+      body:JSON.stringify({messages:demoHistory(chat),model:demoModelSelect.value}),
       signal:controller.signal
     });
     if(r.status===429)throw new Error('límite demo alcanzado');
@@ -1350,7 +1371,7 @@ async function sendPublicDemo(chat,userMessage,speak){
     const answer=String(body?.answer||'').trim();
     if(!answer)throw new Error('respuesta vacía');
     userMessage.status='synced';
-    const assistant={id:uid('m'),role:'assistant',text:answer,status:'synced',provider:String(body?.provider||PUBLIC_DEMO_PROVIDER),ts:now()};
+    const assistant={id:uid('m'),role:'assistant',text:answer,status:'synced',provider:String(body?.provider||PUBLIC_DEMO_PROVIDER),model:String(body?.model||''),ts:now()};
     chat.messages.push(assistant);
     await saveState();renderMessages();
     if(speak)await speakEsAr(answer);
@@ -1435,6 +1456,7 @@ const SLASH_COMMANDS=[
   {command:'/read',label:'leer URL'},
   {command:'/search',label:'buscar web si hay ruta $0'},
   {command:'/research',label:'investigar con fuentes'},
+  {command:'/intel',label:'eventos mundiales · USGS / NASA'},
   {command:'/browse',label:'abrir JS aislado'},
   {command:'/inspect',label:'analizar render JS'},
   {command:'/code',label:'construir'},
