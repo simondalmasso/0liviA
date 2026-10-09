@@ -13,11 +13,20 @@ import sys
 
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
 MODEL = "deepseek-ai/deepseek-v4.1-flash"
+ALLOWED_MODELS = {
+    "deepseek": MODEL,
+    "muse-glimmer": "meta/muse-glimmer-30b",
+}
 
 
 def main() -> int:
     if os.environ.get("NVIDIA_NIM_TRIAL_NONBILLABLE_CONFIRMED") != "1":
         print("BLOCKED: trial/no-billing account verification is missing.", file=sys.stderr)
+        return 2
+    selected = os.environ.get("NVIDIA_NIM_EVAL_MODEL", "deepseek")
+    model = ALLOWED_MODELS.get(selected)
+    if not model:
+        print("BLOCKED: model not on internal-evaluation allowlist.", file=sys.stderr)
         return 2
     key = os.environ.get("NVIDIA_API_KEY", "")
     if not key or not key.startswith("nvapi-"):
@@ -25,11 +34,11 @@ def main() -> int:
         return 2
 
     body = json.dumps({
-        "model": MODEL,
+        "model": model,
         "messages": [{"role": "user", "content": "Respond only with: OK"}],
         "max_tokens": 64,
         "stream": False,
-        "temperature": 0,
+        "temperature": 1 if selected == "muse-glimmer" else 0,
     }).encode("utf-8")
     # Fixed HTTPS origin/path; http.client never follows redirects, including
     # cross-origin redirects that could otherwise carry a bearer token.

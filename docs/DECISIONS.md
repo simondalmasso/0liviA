@@ -127,3 +127,14 @@
 - NVIDIA Build NIM `deepseek-ai/deepseek-v4.1-flash` has the documented OpenAI-compatible `https://integrate.api.nvidia.com/v1/chat/completions` endpoint and accepts an `NVIDIA_API_KEY`. A GitHub Actions secret being present does **not** prove model entitlement, remaining trial credits, no-overage, or legal production rights. NVIDIA's public API Trial Terms (sections 1.2/1.4) limit API Catalog trial service to internal testing/evaluation and prohibit production without a separate subscription.
 - Therefore NVIDIA may only be tested through the manual `nvidia-nim-eval.yml` workflow with explicit acknowledgement and a separate `NVIDIA_NIM_TRIAL_NONBILLABLE_CONFIRMED=1` gate; one canned non-personal prompt, 64 output tokens, no retries, no logging secrets/output, no public proxy, no keys in the Worker. No permanent production adapter until both contractual permission and zero-charge billing boundary are proven.
 - References: [Cloudflare Qwen3.8 27B](https://developers.cloudflare.com/workers-ai/models/qwen3.8-27b/), [Cloudflare Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/), [NVIDIA DeepSeek V4.1 Flash API](https://docs.api.nvidia.com/nim/reference/nvidia-deepseek-v4_1-flash-infer), [NVIDIA trial terms](https://assets.ngc.nvidia.com/products/api-catalog/legal/NVIDIA%20API%20Trial%20Terms%20of%20Service.pdf).
+
+
+## ADR-0014 — Muse Glimmer is open-weight; no "Lite" or trial-to-production shortcut
+- Date: 2026-10-09
+- Status: **evaluation path implemented / production prohibited without entitlement**
+- Meta publishes Muse Glimmer 30B weights under Apache 2.0; official Q4 GGUF ~16.8 GB; DFlash drafter ~1.6 GB is **not** standalone. Community lower-bit quants exist, but quality and security are not certified.
+- The operator may download official weights for a suitable GPU host; no heavyweight downloads inside GitHub Actions or Cloudflare, no model loading on OCI Micro and no dependence on the owner's PC during normal operation.
+- NVIDIA hosts `meta/muse-glimmer-30b` for prototype use. Extend only the **existing manual NIM evaluation** allowlist to support Muse, requiring a separate cost verification, explicit trial consent and a single synthetic/harmless request. Provider credentials are never available to the public shell.
+- NVIDIA API Trial Terms §§1.2 and 1.4 explicitly disallow production. Never route live user chats through NVIDIA trial or claim $0 simply because the model is offered under a "Free Endpoint" banner.
+- Existing canonical `OpenAICompatibleProvider` remains sufficient to connect a future compliant production endpoint; new router forks are unnecessary.
+- Detailed evidence, legal downloads and footprint boundaries: `docs/MUSE_GLIMMER.md`.

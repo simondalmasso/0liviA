@@ -8,6 +8,14 @@ on:
         required: true
         type: boolean
         default: false
+      model:
+        description: "Internal-only model to test (no production routing)"
+        required: true
+        type: choice
+        options:
+          - muse-glimmer
+          - deepseek
+        default: muse-glimmer
 
 permissions:
   contents: read
@@ -19,6 +27,7 @@ jobs:
     timeout-minutes: 3
     env:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_NIM_EVAL_MODEL: ${{ inputs.model }}
       NVIDIA_NIM_TRIAL_NONBILLABLE_CONFIRMED: ${{ vars.NVIDIA_NIM_TRIAL_NONBILLABLE_CONFIRMED }}
     steps:
       - name: Checkout without persisted credentials
@@ -32,7 +41,7 @@ jobs:
           test "${NVIDIA_NIM_TRIAL_NONBILLABLE_CONFIRMED:-}" = "1"
           test -n "${NVIDIA_API_KEY:-}"
           echo "Manual trial evaluation authorized; no production routing."
-      - name: One bounded official NVIDIA DeepSeek V4.1 Flash probe
+      - name: One bounded NVIDIA evaluation (Muse Glimmer or DeepSeek)
         run: python3 scripts/eval_nvidia_nim.py
       - name: Confirm evaluation is not a production deployment
         run: echo "EVAL_ONLY=YES; NO_SECRET_EXPOSURE=YES; NO_PUBLIC_MODEL_ROUTE=YES"
