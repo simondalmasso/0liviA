@@ -79,7 +79,8 @@ def test_demo_redacts_secret_shapes_before_provider_egress():
 
 
 def test_cloudflare_serves_static_assets_outside_health_and_api():
-    assert "return env.ASSETS.fetch(request)" in WORKER
+    assert "result = await env.ASSETS.fetch(request)" in WORKER
+    assert "return hardened(result)" in WORKER
     assert 'url.pathname === "/healthz"' in WORKER
 
 
