@@ -24,6 +24,9 @@ def test_public_demo_is_isolated_and_fail_closed_until_zero_cost_is_confirmed():
     assert 'url.pathname === "/api/demo-chat"' in WORKER
     assert "await env.AI.run(model" in WORKER
     assert 'const DEMO_QWEN_MODEL = "@cf/qwen/qwen3.8-27b";' in WORKER
+    assert 'const DEMO_GEMMA_MODEL = "@cf/google/gemma-4-26b-a4b-it";' in WORKER
+    assert 'demo_gemma_ready: demoReady,' in WORKER
+    assert 'selected !== "gemma"' in WORKER
     assert 'env?.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED === "1"' in WORKER
     assert "selected !== \"glm\" && selected !== \"qwen\"" in WORKER
     assert 'selected === "qwen" && !qwenEnabled(env)' in WORKER
