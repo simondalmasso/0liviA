@@ -129,8 +129,22 @@ test("Qwen is selectable only after independently verified no-overage admission"
   const output = await body(response);
   assert.equal(output.model, "@cf/qwen/qwen3-30b-a3b-fp8");
   assert.equal(approved.calls[0].model, output.model);
+  assert.equal(approved.calls[0].args.max_tokens, 1024);
+  assert.equal(approved.calls[0].args.max_completion_tokens, undefined);
   assert.equal(approved.stored.get("count"), 1);
   assert.ok(approved.calls[0].args.messages[0].content.includes(output.model));
+});
+
+test("the model identity answer is deterministic and does not consume AI quota", async () => {
+  const f = fixture();
+  const response = await worker.fetch(post([{ role: "user", content: "q modelo sos?" }]), f.env);
+  assert.equal(response.status, 200);
+  const output = await body(response);
+  assert.equal(output.provider, "local-demo");
+  assert.equal(output.model, "@cf/zai-org/glm-4.7-flash");
+  assert.ok(output.answer.includes(output.model));
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.stored.has("count"), false);
 });
 
 test("model selection never accepts arbitrary Workers AI slugs or spends quota", async () => {
