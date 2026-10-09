@@ -187,7 +187,7 @@ async function demoChat(request, env) {
   const lastQuestion = messages[messages.length - 1]?.content || "";
   // Model identity is a shell fact, not generative text. Do not spend public quota
   // on an answer that the provider might misidentify.
-  if (/^\\s*(?:(?:q|qu[eé])\\s+)?modelo\\s+(?:sos|us[aá]s|utiliz[aá]s|ten[eé]s)\\s*\\??\\s*$/i.test(lastQuestion)) {
+  if (/^\s*(?:(?:q|qu[eé])\s+)?modelo\s+(?:sos|us[aá]s|utiliz[aá]s|ten[eé]s)\s*\??\s*$/i.test(lastQuestion)) {
     return json({
       answer: `Esta es la demo pública de 0liviA. Modelo seleccionado: ${model} (Cloudflare Workers AI). El Core privado no está conectado a esta demo.`,
       provider: "local-demo",
