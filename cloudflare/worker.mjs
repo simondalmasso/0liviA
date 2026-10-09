@@ -184,6 +184,17 @@ async function demoChat(request, env) {
     return json({ error: "qwen_unavailable", message: "Qwen needs separately verified zero-cost admission." }, { status: 503 });
   }
   const model = selected === "qwen" ? DEMO_QWEN_MODEL : DEMO_MODEL;
+  const lastQuestion = messages[messages.length - 1]?.content || "";
+  // Model identity is a shell fact, not generative text. Do not spend public quota
+  // on an answer that the provider might misidentify.
+  if (/^\\s*(?:(?:q|qu[eé])\\s+)?modelo\\s+(?:sos|us[aá]s|utiliz[aá]s|ten[eé]s)\\s*\\??\\s*$/i.test(lastQuestion)) {
+    return json({
+      answer: `Esta es la demo pública de 0liviA. Modelo seleccionado: ${model} (Cloudflare Workers AI). El Core privado no está conectado a esta demo.`,
+      provider: "local-demo",
+      model,
+      canonical: false,
+    });
+  }
 
   const id = env.COST_GUARD.idFromName("public-demo-global");
   const guard = env.COST_GUARD.get(id);
@@ -202,7 +213,7 @@ async function demoChat(request, env) {
   try {
     const result = await env.AI.run(model, {
       messages: [system, ...messages],
-      max_completion_tokens: DEMO_MAX_OUTPUT_TOKENS,
+      ...(selected === "qwen" ? { max_tokens: DEMO_MAX_OUTPUT_TOKENS } : { max_completion_tokens: DEMO_MAX_OUTPUT_TOKENS }),
       temperature: 0.4,
       stream: false,
     });
