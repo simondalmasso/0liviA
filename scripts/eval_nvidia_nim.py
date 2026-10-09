@@ -6,11 +6,10 @@ No user/project prompts, no credentials in output, no retry/fallback.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
-import urllib.error
-import urllib.request
 
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
 MODEL = "deepseek-ai/deepseek-v4.1-flash"
@@ -32,21 +31,21 @@ def main() -> int:
         "stream": False,
         "temperature": 0,
     }).encode("utf-8")
-    request = urllib.request.Request(
-        ENDPOINT, data=body, method="POST",
-        headers={
+    # Fixed HTTPS origin/path; http.client never follows redirects, including
+    # cross-origin redirects that could otherwise carry a bearer token.
+    conn = http.client.HTTPSConnection("integrate.api.nvidia.com", timeout=30)
+    try:
+        conn.request("POST", "/v1/chat/completions", body, {
             "Authorization": "Bearer " + key,
             "Content-Type": "application/json",
             "Accept": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            if response.status != 200:
-                print(f"NVIDIA_NIM_EVAL_FAIL: HTTP {response.status}", file=sys.stderr)
-                return 1
-            # Bound response data. Never log raw output or prompts.
-            data = response.read(32_769)
+        })
+        response = conn.getresponse()
+        if response.status != 200:
+            # Never print provider response bodies; they might reflect secrets.
+            print(f"NVIDIA_NIM_EVAL_FAIL: HTTP {response.status}", file=sys.stderr)
+            return 1
+        data = response.read(32_769)
         if len(data) > 32_768:
             print("NVIDIA_NIM_EVAL_FAIL: oversized response", file=sys.stderr)
             return 1
@@ -56,12 +55,11 @@ def main() -> int:
             return 1
         print("NVIDIA_NIM_TRIAL_EVAL_OK: internal-only; production eligibility NOT verified")
         return 0
-    except urllib.error.HTTPError as exc:
-        # Do NOT echo HTTP response: proxies can reflect Authorization headers.
-        print(f"NVIDIA_NIM_EVAL_FAIL: HTTP {exc.code}", file=sys.stderr)
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError):
+    except (http.client.HTTPException, TimeoutError, OSError, ValueError, json.JSONDecodeError):
         print("NVIDIA_NIM_EVAL_FAIL: transport or response validation", file=sys.stderr)
-    return 1
+        return 1
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
