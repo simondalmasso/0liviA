@@ -4,6 +4,13 @@ Branch: `main`
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
+## 2026-10-09 Core readiness continuation
+
+- `main@5d3bc113df3ee67142c89efb3932f0fab87324fd` is the last verified public Worker deployment; full CI, live browser chat E2E, exact `/healthz.release_sha` and security headers passed. This is **not** the authenticated Python Core.
+- OCI micro Core host remains `PRIVILEGED_HOST_ACCESS_PENDING`. Local read-only recheck found no new authorized SSH material and no OCI CLI executable in the checked PATH; no privileged access was claimed, no host mutation was attempted.
+- Prepared workflow safety improvement: manual canonical deploy now defaults to non-mutating SSH/preflight-only mode; actual deploy must be explicitly opted into after owner recovers trusted privileged access. The release smoke rejects empty, error-bearing, malformed and mixed-provider streams even if they include a `done` event.
+- No Qwen paid/unverified production entitlement was enabled; provider and account-level $0 proof remain separate gates.
+
 ## What is already integrated
 
 - Python control plane with sessions, projects, library, memory, jobs, checkpoints and events.
