@@ -91,6 +91,28 @@ test("disabled demo has no inference and canonical API always fails closed", asy
   assert.equal((await worker.fetch(new Request(BASE + "/"), f.env)).status, 200);
 });
 
+test("public routes include security headers and immutable release metadata", async () => {
+  const f = fixture();
+  f.env.OLIVIA_RELEASE_SHA = "a".repeat(40);
+  const healthResponse = await worker.fetch(new Request(BASE + "/healthz"), f.env);
+  const health = await body(healthResponse);
+  assert.equal(health.release_sha, "a".repeat(40));
+  for (const response of [
+    healthResponse,
+    await worker.fetch(new Request(BASE + "/api/chat"), f.env),
+    await worker.fetch(new Request(BASE + "/"), f.env),
+  ]) {
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(response.headers.get("x-frame-options"), "DENY");
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+    assert.equal(response.headers.get("strict-transport-security"), "max-age=31536000");
+    assert.ok(response.headers.get("content-security-policy").includes("frame-ancestors 'none'"));
+    assert.equal(response.headers.get("permissions-policy"), "camera=(), geolocation=(), microphone=(self)");
+  }
+  const unknown = await body(await worker.fetch(new Request(BASE + "/healthz"), { ...f.env, OLIVIA_RELEASE_SHA: "invalid" }));
+  assert.equal(unknown.release_sha, null);
+});
+
 test("enabled demo identifies separate provider without changing canonical readiness", async () => {
   const f = fixture();
   const h = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));

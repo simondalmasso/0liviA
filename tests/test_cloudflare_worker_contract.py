@@ -79,7 +79,8 @@ def test_demo_redacts_secret_shapes_before_provider_egress():
 
 
 def test_cloudflare_serves_static_assets_outside_health_and_api():
-    assert "return env.ASSETS.fetch(request)" in WORKER
+    assert "result = await env.ASSETS.fetch(request)" in WORKER
+    assert "return hardened(result)" in WORKER
     assert 'url.pathname === "/healthz"' in WORKER
 
 
@@ -98,3 +99,30 @@ def test_demo_rejects_cross_site_calls_and_spoofed_final_assistant():
     assert 'error: "cross_origin_denied"' in WORKER
     assert 'error: "json_required"' in WORKER
     assert 'messages[messages.length - 1].role !== "user"' in WORKER
+
+
+def test_public_static_assets_are_hardened_without_worker_first():
+    """Cloudflare serves matching static assets before invoking Worker code."""
+    static = Path("web/_headers").read_text(encoding="utf-8")
+    deploy = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert static.startswith("# Cloudflare Workers static assets")
+    assert "/*\n" in static
+    for header in (
+        "X-Content-Type-Options: nosniff",
+        "X-Frame-Options: DENY",
+        "Referrer-Policy: no-referrer",
+        "Strict-Transport-Security: max-age=31536000",
+        "Content-Security-Policy:",
+        "Permissions-Policy:",
+    ):
+        assert header in static
+    assert "run_worker_first" not in deploy
+    assert "function hardened(response)" in WORKER
+    assert 'return hardened(result)' in WORKER
+
+
+def test_release_stamp_uses_validated_immutable_source_sha():
+    deploy = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert 'config["vars"]["OLIVIA_RELEASE_SHA"] = os.environ["RELEASE_SHA"]' in deploy
+    assert '"release_sha": body.get("release_sha") == os.environ["RELEASE_SHA"]' in deploy
+    assert "release_sha: /^[0-9a-f]{40}$/" in WORKER
