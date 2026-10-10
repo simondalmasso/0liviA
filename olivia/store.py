@@ -845,6 +845,38 @@ class Store:
             )
         return cur.rowcount == 1
 
+    def reconcile_verified_remote_job(
+        self, job_id: str, status: str, checkpoint: dict[str, Any],
+        *, now: float | None = None,
+    ) -> bool:
+        """Apply an authenticated GitHub run receipt without reviving local work.
+
+        A running dispatch with an expired lease can be recovered by a verified
+        external run. Live leases and terminal states remain immutable here.
+        No code path reacquires a dispatch or sends an external side effect.
+        """
+        allowed = {"dispatched", "in_progress", "waiting", "requested", "succeeded", "failed"}
+        if status not in allowed:
+            raise ValueError("invalid remote job status")
+        run_id = checkpoint.get("remote_run_id")
+        if not isinstance(run_id, int) or isinstance(run_id, bool) or run_id <= 0:
+            return False
+        clock = time.time() if now is None else float(now)
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE jobs SET status=?, checkpoint_json=?,
+                   lease_token=NULL, lease_expires_at=NULL, updated_at=?
+                   WHERE id=? AND kind IN ('code','browser') AND (
+                     (lease_token IS NULL
+                      AND status IN ('dispatched','in_progress','waiting','requested'))
+                     OR (status='running' AND lease_token IS NOT NULL
+                         AND lease_expires_at<=?)
+                   )""",
+                (status, json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
+                 clock, job_id, clock),
+            )
+        return cur.rowcount == 1
+
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
