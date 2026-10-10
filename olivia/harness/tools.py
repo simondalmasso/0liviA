@@ -358,7 +358,10 @@ class ToolGateway:
                 row["args_sha256"], approval_proof
             ):
                 raise ToolDenied("owner_action_approval_required")
-            if row["state"] not in {"uncertain", "accepted"}:
+            # A process can crash after the durable pre-effect reservation
+            # but before the adapter returns. "reserved" is also ambiguous:
+            # require owner evidence; never auto-dispatch it again.
+            if row["state"] not in {"reserved", "uncertain", "accepted"}:
                 raise ToolConflict("action_not_uncertain")
             state = "completed" if success else "failed"
             conn.execute(
