@@ -67,7 +67,9 @@ def test_workflow_only_once_and_secret_safety():
     assert "- .github/workflows/activate-qwen-once.yml" in raw
     assert "on:" in raw
     assert "WORKERS_FREE_BILLING_PROOF" not in raw
-    assert "python3 scripts/verify_cloudflare_free.py" in raw
+    assert "OWNER_ATTESTED_NOT_API_VERIFIED" in raw
+    assert 'test "${OLIVIA_DEMO_ZERO_COST_CONFIRMED}" = "1"' in raw
+    assert "python3 scripts/verify_cloudflare_free.py" not in raw
     assert "OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED" in raw
     assert '"@cf/qwen/qwen3.8-27b"' in raw
     assert "QWEN_ROLLED_BACK=YES" in raw

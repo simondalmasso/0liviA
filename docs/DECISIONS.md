@@ -169,3 +169,13 @@
 - Runtime: requests selecting Gemma fail with HTTP 503 before the daily CostGuard is consumed unless both `OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED=1` and `OLIVIA_DEMO_GEMMA_LIVE_VERIFIED=1` are present.
 - Operations: this repository change does not execute the canary or mutate Cloudflare. Operators may set `LIVE_VERIFIED` only after a deliberate account/model smoke.
 - Rollback: remove the candidate without affecting canonical Core or other demo models.
+
+
+## ADR-0017 — Qwen owner-attested Workers Free activation (2026-10-10)
+- The attempted one-time workflow in PR #86 stopped before deployment: Cloudflare API subscriptions requires Billing Read, which the existing narrowly scoped deployment token lacks.
+- The owner previously asserted Workers Free and existing GitHub variable `OLIVIA_DEMO_ZERO_COST_CONFIRMED=1` is present. Use this explicit owner attestation instead of falsely claiming independently verified account billing; no account upgrade or payment information modification.
+- Official Workers Free Workers AI quota: 10,000 neurons/day with blocked overage. Qwen3.8-27B is supported. Shared 25 demo calls/day, 512 completion tokens and low reasoning remain in place.
+- The one-time workflow requires a specifically titled merge, real exact-model Qwen POST, immutable SHA, and Qwen-disable rollback if the canary fails. Health continues to report `demo_cost_guaranteed: false`.
+- This is not an independent immutable billing safeguard: if Workers Free is upgraded to Paid or Unified Billing is configured, Qwen use must be re-evaluated or disabled. `scripts/verify_cloudflare_free.py` remains available when Billing Read is independently authorized.
+- References: https://developers.cloudflare.com/workers-ai/platform/pricing/ ; https://developers.cloudflare.com/workers-ai/models/qwen3.8-27b/ ; https://developers.cloudflare.com/api/resources/accounts/subresources/subscriptions/methods/get/
+
