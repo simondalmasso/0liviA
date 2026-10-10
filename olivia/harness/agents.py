@@ -188,12 +188,18 @@ class AgentFabric:
             conn.close()
 
     def _one(self, table: str, key: str, value: str) -> sqlite3.Row | None:
-        # table/key are fixed internal constants, never user input.
+        # Fixed SQL statements, not identifiers interpolated into SQL.
+        sql = {
+            ("fabric_agents", "agent_id"):
+                "SELECT * FROM fabric_agents WHERE agent_id=?",
+            ("fabric_agent_runs", "run_id"):
+                "SELECT * FROM fabric_agent_runs WHERE run_id=?",
+        }.get((table, key))
+        if sql is None:
+            raise AgentDenied("invalid_read_query")
         conn = self._connection()
         try:
-            return conn.execute(
-                f"SELECT * FROM {table} WHERE {key}=?", (value,)
-            ).fetchone()
+            return conn.execute(sql, (value,)).fetchone()
         finally:
             conn.close()
 
