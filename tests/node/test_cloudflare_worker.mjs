@@ -68,7 +68,7 @@ function fixture({
   return { env, calls, stored, guard };
 }
 
-function post(messages, { origin = null, contentType = "application/json", model } = {}) {
+function post(messages, { origin = BASE, contentType = "application/json", model } = {}) {
   return new Request(BASE + "/api/demo-chat", {
     method: "POST",
     headers: {
@@ -125,6 +125,8 @@ test("enabled demo identifies separate provider without changing canonical readi
   const f = fixture();
   const h = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
   assert.equal(h.demo_provider_ready, true);
+  assert.equal(h.hard_zero_cost, false);
+  assert.equal(h.demo_cost_guaranteed, false);
   assert.equal(h.demo_model, "@cf/zai-org/glm-4.7-flash");
   assert.equal(h.provider_ready, false);
   assert.equal(h.inference_enabled, false);
@@ -145,8 +147,8 @@ test("Qwen is selectable only after independently verified no-overage admission"
   const health = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
   assert.equal(health.demo_qwen_ready, false);
   assert.equal(health.demo_models.length, 3);
-  assert.equal(health.demo_models[1].available, false);
   assert.equal(health.demo_models[2].available, false);
+  assert.equal(health.demo_models[1].available, false);
   const qwen = post([{ role: "user", content: "hola" }], { model: "qwen" });
   assert.equal((await worker.fetch(qwen, f.env)).status, 503);
   assert.equal(f.calls.length, 0);
@@ -241,6 +243,10 @@ test("model selection never accepts arbitrary Workers AI slugs or spends quota",
 test("cross-origin, invalid content type and non-user ending cannot burn quota", async () => {
   const f = fixture();
   assert.equal(
+    (await worker.fetch(post([{ role: "user", content: "hola" }], { origin: null }), f.env)).status,
+    403,
+  );
+  assert.equal(
     (await worker.fetch(post([{ role: "user", content: "hola" }], { origin: "https://attacker.example" }), f.env)).status,
     403,
   );
@@ -257,6 +263,21 @@ test("cross-origin, invalid content type and non-user ending cannot burn quota",
   );
   assert.equal(f.stored.has("count"), false);
   assert.equal(f.calls.length, 0);
+});
+
+test("body is capped by actual bytes even without Content-Length", async () => {
+  const f = fixture();
+  const payload = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(17000) }] });
+  const request = new Request(BASE + "/api/demo-chat", {
+    method: "POST",
+    headers: { origin: BASE, "content-type": "application/json" },
+    body: payload,
+  });
+  assert.equal(request.headers.get("content-length"), null);
+  const response = await worker.fetch(request, f.env);
+  assert.equal(response.status, 413);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.stored.has("count"), false);
 });
 
 test("slash commands and oversized requests never trigger inference", async () => {

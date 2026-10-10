@@ -37,11 +37,13 @@ def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     assert 'id="publicDemoBtn"' in html
     assert 'id="publicLoginBtn"' not in html
     assert "Probar 0liviA ahora" in html
-    assert "Tu IA personal." in html
-    assert "Privada y rápida." in html
+    assert "Probá 0liviA." in html
+    assert "Chat de muestra." in html
+    assert "La demo no accede a tus proyectos ni a tu Core privado." in html
+    assert "costo no verificado" in html
     assert "Modo prueba IA" in html
     assert "publicDemoActive=false" in html
-    assert "publicWelcome.hidden=!(p&&!publicDemoActive)" in html
+    assert "publicWelcome.hidden=!(isPublic&&!publicDemoActive)" in html
     assert "PUBLIC_DEMO_ENDPOINT='/api/demo-chat'" in html
     assert "PUBLIC_DEMO_MODEL='GLM 4.7 Flash'" in html
     assert "PUBLIC_DEMO_PROVIDER='workers-ai-demo'" in html
@@ -58,7 +60,7 @@ def test_demo_errors_are_not_presented_as_model_answers():
     html = _shell()
     assert "m.status==='error'?' error'" in html
     assert "bubble.setAttribute('role','alert')" in html
-    assert "text:'La IA demo $0 no respondió. Reintentá en unos segundos.'" in html
+    assert "text:'La demo no respondió. Reintentá en unos segundos.'" in html
     assert "status:'error',\n        provider:null," in html
 
     e2e = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")
@@ -75,9 +77,9 @@ def test_closed_drawer_hidden_at_all_widths_and_model_select_is_gate_driven():
     assert 'id="demoModelSelect"' in html
     assert 'value="qwen" disabled' in html
     assert 'value="gemma" disabled' in html
-    assert "coreHealth?.demo_qwen_ready===true" in html
-    assert "coreHealth?.demo_gemma_ready===true" in html
+    assert 'coreHealth?.demo_gemma_ready===true' in html
     assert "PUBLIC_DEMO_GEMMA_MODEL='Gemma 4 26B A4B'" in html
+    assert "coreHealth?.demo_qwen_ready===true" in html
     assert "model:demoModelSelect.value" in html
     assert "function providerPresentation(name,model)" in html
     assert "{command:'/intel',label:" in html

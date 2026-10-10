@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import os
@@ -6,6 +7,7 @@ import zipfile
 import pytest
 
 from olivia.browser_worker import (
+    BrowserDispatchUncertainError,
     BrowserJobRequest,
     BrowserWorkerError,
     GitHubActionsBrowserWorker,
@@ -298,3 +300,130 @@ async def test_browser_worker_rejects_public_repo_before_dispatch(monkeypatch):
         )
 
     assert [kind for kind, _ in calls] == ["get"]
+
+
+@pytest.mark.asyncio
+async def test_browser_dispatch_timeout_after_private_repo_check_is_uncertain(monkeypatch):
+    class RepoResponse:
+        status = 200
+
+        async def json(self):
+            return {"private": True}
+
+        async def text(self):
+            return ""
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    class FakeSession:
+        def get(self, url, *, headers):
+            return RepoResponse()
+
+        def post(self, url, *, json, headers):
+            raise asyncio.TimeoutError()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsBrowserWorker(
+        "simondalmasso/0liviA",
+        session_factory=lambda **_: FakeSession(),
+    )
+    with pytest.raises(BrowserDispatchUncertainError, match="outcome uncertain"):
+        await worker.dispatch(
+            "0123456789abcdef",
+            BrowserJobRequest(
+                url="https://example.com/",
+                objective="",
+                base_ref="main",
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_browser_dispatch_http_503_remains_uncertain(monkeypatch):
+    class Response:
+        def __init__(self, status):
+            self.status = status
+
+        async def json(self):
+            return {"private": True}
+
+        async def text(self):
+            return "temporarily unavailable"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    class Session:
+        def get(self, url, *, headers):
+            return Response(200)
+
+        def post(self, url, *, json, headers):
+            return Response(503)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsBrowserWorker(
+        "simondalmasso/0liviA", session_factory=lambda **_: Session()
+    )
+    with pytest.raises(BrowserDispatchUncertainError):
+        await worker.dispatch(
+            "0123456789abcdef",
+            BrowserJobRequest(url="https://example.com/", objective="", base_ref="main"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_browser_dispatch_session_teardown_after_204_remains_uncertain(monkeypatch):
+    class Response:
+        def __init__(self, status):
+            self.status = status
+
+        async def json(self):
+            return {"private": True}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    class Session:
+        def get(self, url, *, headers):
+            return Response(200)
+
+        def post(self, url, *, json, headers):
+            return Response(204)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            raise asyncio.TimeoutError()
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsBrowserWorker(
+        "simondalmasso/0liviA", session_factory=lambda **_: Session()
+    )
+    with pytest.raises(BrowserDispatchUncertainError):
+        await worker.dispatch(
+            "0123456789abcdef",
+            BrowserJobRequest(url="https://example.com/", objective="", base_ref="main"),
+        )

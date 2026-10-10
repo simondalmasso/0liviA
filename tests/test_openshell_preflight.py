@@ -43,6 +43,8 @@ def test_openshell_no_spontaneous_activation(monkeypatch):
 def test_openshell_policy_is_narrow_and_no_prod_runner():
     policy = (ROOT / "deploy/openshell/olivia-readonly-policy.yaml").read_text()
     assert "include_workdir: false" in policy
+    assert "compatibility: hard_requirement" in policy
+    assert "compatibility: best_effort" not in policy
     assert "api.github.com" in policy
     assert "access: read-only" in policy
     assert "protocol: rest" in policy

@@ -18,8 +18,20 @@ def classify_external_run_status(remote: dict[str, Any]) -> str:
     # Requiring an attributable positive run ID prevents fake completion badges.
     run_id = remote.get("remote_run_id")
     valid_run_id = (isinstance(run_id, int) and not isinstance(run_id, bool) and run_id > 0)
-    if remote.get("remote_conclusion") == "success" and valid_run_id:
+    if not valid_run_id:
+        return "unknown"
+    conclusion = str(remote.get("remote_conclusion") or "").strip().lower()
+    if conclusion == "success":
         return "succeeded"
-    if remote.get("remote_conclusion") in {"failure", "cancelled", "timed_out", "action_required"}:
+    if conclusion in {
+        "failure",
+        "cancelled",
+        "timed_out",
+        "action_required",
+        "neutral",
+        "skipped",
+        "stale",
+        "startup_failure",
+    }:
         return "failed"
     return "unknown"

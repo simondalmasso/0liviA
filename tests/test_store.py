@@ -427,3 +427,103 @@ def test_verified_remote_receipt_never_overrides_live_lease_or_terminal_state(tm
     assert store.claim_queued_job(job_id) is None
     store.close()
 
+
+
+def test_active_dispatch_key_dedupes_across_store_connections_and_allows_rerun_after_terminal(tmp_path: Path):
+    path = tmp_path / "dispatch-dedupe.sqlite3"
+    first = Store(path)
+    second = Store(path)
+    try:
+        job_id, created = first.create_or_get_active_job(
+            "code",
+            repo="owner/repo",
+            dispatch_key="same-objective",
+        )
+        assert created is True
+        duplicate_id, duplicate_created = second.create_or_get_active_job(
+            "code",
+            repo="owner/repo",
+            dispatch_key="same-objective",
+        )
+        assert duplicate_created is False
+        assert duplicate_id == job_id
+
+        token = first.claim_queued_job(job_id, now=10, lease_seconds=60)
+        assert token is not None
+        assert first.finish_owned_job(
+            job_id,
+            token,
+            "failed",
+            {"reason": "explicit rejection"},
+            now=20,
+        )
+        rerun_id, rerun_created = second.create_or_get_active_job(
+            "code",
+            repo="owner/repo",
+            dispatch_key="same-objective",
+        )
+        assert rerun_created is True
+        assert rerun_id != job_id
+    finally:
+        first.close()
+        second.close()
+
+
+def test_owned_dispatch_handoff_survives_lease_expiry_without_replay(tmp_path: Path):
+    store = Store(tmp_path / "slow-dispatch.sqlite3")
+    job_id, created = store.create_or_get_active_job(
+        "code",
+        repo="owner/repo",
+        dispatch_key="slow-objective",
+    )
+    assert created is True
+    token = store.claim_queued_job(job_id, now=10, lease_seconds=5)
+    assert token is not None
+    assert store.handoff_leased_job(
+        job_id,
+        token,
+        {"dispatch_acknowledged": True},
+        now=16,
+    ) is False
+    assert store.handoff_owned_dispatch(
+        job_id,
+        token,
+        {"dispatch_acknowledged": True},
+        now=16,
+    ) is True
+    job = store.get_job(job_id)
+    assert job["status"] == "dispatched"
+    assert job["checkpoint"]["dispatch_acknowledged"] is True
+    assert store.claim_queued_job(job_id, now=17) is None
+
+
+def test_owned_dispatch_uncertainty_can_be_reconciled_by_remote_receipt(tmp_path: Path):
+    store = Store(tmp_path / "uncertain-dispatch.sqlite3")
+    job_id, created = store.create_or_get_active_job(
+        "browser",
+        repo="owner/private-browser",
+        dispatch_key="browse-objective",
+    )
+    assert created is True
+    token = store.claim_queued_job(job_id, now=10, lease_seconds=5)
+    assert token is not None
+    assert store.handoff_owned_dispatch(
+        job_id,
+        token,
+        {"dispatch_uncertain": True},
+        now=20,
+    )
+    assert store.reconcile_verified_remote_job(
+        job_id,
+        "succeeded",
+        {
+            "dispatch_uncertain": True,
+            "remote_run_id": 42,
+            "remote_status": "completed",
+            "remote_conclusion": "success",
+        },
+        now=21,
+    )
+    job = store.get_job(job_id)
+    assert job["status"] == "succeeded"
+    assert job["checkpoint"]["remote_run_id"] == 42

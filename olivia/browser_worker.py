@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import os
@@ -19,6 +20,10 @@ _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
 class BrowserWorkerError(RuntimeError):
     pass
+
+
+class BrowserDispatchUncertainError(BrowserWorkerError):
+    """Transport failed after dispatch may already have reached GitHub."""
 
 
 @dataclass(frozen=True)
@@ -103,26 +108,44 @@ class GitHubActionsBrowserWorker:
         }
         timeout = aiohttp.ClientTimeout(total=20)
         headers = self._headers()
-        async with self._session_factory(timeout=timeout) as session:
-            repo_url = f"{self.api_base}/repos/{self.repo}"
-            async with session.get(repo_url, headers=headers) as response:
-                if response.status != 200:
-                    detail = (await response.text())[:500]
+        dispatch_attempted = False
+        try:
+            async with self._session_factory(timeout=timeout) as session:
+                repo_url = f"{self.api_base}/repos/{self.repo}"
+                async with session.get(repo_url, headers=headers) as response:
+                    if response.status != 200:
+                        detail = (await response.text())[:500]
+                        raise BrowserWorkerError(
+                            f"github browser repository check HTTP {response.status}: {detail}"
+                        )
+                    metadata = await response.json()
+                if not isinstance(metadata, dict) or metadata.get("private") is not True:
                     raise BrowserWorkerError(
-                        f"github browser repository check HTTP {response.status}: {detail}"
+                        "browser worker requires a private GitHub repository for result artifacts"
                     )
-                metadata = await response.json()
-            if not isinstance(metadata, dict) or metadata.get("private") is not True:
-                raise BrowserWorkerError(
-                    "browser worker requires a private GitHub repository for result artifacts"
-                )
 
-            async with session.post(url, json=payload, headers=headers) as response:
-                if response.status != 204:
-                    detail = (await response.text())[:500]
-                    raise BrowserWorkerError(
-                        f"github browser dispatch HTTP {response.status}: {detail}"
-                    )
+                dispatch_attempted = True
+                async with session.post(url, json=payload, headers=headers) as response:
+                    # Treat uncertain server-side outcomes as dispatched, not retryable.
+                    if response.status >= 500:
+                        raise BrowserDispatchUncertainError(
+                            f"github browser dispatch HTTP {response.status}: outcome uncertain"
+                        )
+                    if response.status != 204:
+                        detail = (await response.text())[:500]
+                        raise BrowserWorkerError(
+                            f"github browser dispatch HTTP {response.status}: {detail}"
+                        )
+        except asyncio.CancelledError:
+            raise
+        except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
+            if dispatch_attempted:
+                raise BrowserDispatchUncertainError(
+                    "github browser dispatch transport outcome uncertain"
+                ) from exc
+            raise BrowserWorkerError(
+                "github browser repository preflight transport failed"
+            ) from exc
         return {
             "repo": self.repo,
             "workflow": self.workflow,
