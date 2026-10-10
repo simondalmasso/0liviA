@@ -599,6 +599,30 @@ class AgentFabric:
             )
             self._audit(conn, run["agent_id"], run_id, "run.owner_reconciled")
 
+    def inspect_checkpoint(self, run_id: str, *, proof: str) -> dict[str, Any]:
+        """Read durable checkpoint only through the trusted owner verifier."""
+        if not _valid_id(run_id):
+            raise AgentDenied("invalid_identifier")
+        conn = self._connection()
+        try:
+            run = conn.execute(
+                "SELECT * FROM fabric_agent_runs WHERE run_id=?", (run_id,)
+            ).fetchone()
+            if run is None:
+                raise AgentDenied("unknown_run")
+            agent = conn.execute(
+                "SELECT * FROM fabric_agents WHERE agent_id=?",
+                (run["agent_id"],)
+            ).fetchone()
+            if agent is None or not self._owner_allowed(agent, proof):
+                raise AgentDenied("owner_authorization_required")
+            return {
+                "seq": run["checkpoint_seq"],
+                "checkpoint": json.loads(run["checkpoint_json"]),
+            }
+        finally:
+            conn.close()
+
     def audit_events(self, run_id: str) -> list[dict[str, Any]]:
         if not _valid_id(run_id):
             raise AgentDenied("invalid_identifier")
