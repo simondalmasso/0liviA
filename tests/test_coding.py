@@ -210,3 +210,70 @@ async def test_coding_dispatch_204_then_connection_loss_is_uncertain(monkeypatch
             "0123456789abcdef",
             CodingJobRequest(task="bounded task", base_ref="main"),
         )
+
+
+@pytest.mark.asyncio
+async def test_coding_dispatch_http_503_remains_uncertain(monkeypatch):
+    class Response:
+        status = 503
+
+        async def text(self):
+            return "temporarily unavailable"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    class Session:
+        def post(self, url, *, json, headers):
+            return Response()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA", session_factory=lambda **_: Session()
+    )
+    with pytest.raises(CodingDispatchUncertainError):
+        await worker.dispatch(
+            "0123456789abcdef",
+            CodingJobRequest(task="bounded task", base_ref="main"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_coding_dispatch_session_teardown_after_204_remains_uncertain(monkeypatch):
+    class Response:
+        status = 204
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    class Session:
+        def post(self, url, *, json, headers):
+            return Response()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            raise aiohttp.ClientConnectionError("connection lost on close")
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA", session_factory=lambda **_: Session()
+    )
+    with pytest.raises(CodingDispatchUncertainError):
+        await worker.dispatch(
+            "0123456789abcdef",
+            CodingJobRequest(task="bounded task", base_ref="main"),
+        )
