@@ -103,7 +103,7 @@ class ToolReceipt:
 class ToolGateway:
     """Explicitly registered, permission-bounded adapters only.
 
-    owner_action_verifier(run_id, tool, action, args_sha256, opaque_proof)
+    owner_action_verifier(request_id, run_id, tool, action, args_sha256, opaque_proof)
     and sandbox_verifier(sandbox_kind, sandbox_id, tool, opaque_proof)
     must be implemented by trusted Core/sandbox attestors; by default
     they deny writes. A model cannot supply callbacks through prompts.
@@ -114,7 +114,7 @@ class ToolGateway:
         fabric: AgentFabric,
         tools: Mapping[str, tuple[ToolRule, Any]] | None = None,
         *,
-        owner_action_verifier: Callable[[str, str, str, str, str], bool] | None = None,
+        owner_action_verifier: Callable[[str, str, str, str, str, str], bool] | None = None,
         sandbox_verifier: Callable[[str, str, str, str], bool] | None = None,
         max_actions_per_run: int = 4,
     ) -> None:
@@ -175,14 +175,14 @@ class ToolGateway:
         )
 
     def _owner_allowed(
-        self, run_id: str, tool: str, action: str,
+        self, request_id: str, run_id: str, tool: str, action: str,
         digest: str, proof: str,
     ) -> bool:
         return bool(
             self._owner_action_verifier is not None
             and isinstance(proof, str) and proof
             and self._owner_action_verifier(
-                run_id, tool, action, digest, proof
+                request_id, run_id, tool, action, digest, proof
             )
         )
 
@@ -245,7 +245,7 @@ class ToolGateway:
                 raise ToolDenied("action_not_permitted")
             if not rule.read_only:
                 if not self._owner_allowed(
-                    run_id, tool, action, args_sha256, approval_proof
+                    request_id, run_id, tool, action, args_sha256, approval_proof
                 ):
                     raise ToolDenied("owner_action_approval_required")
                 if not self._sandbox_allowed(
@@ -354,7 +354,7 @@ class ToolGateway:
             if row is None:
                 raise ToolDenied("unknown_action")
             if not self._owner_allowed(
-                row["run_id"], row["tool"], row["action"],
+                request_id, row["run_id"], row["tool"], row["action"],
                 row["args_sha256"], approval_proof
             ):
                 raise ToolDenied("owner_action_approval_required")
