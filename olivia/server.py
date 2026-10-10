@@ -21,12 +21,19 @@ from .agent import Agent
 from .agent_outcome import classify_external_run_status
 from .config import Settings
 from .browser_worker import (
+    BrowserDispatchUncertainError,
     BrowserJobRequest,
     BrowserWorkerError,
     GitHubActionsBrowserWorker,
     browser_worker_from_env,
 )
-from .coding import CodingJobRequest, CodingWorkerError, GitHubActionsCodingWorker, coding_worker_from_env
+from .coding import (
+    CodingDispatchUncertainError,
+    CodingJobRequest,
+    CodingWorkerError,
+    GitHubActionsCodingWorker,
+    coding_worker_from_env,
+)
 from .router import ProviderPool
 from .research import SearchUnavailable, WebSearch, web_search_from_env
 from .security import make_password_verifier, redact_secrets, verify_password
@@ -732,6 +739,38 @@ class Gateway:
             return _json({"error": "limit must be an integer"}, 400)
         return _json({"session_id": session_id, "messages": self.agent.store.recent_messages(session_id, limit)})
 
+    @staticmethod
+    def _dispatch_key(kind: str, payload: dict[str, Any]) -> str:
+        canonical = json.dumps(
+            {"kind": kind, **payload},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _existing_job_response(
+        self,
+        job_id: str,
+        *,
+        mode: str | None = None,
+    ) -> dict[str, Any]:
+        job = self.agent.store.get_job(job_id) or {"status": "dispatched", "checkpoint": {}}
+        checkpoint = job.get("checkpoint") or {}
+        response: dict[str, Any] = {
+            "job_id": job_id,
+            "status": str(job.get("status") or "dispatched"),
+            "deduplicated": True,
+        }
+        if mode is not None:
+            response["mode"] = mode
+        for key in ("remote_run_id", "remote_status", "remote_url", "remote_head_sha"):
+            if key in checkpoint:
+                response[key] = checkpoint[key]
+        if checkpoint.get("dispatch_uncertain"):
+            response["dispatch_uncertain"] = True
+        return response
+
     async def _dispatch_code_job(
         self,
         *,
@@ -750,8 +789,25 @@ class Gateway:
             publish_branch=publish_branch,
         )
         self.coding_worker.validate_request(request_data)
+        dispatch_key = self._dispatch_key(
+            "code",
+            {
+                "repo": self.coding_worker.repo,
+                "workflow": self.coding_worker.workflow,
+                "task": task,
+                "base_ref": base_ref,
+                "mode": mode,
+                "publish_branch": publish_branch,
+            },
+        )
+        job_id, created = self.agent.store.create_or_get_active_job(
+            "code",
+            repo=self.coding_worker.repo,
+            dispatch_key=dispatch_key,
+        )
+        if not created:
+            return self._existing_job_response(job_id, mode=mode)
 
-        job_id = self.agent.store.create_job("code", repo=self.coding_worker.repo)
         token = self.agent.store.claim_queued_job(job_id)
         if token is None:
             raise CodingWorkerError("job_dispatch_claim_failed")
@@ -759,27 +815,54 @@ class Gateway:
             "base_ref": base_ref,
             "mode": mode,
             "publish_branch": publish_branch,
+            "dispatch_key": dispatch_key,
         }
         if not self.agent.store.checkpoint_leased_job(job_id, token, initial):
             raise CodingWorkerError("job_dispatch_lease_expired")
         try:
             remote = await self.coding_worker.dispatch(job_id, request_data)
+        except CodingDispatchUncertainError as exc:
+            checkpoint = {
+                **initial,
+                "dispatch_uncertain": True,
+                "transport_error": str(exc)[:500],
+            }
+            if not self.agent.store.handoff_owned_dispatch(job_id, token, checkpoint):
+                raise CodingWorkerError("job_dispatch_uncertain_preserve_failed") from exc
+            return {
+                "job_id": job_id,
+                "status": "dispatched",
+                "mode": mode,
+                "dispatch_uncertain": True,
+            }
+        except asyncio.CancelledError:
+            self.agent.store.handoff_owned_dispatch(
+                job_id,
+                token,
+                {
+                    **initial,
+                    "dispatch_uncertain": True,
+                    "cancelled_during_dispatch": True,
+                },
+            )
+            raise
         except CodingWorkerError as exc:
-            # Remote API failures are not proof the dispatch was not accepted.
-            # Preserve a failure receipt and never retry automatically.
-            self.agent.store.finish_leased_job(
-                job_id, token, "failed", {**initial, "error": str(exc)[:500]}
+            self.agent.store.finish_owned_job(
+                job_id,
+                token,
+                "failed",
+                {**initial, "error": str(exc)[:500]},
             )
             raise
 
         checkpoint = {
-            "base_ref": base_ref,
-            "mode": mode,
-            "publish_branch": publish_branch,
+            **initial,
             **remote,
+            "dispatch_acknowledged": True,
         }
         if not self.agent.store.handoff_leased_job(job_id, token, checkpoint):
-            raise CodingWorkerError("job_dispatch_ack_lease_expired")
+            if not self.agent.store.handoff_owned_dispatch(job_id, token, checkpoint):
+                raise CodingWorkerError("job_dispatch_ack_lease_expired")
         return {
             "job_id": job_id,
             "status": "dispatched",
@@ -805,7 +888,24 @@ class Gateway:
             base_ref=base_ref,
         )
         self.browser_worker.validate_request(request)
-        job_id = self.agent.store.create_job("browser", repo=self.browser_worker.repo)
+        dispatch_key = self._dispatch_key(
+            "browser",
+            {
+                "repo": self.browser_worker.repo,
+                "workflow": self.browser_worker.workflow,
+                "url": url,
+                "objective": safe_objective,
+                "base_ref": base_ref,
+            },
+        )
+        job_id, created = self.agent.store.create_or_get_active_job(
+            "browser",
+            repo=self.browser_worker.repo,
+            dispatch_key=dispatch_key,
+        )
+        if not created:
+            return self._existing_job_response(job_id)
+
         token = self.agent.store.claim_queued_job(job_id)
         if token is None:
             raise BrowserWorkerError("job_dispatch_claim_failed")
@@ -814,20 +914,52 @@ class Gateway:
             "url": url,
             "objective": safe_objective,
             "workflow": self.browser_worker.workflow,
+            "dispatch_key": dispatch_key,
         }
         if not self.agent.store.checkpoint_leased_job(job_id, token, checkpoint):
             raise BrowserWorkerError("job_dispatch_lease_expired")
         try:
             remote = await self.browser_worker.dispatch(job_id, request)
+        except BrowserDispatchUncertainError as exc:
+            uncertain = {
+                **checkpoint,
+                "dispatch_uncertain": True,
+                "transport_error": str(exc)[:500],
+            }
+            if not self.agent.store.handoff_owned_dispatch(job_id, token, uncertain):
+                raise BrowserWorkerError("job_dispatch_uncertain_preserve_failed") from exc
+            return {
+                "job_id": job_id,
+                "status": "dispatched",
+                "dispatch_uncertain": True,
+            }
+        except asyncio.CancelledError:
+            self.agent.store.handoff_owned_dispatch(
+                job_id,
+                token,
+                {
+                    **checkpoint,
+                    "dispatch_uncertain": True,
+                    "cancelled_during_dispatch": True,
+                },
+            )
+            raise
         except BrowserWorkerError as exc:
-            self.agent.store.finish_leased_job(
-                job_id, token, "failed",
+            self.agent.store.finish_owned_job(
+                job_id,
+                token,
+                "failed",
                 {**checkpoint, "error": str(exc)[:500]},
             )
             raise
-        checkpoint = {**checkpoint, **remote}
+        checkpoint = {
+            **checkpoint,
+            **remote,
+            "dispatch_acknowledged": True,
+        }
         if not self.agent.store.handoff_leased_job(job_id, token, checkpoint):
-            raise BrowserWorkerError("job_dispatch_ack_lease_expired")
+            if not self.agent.store.handoff_owned_dispatch(job_id, token, checkpoint):
+                raise BrowserWorkerError("job_dispatch_ack_lease_expired")
         return {
             "job_id": job_id,
             "status": "dispatched",
