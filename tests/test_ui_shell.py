@@ -135,3 +135,13 @@ def test_home_initial_view_is_independent_of_saved_chat_and_strict_bw():
     assert ".composer input,.composer-icon{color:#000}" in html
     assert ".user .bubble{background:#fff;color:#000}" in html
     assert "textInput.disabled=!available&&backendMode!=='public_shell'" in html
+
+
+def test_chat_list_reopens_saved_history_instead_of_leaving_home_active():
+    html = _shell()
+    start = html.index("function renderChats(){")
+    end = html.index("function renderConfig(){", start)
+    section = html[start:end]
+    assert "workspace.selectedChatId=chat.id;homeView=false;" in section
+    assert "await saveState();renderAll();closeDrawer();" in section
+    assert "'IA demo no disponible'" not in html[html.index("function updateComposerAvailability()"):html.index("function setCoreState(")]
