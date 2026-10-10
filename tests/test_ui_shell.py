@@ -131,6 +131,7 @@ def test_home_initial_view_is_independent_of_saved_chat_and_strict_bw():
     assert "  .composer-wrap.landing{top:calc(50% + 20px)}" in html
     assert '.rail-logo::before{content:"0"' not in html
     assert '.app.is-landing .composer-icon{display:none}' in html
+    assert '.app.is-landing .composer-status{color:#fff}' in html
     assert '.app.is-landing .composer-status,.app.is-landing .composer-icon{display:none}' not in html
     assert 'Chat IA no conectado. Esta versión muestra la interfaz, pero no tiene un modelo habilitado.' in html
     assert ".rail{background:#000;border-color:#fff}" in html
