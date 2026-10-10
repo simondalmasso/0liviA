@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .model_registry import ModelAdmission
@@ -53,6 +53,15 @@ CREATE TABLE IF NOT EXISTS fabric_daily_limits(
   model TEXT NOT NULL,
   calls INTEGER NOT NULL,
   PRIMARY KEY(day,account_id,provider,model)
+);
+CREATE TABLE IF NOT EXISTS fabric_shared_pool_limits(
+  day TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  billing_pool TEXT NOT NULL,
+  max_units INTEGER NOT NULL,
+  external_floor_units INTEGER NOT NULL,
+  reserved_units INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(day,account_id,billing_pool)
 );
 """
 
@@ -140,7 +149,7 @@ class BudgetGuard:
                     raise BudgetDenied("scope_budget_exhausted")
                 chain.append((current, max_tokens, max_calls, reserved_tokens, reserved_calls))
                 current = parent
-            today = (self._today or date.today()).isoformat()
+            today = (self._today or datetime.now(timezone.utc).date()).isoformat()
             key = (today, admission.account_id, admission.provider, admission.model)
             daily = conn.execute(
                 "SELECT calls FROM fabric_daily_limits "
@@ -148,11 +157,44 @@ class BudgetGuard:
             ).fetchone()
             if daily is not None and daily[0] >= admission.daily_request_cap:
                 raise BudgetDenied("daily_request_budget_exhausted")
+            shared_update = None
+            if admission.billing_pool:
+                if (admission.usage_day is None or admission.usage_day.isoformat() != today
+                        or any(type(v) is not int or v <= 0 for v in (
+                            admission.shared_daily_cap_units, admission.shared_request_units,
+                        ))
+                        or type(admission.external_usage_units) is not int
+                        or admission.external_usage_units < 0):
+                    raise BudgetDenied("shared_account_evidence_missing_or_stale")
+                pool_key = (today, admission.account_id, admission.billing_pool)
+                prior = conn.execute(
+                    "SELECT max_units,external_floor_units,reserved_units "
+                    "FROM fabric_shared_pool_limits WHERE day=? AND account_id=? AND billing_pool=?",
+                    pool_key
+                ).fetchone()
+                effective_cap = min(prior[0], admission.shared_daily_cap_units) if prior else admission.shared_daily_cap_units
+                external_floor = max(prior[1], admission.external_usage_units) if prior else admission.external_usage_units
+                reserved = prior[2] if prior else 0
+                if external_floor + reserved + admission.shared_request_units > effective_cap:
+                    raise BudgetDenied("shared_account_budget_exhausted")
+                shared_update = (pool_key, effective_cap, external_floor, reserved)
+            elif admission.shared_request_units or admission.shared_daily_cap_units:
+                raise BudgetDenied("shared_pool_identity_missing")
             for item in chain:
                 conn.execute(
                     "UPDATE fabric_scopes SET reserved_tokens=reserved_tokens+?, "
                     "reserved_calls=reserved_calls+1 WHERE scope_id=?",
                     (tokens, item[0])
+                )
+            if shared_update is not None:
+                pool_key, cap, floor, reserved = shared_update
+                conn.execute(
+                    "INSERT INTO fabric_shared_pool_limits(day,account_id,billing_pool,max_units,"
+                    "external_floor_units,reserved_units) VALUES(?,?,?,?,?,?) "
+                    "ON CONFLICT(day,account_id,billing_pool) DO UPDATE SET "
+                    "max_units=excluded.max_units, external_floor_units=excluded.external_floor_units,"
+                    "reserved_units=excluded.reserved_units",
+                    (*pool_key, cap, floor, reserved + admission.shared_request_units)
                 )
             conn.execute(
                 "INSERT INTO fabric_daily_limits(day,account_id,provider,model,calls) "
