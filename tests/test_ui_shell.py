@@ -94,8 +94,8 @@ def test_home_intro_is_time_bounded_and_accessible():
     assert ".intro-overlay{pointer-events:none" in html
     assert "@media(prefers-reduced-motion:reduce)" in html
     assert ".intro-overlay{display:none!important}" in html
-    assert ".app.is-landing .topbar{visibility:hidden}" in html
-    assert ".shell:has(.app.is-landing) .rail-logo{opacity:0" in html
+    assert ".app.is-landing .topbar{display:none}" in html
+    assert ".app.is-landing{grid-template-rows:1fr}" in html
     assert "publicDemoActive=demoReady" in html
 
 def test_deployment_smoke_tracks_live_monogram_home_not_removed_demo_cta():
@@ -115,3 +115,20 @@ def test_home_monogram_gets_subtle_backlight_without_glowing_the_entire_shell():
     assert ".rail-logo,.landing-mark" not in html
     assert "animation:intro-exit 3s" in html
     assert ".intro-overlay{display:none!important}" in html
+
+
+def test_home_initial_view_is_independent_of_saved_chat_and_strict_bw():
+    html = _shell()
+    assert "let homeView=true;" in html
+    assert "const landing=homeView||!chat||!chat.messages.length;" in html
+    assert "renderMessagesInto(messagesEl,landing?null:chat)" in html
+    assert "homeView=false;" in html
+    assert "$('.rail-logo').onclick=()=>{homeView=true;renderMessages();closeDrawer()}" in html
+    assert "greeting.textContent='Qué gusto verte, Simon.'" in html
+    assert ".messages.landing .empty{position:absolute" in html
+    assert ".composer-wrap.landing{top:calc(50% + 40px)" in html
+    assert ".rail{background:#000;border-color:#fff}" in html
+    assert ".composer{background:#fff;border-color:#fff}" in html
+    assert ".composer input,.composer-icon{color:#000}" in html
+    assert ".user .bubble{background:#fff;color:#000}" in html
+    assert "textInput.disabled=!available&&backendMode!=='public_shell'" in html

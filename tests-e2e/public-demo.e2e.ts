@@ -106,3 +106,30 @@ if (mockDemo) {
     await expect(browser.locator('#messages .provider-pill')).toHaveCount(0);
   });
 }
+
+if (mockDemo) {
+  test('reload shows O home and opening history preserves previous messages', async ({ app, browser, screen }) => {
+    await app.clearState();
+    await browser.route('**/healthz*', route => route.fulfill({json:{
+      process_alive:true,api_mode:'public_shell',provider_ready:false,
+      demo_provider_ready:true,demo_inference_enabled:true,bridge_enabled:false,
+      demo_provider:'workers-ai-demo',demo_model:'@cf/zai-org/glm-4.7-flash'
+    }}));
+    await browser.route('**/api/demo-chat*', route => route.fulfill({json:{
+      answer:'HISTORY_RETAINED',provider:'workers-ai-demo',model:'@cf/zai-org/glm-4.7-flash',canonical:false
+    }}));
+    await app.open('/');
+    await screen.getByRole('textbox',{name:'Mensaje'}).fill('Mi primer mensaje');
+    await screen.getByRole('button',{name:'Enviar'}).tap();
+    await expect(browser.locator('#messages .msg.assistant .bubble')).toContainText('HISTORY_RETAINED');
+    await app.open('/');
+    await expect(browser.locator('.landing-mark')).toHaveCount(1);
+    await expect(browser.locator('.landing-greeting')).toContainText('Qué gusto verte, Simon.');
+    await expect(browser.locator('.app.is-landing')).toHaveCount(1);
+    await browser.locator('.rail-btn[data-side="chats"]').tap();
+    await browser.locator('.chat-row').first().tap();
+    await expect(browser.locator('#messages .msg.assistant .bubble')).toContainText('HISTORY_RETAINED');
+    await screen.getByRole('button',{name:'Volver al inicio'}).tap();
+    await expect(browser.locator('.landing-mark')).toHaveCount(1);
+  });
+}
