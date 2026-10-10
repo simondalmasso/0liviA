@@ -3,5 +3,3 @@ Allow: /
 Disallow: /api/
 Disallow: /healthz
 Disallow: /auth/
-
-Sitemap: https://0livia.simondalmasso44.workers.dev/sitemap.xml
