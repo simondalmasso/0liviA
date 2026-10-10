@@ -159,3 +159,13 @@
 - InternAI: 7-day runtime is a **per-session** cap, not a quota refill. Restart on existing stopped machine is supported manually, preserving only `/data` and consuming available points. Do not automate repeated sessions until an official authorized management API is confirmed and a non-billable quota guard is in place.
 - Pocket coder candidates Qwen2.5-Coder-0.5B, Qwen3.5-0.8B, Liquid LFM2.5-1.2B are **benchmarks only**; do not present a 398MB GGUF as a hosted model or presume fit in 1GB without actual peak RSS.
 - Source references and acceptance: `docs/POCKET_CODER_AND_AGENT_GATES_2026-10-09.md`.
+
+
+## ADR-0017 — Gemma demo admission is independent
+- Date: 2026-10-09
+- Status: **accepted / live-canary gated**
+- Decision: the public demo may list Gemma 4 26B A4B as a candidate, but it must remain unavailable unless both its model-specific zero-cost admission and an independent live canary have been verified.
+- Guard: GLM readiness, Qwen readiness, generic Workers AI availability, or the global demo flag cannot imply Gemma readiness.
+- Runtime: requests selecting Gemma fail with HTTP 503 before the daily CostGuard is consumed unless both `OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED=1` and `OLIVIA_DEMO_GEMMA_LIVE_VERIFIED=1` are present.
+- Operations: this repository change does not execute the canary or mutate Cloudflare. Operators may set `LIVE_VERIFIED` only after a deliberate account/model smoke.
+- Rollback: remove the candidate without affecting canonical Core or other demo models.
