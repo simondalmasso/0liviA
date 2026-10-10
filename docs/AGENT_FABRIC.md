@@ -118,3 +118,33 @@ ACP/MCP/AG-UI interfaces and a user-visible cost ledger. The public home is
 still static/no-inference; do not claim a working multi-agent system until the
 real adapter chain, provider billing and privileged OCI Core access pass their
 acceptance gates.
+
+
+## PR-C2a: sealed read-only GitHub status worker adapter
+
+The existing `GitHubActionsCodingWorker.status(job_id)` and
+`GitHubActionsBrowserWorker.status(job_id)` are usable through an opt-in
+`GitHubStatusAdapter` using the PR-C1 `ToolGateway`. The adapter invokes
+**status only**; it has no dispatch or artifact/result download path.
+
+- The trusted Core control plane must create an immutable
+  `PreparedStatusQuery(request_id,job_id,worker_kind,repo,args_sha256)` for
+  one exact request, with a canonical digest binding all those fields.
+- The gateway checks an approved agent, explicit `github.read` or
+  `browser.read` capability, `get` action and valid run lease before
+  invoking the adapter. The adapter checks query digest and the pinned
+  worker repository again immediately before the read.
+- Only sanitized workflow ID/status/conclusion/head SHA enter the audit
+  digest. `None` (not observed) and a nonterminal run are marked
+  `accepted`, never `completed`. Malformed status and network failures
+  become `uncertain`, and the action ID is never replayed.
+- The adapter is **not registered or called in the deployed Core**; all
+  tests are synthetic fakes. Status queries may consume GitHub API quota
+  when later enabled, but PR-C2a creates no GitHub jobs or Cloudflare AI
+  requests and performs no background polling.
+
+Write-capable coding dispatch, browser navigation/results, MCP/ACP,
+SentinelX operations, real sandboxes and approval UI remain **not wired**.
+They require tool-specific permission, private-repo and egress checks,
+verified sandbox proof, owner review of mutations and no-effect replay
+contracts before any production rollout.
