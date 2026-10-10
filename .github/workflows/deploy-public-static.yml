@@ -104,12 +104,26 @@ jobs:
           set -euo pipefail
           base="${PUBLIC_SHELL_URL}"
           [[ "${base}" == https://*.workers.dev ]]
-          root="$(curl -fsS --max-time 20 "${base}/?sha=${RELEASE_SHA}")"
+          # Deployment can reach different Workers POPs before all have the new SHA.
+          # Only GET probes; never a model API call. Require BOTH asset and health SHA.
+          for attempt in 1 2 3 4 5 6 7 8; do
+            root="$(curl -fsS --max-time 20 "${base}/?sha=${RELEASE_SHA}" || true)"
+            health="$(curl -fsS --max-time 20 "${base}/healthz?sha=${RELEASE_SHA}" || true)"
+            observed="$(HEALTH_JSON="${health}" python3 -c 'import json,os; print(json.loads(os.environ["HEALTH_JSON"]).get("release_sha",""))' 2>/dev/null || true)"
+            if [[ "${observed}" == "${RELEASE_SHA}" ]] && grep -Fq 'let homeView=true;' <<<"${root}"; then
+              break
+            fi
+            if [[ "${attempt}" == 8 ]]; then
+              echo "Static smoke failed to observe new release after bounded retries"
+              exit 1
+            fi
+            sleep 3
+          done
           grep -Fq 'id="entryIntro"' <<<"${root}"
           grep -Fq 'id="text"' <<<"${root}"
           grep -Fq 'id="demoModelSelect"' <<<"${root}"
+          grep -Fq '.composer{background:#fff;border-color:#fff}' <<<"${root}"
           ! grep -Fq 'Probar 0liviA ahora' <<<"${root}"
-          health="$(curl -fsS --max-time 20 "${base}/healthz?sha=${RELEASE_SHA}")"
           HEALTH_JSON="${health}" python3 - <<'PY'
           import json, os
           body = json.loads(os.environ["HEALTH_JSON"])

@@ -180,3 +180,15 @@ def test_static_deploy_captures_actual_workers_dev_url_without_double_escape():
     workflow = Path(".github/workflows/deploy-public-static.yml").read_text(encoding="utf-8")
     assert r"https://[^[:space:]]+\.workers\.dev" in workflow
     assert r"https://[^[:space:]]+\\.workers\\.dev" not in workflow
+
+
+def test_static_deploy_retries_eventual_consistency_but_never_removes_sha_proof():
+    flow = Path(".github/workflows/deploy-public-static.yml").read_text(encoding="utf-8")
+    assert "for attempt in 1 2 3 4 5 6 7 8;" in flow
+    assert "sleep 3" in flow
+    assert '[[ "${observed}" == "${RELEASE_SHA}" ]]' in flow
+    assert "grep -Fq 'let homeView=true;'" in flow
+    assert "grep -Fq '.composer{background:#fff;border-color:#fff}'" in flow
+    assert 'body.get("release_sha") == os.environ["RELEASE_SHA"]' in flow
+    assert 'body.get("demo_inference_enabled") is False' in flow
+    assert "/api/demo-chat" not in flow
