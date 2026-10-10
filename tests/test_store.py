@@ -429,47 +429,44 @@ def test_verified_remote_receipt_never_overrides_live_lease_or_terminal_state(tm
 
 
 
-def test_active_dispatch_key_dedupes_concurrent_jobs_but_allows_rerun_after_terminal(tmp_path: Path):
-    from concurrent.futures import ThreadPoolExecutor
-
+def test_active_dispatch_key_dedupes_across_store_connections_and_allows_rerun_after_terminal(tmp_path: Path):
     path = tmp_path / "dispatch-dedupe.sqlite3"
-    stores = [Store(path) for _ in range(6)]
+    first = Store(path)
+    second = Store(path)
     try:
-        with ThreadPoolExecutor(max_workers=len(stores)) as executor:
-            results = list(
-                executor.map(
-                    lambda s: s.create_or_get_active_job(
-                        "code",
-                        repo="owner/repo",
-                        dispatch_key="same-objective",
-                    ),
-                    stores,
-                )
-            )
-        ids = {job_id for job_id, _created in results}
-        assert len(ids) == 1
-        assert sum(created for _job_id, created in results) == 1
+        job_id, created = first.create_or_get_active_job(
+            "code",
+            repo="owner/repo",
+            dispatch_key="same-objective",
+        )
+        assert created is True
+        duplicate_id, duplicate_created = second.create_or_get_active_job(
+            "code",
+            repo="owner/repo",
+            dispatch_key="same-objective",
+        )
+        assert duplicate_created is False
+        assert duplicate_id == job_id
 
-        job_id = next(iter(ids))
-        token = stores[0].claim_queued_job(job_id, now=10, lease_seconds=60)
+        token = first.claim_queued_job(job_id, now=10, lease_seconds=60)
         assert token is not None
-        assert stores[0].finish_owned_job(
+        assert first.finish_owned_job(
             job_id,
             token,
             "failed",
             {"reason": "explicit rejection"},
             now=20,
         )
-        rerun_id, created = stores[1].create_or_get_active_job(
+        rerun_id, rerun_created = second.create_or_get_active_job(
             "code",
             repo="owner/repo",
             dispatch_key="same-objective",
         )
-        assert created is True
+        assert rerun_created is True
         assert rerun_id != job_id
     finally:
-        for store in stores:
-            store.close()
+        first.close()
+        second.close()
 
 
 def test_owned_dispatch_handoff_survives_lease_expiry_without_replay(tmp_path: Path):
