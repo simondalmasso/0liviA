@@ -101,20 +101,26 @@ class GitHubActionsCodingWorker:
             },
         }
         timeout = aiohttp.ClientTimeout(total=20)
-        async with self._session_factory(timeout=timeout) as session:
-            try:
+        # The POST and the session teardown are both part of the dispatch boundary.
+        try:
+            async with self._session_factory(timeout=timeout) as session:
                 async with session.post(url, json=payload, headers=self._headers()) as response:
+                    # A 5xx cannot prove that the remote side effect was rejected.
+                    if response.status >= 500:
+                        raise CodingDispatchUncertainError(
+                            f"github dispatch HTTP {response.status}: outcome uncertain"
+                        )
                     if response.status != 204:
                         detail = (await response.text())[:500]
                         raise CodingWorkerError(
                             f"github dispatch HTTP {response.status}: {detail}"
                         )
-            except asyncio.CancelledError:
-                raise
-            except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
-                raise CodingDispatchUncertainError(
-                    "github dispatch transport outcome uncertain"
-                ) from exc
+        except asyncio.CancelledError:
+            raise
+        except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
+            raise CodingDispatchUncertainError(
+                "github dispatch transport outcome uncertain"
+            ) from exc
         return {
             "repo": self.repo,
             "workflow": self.workflow,
