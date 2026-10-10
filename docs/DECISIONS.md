@@ -98,3 +98,15 @@
 - Security: no API key, refresh token or OAuth access token appears in the browser, chat, Library, Memory or Git.
 - Reason: uses a documented OpenAI path, preserves provider replaceability, avoids reverse-engineered consumer APIs, and removes an unnecessary full-framework dependency.
 - Rollback: delete the catalog entry/provider adapter without changing sessions, memory, UI or other routes.
+
+
+## ADR-0011 — Pocket models never silently replace the quality floor
+- Date: 2026-10-09
+- Status: **accepted**
+- Decision: sub-1B/local pocket models may exist only as explicitly degraded helpers for bounded tasks. They are not eligible silent replacements for 0liviA's primary chat, architecture, coding or review routes.
+- Current candidate: Qwen2.5-Coder-0.5B-Instruct GGUF for tiny code-oriented chores; Qwen3.5-0.8B is a generalist challenger.
+- Allowed examples: diff summarization, error classification, tiny syntax completion, test suggestions.
+- Forbidden examples: autonomous multi-file implementation, security review, architectural decisions, final code review, or transparent fallback from a frontier route.
+- UX rule: degraded pocket mode must be visible to the owner. If the requested task exceeds the pocket capability contract, fail/defer rather than pretend equivalent quality.
+- Cost rule: local execution is eligible only after host resource limits are measured; model-file size is not treated as total RAM demand.
+- Rollback: remove the pocket catalog entry without changing sessions, jobs, UI or provider contracts.
