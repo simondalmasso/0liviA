@@ -105,7 +105,7 @@ def test_qwen_edge_retries_only_before_inference():
     assert '"${status}" == "503" && "${canary_error}" == "qwen_unavailable"' in raw
     assert "for attempt in $(seq 1 18)" in raw
     assert "WAIT_QWEN_ROUTE_PROPAGATION" in raw
-    assert raw.count('env.AI.run(') == 1  # only mentioned in comment
+    assert "Any other status immediately fails; at most one AI.run occurs." in raw
     assert raw.count('--data \'{"model":"qwen"') == 1
     assert 'if [[ "${status}" != "200" ]]; then' in raw
     assert "QWEN_ROLLED_BACK=YES" in raw
