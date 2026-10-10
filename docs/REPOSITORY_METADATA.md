@@ -1,26 +1,24 @@
-# Public repository metadata and SEO status
+# Repository metadata and discoverability
 
-Canonical source: https://github.com/simondalmasso/0liviA
-Public static shell: https://0livia.simondalmasso44.workers.dev/
+## GitHub About (requires repository administration)
 
-## Suggested GitHub About fields (repository admin required)
+Suggested description (<=160 characters):
 
-Description (<=160 characters):
 `Personal AI workspace with a Python/SQLite Core, lightweight web UI, agents, memory, replaceable LLMs and a strict zero-cost-first policy.`
 
-Website:
-`https://0livia.simondalmasso44.workers.dev/`
-
-GitHub topics:
+Suggested topics:
 `personal-ai`, `agentic-ai`, `python`, `sqlite`, `llm`, `self-hosted`, `cloudflare-workers`, `ai-agents`, `model-routing`, `voice-ai`
 
-Do **not** add `open-source` as a topic until the owner has selected a license.
+The website field is configured in GitHub About; use the verified canonical deployment origin. Do not hardcode an owner's private runtime host into reusable source files. The GitHub Admin description/topics are **not changed** by merging a content PR.
 
-## Publishing status
+Do **not** add an `open-source` topic until the owner has chosen and published a license after copyright and dependency review. A public repository is not automatically licensed for reuse.
 
-- This change adds a canonical URL, Open Graph/Twitter metadata and minimal robots/sitemap static assets for the public homepage.
-- The current Cloudflare deployment is a static shell with inference disabled; no model availability or private Core availability is advertised.
-- These files do **not** create a Firebase domain, redirect, backend or deploy.
-- A repository description or GitHub topic cannot be changed through Git content alone. A repository administrator must edit **About** or use GitHub's authenticated repository-metadata API.
-- Robots and sitemap become live only after a separate owner-approved deployment from an exact SHA.
-- The project remains unlicensed in GitHub until the copyright and dependency review resolves a `LICENSE` file.
+## Public-shell SEO scope
+
+- Existing product title and description are preserved because they are part of the browser UI/test contract.
+- The static entry page adds crawler/locale/brand metadata and a portable root-relative canonical link.
+- `robots.txt` allows the public homepage and excludes private API paths.
+- No static `sitemap.xml` is committed: sitemap URLs must be absolute and deployment-specific, so generate one separately only after the canonical domain is owned and verified.
+- No personal deployment host, credentials or private Core endpoint is embedded in HTML/docs.
+- The actual production Worker currently runs **static-only, no inference**; the Python Core is a separate service and is not certified deployed.
+- These files do not create Firebase DNS, redirects, accounts or deployments. Publish via a separate exact-SHA release after security review.
