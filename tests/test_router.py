@@ -481,3 +481,20 @@ def test_forbidden_nemotron_model_in_custom_pool_spec_never_admitted(tmp_path, s
     provider.spec = type("ProviderStub", (), {"model": "@cf/NVIDIA/NEMOTRON-3"})()
     with pytest.raises(ProviderConfigError, match="forbidden model"):
         ProviderPool([provider], Store(tmp_path / "veto-spec.sqlite3"), settings)
+
+
+@pytest.mark.asyncio
+async def test_router_caps_model_attempts_at_two_even_for_legacy_higher_settings(tmp_path):
+    settings = Settings(data_dir=tmp_path, ttft_timeout_s=1, max_provider_attempts=16)
+    pool = ProviderPool(
+        [FakeProvider("first", [], priority=1, fail_before=True),
+         FakeProvider("second", [], priority=2, fail_before=True),
+         FakeProvider("third", ["must-never-run"], priority=3)],
+        Store(tmp_path / "attempt-cap.sqlite3"),
+        settings,
+    )
+    with pytest.raises(AllProvidersFailed):
+        _ = [event async for event in pool.stream([{"role": "user", "content": "x"}])]
+    attempts = [item["provider"] for item in pool.telemetry if item.get("kind") == "attempt"]
+    assert attempts == ["first", "second"]
+    assert any(item.get("kind") == "attempts.capped" for item in pool.telemetry)

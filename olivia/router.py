@@ -784,7 +784,7 @@ class ProviderPool:
         errors: list[str] = []
         attempted: set[str] = set()
         attempts = 0
-        max_attempts = max(1, int(self.settings.max_provider_attempts))
+        max_attempts = max(1, min(2, int(self.settings.max_provider_attempts)))
         self._turns += 1
         self.emit(
             "turn.start",

@@ -45,7 +45,7 @@ class Settings:
     circuit_half_open_probes: int = 1      # probes allowed while HALF_OPEN
     circuit_jitter_ratio: float = 0.2      # +/- ratio applied to exponential backoff
     probe_lease_s: float = 90.0            # abandoned probes stop wedging HALF_OPEN
-    max_provider_attempts: int = 3         # per-turn failover ceiling
+    max_provider_attempts: int = 2         # one primary + at most one eligible fallback
     cooldown_rate_limit_s: int = 60        # floor for 429 cooldowns (Retry-After wins)
     stream_idle_timeout_s: float = 0.0     # 0 disables inter-token watchdog
     visible_prefix_max_chars: int = 256    # whitespace-only prefix budget
@@ -77,7 +77,7 @@ class Settings:
             circuit_half_open_probes=_env_int("OLIVIA_CIRCUIT_HALF_OPEN_PROBES", 1, 1, 8),
             circuit_jitter_ratio=_env_float("OLIVIA_CIRCUIT_JITTER", 0.2, 0.0, 1.0),
             probe_lease_s=_env_float("OLIVIA_PROBE_LEASE_S", 90.0, 1.0, 3600.0),
-            max_provider_attempts=_env_int("OLIVIA_MAX_PROVIDER_ATTEMPTS", 3, 1, 16),
+            max_provider_attempts=_env_int("OLIVIA_MAX_PROVIDER_ATTEMPTS", 2, 1, 2),
             cooldown_rate_limit_s=_env_int("OLIVIA_COOLDOWN_RATE_LIMIT_S", 60, 1, 86400),
             stream_idle_timeout_s=_env_float("OLIVIA_STREAM_IDLE_TIMEOUT_S", 0.0, 0.0, 600.0),
             visible_prefix_max_chars=_env_int("OLIVIA_VISIBLE_PREFIX_MAX", 256, 1, 65536),
