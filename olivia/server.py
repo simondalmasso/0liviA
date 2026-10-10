@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 from .agent import Agent
+from .agent_outcome import classify_external_run_status
 from .config import Settings
 from .browser_worker import (
     BrowserJobRequest,
@@ -865,10 +866,9 @@ class Gateway:
         except BrowserWorkerError:
             remote = None
         if remote:
-            status = str(remote.get("remote_status") or job["status"])
-            conclusion = remote.get("remote_conclusion")
-            if status == "completed":
-                status = "succeeded" if conclusion == "success" else "failed"
+            status = classify_external_run_status(remote)
+            if status == "unknown":
+                return job
             checkpoint = {**job.get("checkpoint", {}), **remote}
             if (
                 status == "succeeded"
@@ -908,10 +908,9 @@ class Gateway:
         except CodingWorkerError:
             remote = None
         if remote:
-            status = str(remote.get("remote_status") or job["status"])
-            conclusion = remote.get("remote_conclusion")
-            if status == "completed":
-                status = "succeeded" if conclusion == "success" else "failed"
+            status = classify_external_run_status(remote)
+            if status == "unknown":
+                return job
             checkpoint = {**job.get("checkpoint", {}), **remote}
             if (
                 status == "succeeded"
