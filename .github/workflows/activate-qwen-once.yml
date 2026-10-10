@@ -38,7 +38,7 @@ jobs:
           from pathlib import Path
           event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
           message = (event.get("head_commit") or {}).get("message", "")
-          if not message.startswith("feat(qwen): diagnostic Free activation (#"):
+          if not message.startswith("feat(qwen): edge-safe Free activation (#"):
               raise SystemExit("BLOCKED: this is not the approved one-shot release")
           PY
           test "${OLIVIA_DEMO_ZERO_COST_CONFIRMED:-}" = "1"
@@ -169,19 +169,35 @@ jobs:
         run: |
           set -euo pipefail
           cb="${RELEASE_SHA}"
-          status="$(curl -sS --max-time 60 -o /tmp/qwen-canary.json -w '%{http_code}' -X POST "${PUBLIC_SHELL_URL}/api/demo-chat?cb=${cb}"             -H "Origin: ${PUBLIC_SHELL_URL}" -H "Content-Type: application/json"             --data '{"model":"qwen","messages":[{"role":"user","content":"Respondé brevemente: OK."}]}')"
-          if [[ "${status}" != "200" ]]; then
-            echo "QWEN_CANARY_HTTP_STATUS=${status}"
-            # Only emit a fixed-schema error token, never arbitrary provider
-            # error bodies, authorization headers or user prompt content.
-            CANARY_BODY="$(cat /tmp/qwen-canary.json)" python3 - <<'PY'
+          # A POST can reach a stale edge where Qwen is still disabled even
+          # after /healthz resolved at a different POP. Retry ONLY pre-inference
+          # qwen_unavailable: this path returns before COST_GUARD and AI.run.
+          # Any other status immediately fails; at most one AI.run occurs.
+          status=""
+          canary_error=""
+          for attempt in $(seq 1 18); do
+            status="$(curl -sS --max-time 60 -o /tmp/qwen-canary.json -w '%{http_code}' -X POST "${PUBLIC_SHELL_URL}/api/demo-chat?cb=${cb}-post-${attempt}" \
+              -H "Origin: ${PUBLIC_SHELL_URL}" -H "Content-Type: application/json" \
+              --data '{"model":"qwen","messages":[{"role":"user","content":"Respondé brevemente: OK."}]}')"
+            canary_error="$(CANARY_BODY="$(cat /tmp/qwen-canary.json)" python3 - <<'PY'
           import json, os, re
           try:
               error = json.loads(os.environ["CANARY_BODY"]).get("error", "")
           except (ValueError, AttributeError, TypeError):
               error = ""
-          print("QWEN_CANARY_ERROR=" + (error if re.fullmatch(r"[a-z_]{1,64}", str(error)) else "unclassified"))
+          print(error if re.fullmatch(r"[a-z_]{1,64}", str(error)) else "unclassified")
           PY
+          )"
+            if [[ "${status}" == "503" && "${canary_error}" == "qwen_unavailable" ]]; then
+              echo "WAIT_QWEN_ROUTE_PROPAGATION=${attempt}"
+              sleep 5
+              continue
+            fi
+            break
+          done
+          if [[ "${status}" != "200" ]]; then
+            echo "QWEN_CANARY_HTTP_STATUS=${status}"
+            echo "QWEN_CANARY_ERROR=${canary_error}"
             exit 1
           fi
           DEMO_JSON="$(cat /tmp/qwen-canary.json)" python3 - <<'PY'
