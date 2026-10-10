@@ -74,7 +74,10 @@ def test_closed_drawer_hidden_at_all_widths_and_model_select_is_gate_driven():
     assert "@media(min-width:721px) and (max-width:1100px)" in html
     assert 'id="demoModelSelect"' in html
     assert 'value="qwen" disabled' in html
+    assert 'value="gemma" disabled' in html
     assert "coreHealth?.demo_qwen_ready===true" in html
+    assert "coreHealth?.demo_gemma_ready===true" in html
+    assert "PUBLIC_DEMO_GEMMA_MODEL='Gemma 4 26B A4B'" in html
     assert "model:demoModelSelect.value" in html
     assert "function providerPresentation(name,model)" in html
     assert "{command:'/intel',label:" in html
