@@ -1,193 +1,166 @@
-"""Atomic SQLite upper-bound reservations for nested Agent Fabric budgets.
+"""Strict, account-scoped model admission for the future Agent Fabric.
 
-Reservations are pessimistic: a failed or uncertain request does not release
-tokens or daily call capacity. This is a local limit, NOT proof of provider
-billing eligibility. ModelRegistry admission must precede every reservation.
+Entitlements are owner-reviewed *evidence*, not promises inferred from a
+model catalog or a provider's daily request limit. The caller must load
+attestations from a trusted server-side source, never model-generated text.
 """
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
+from ipaddress import ip_address
+from typing import Iterable
+from urllib.parse import urlsplit
 
-from .model_registry import ModelAdmission
+from olivia.router import ProviderSpec, _forbidden_model_route
 
-
-class BudgetDenied(RuntimeError):
-    pass
+_CAPABILITIES = frozenset({"chat", "code", "review", "research", "vision"})
+_ALLOWED_COST = frozenset({"local", "free_hard_cap"})
 
 
 @dataclass(frozen=True)
-class BudgetReceipt:
-    request_id: str
-    scope_id: str
+class ModelAttestation:
     provider: str
     model: str
-    reserved_tokens: int
-    state: str = "reserved"
+    account_id: str
+    cost_mode: str
+    evidence_ref: str
+    reviewed_at: date
+    expires_at: date
+    production_permitted: bool
+    no_credit_overage_verified: bool
+    capabilities: frozenset[str]
+    max_input_tokens: int
+    max_output_tokens: int
+    daily_request_cap: int
+
+    def __post_init__(self) -> None:
+        if not self.provider or not self.model or not self.account_id or not self.evidence_ref:
+            raise ValueError("attestation missing identity or evidence")
+        if _forbidden_model_route(self.provider, self.model):
+            raise ValueError("forbidden model")
+        if self.cost_mode not in _ALLOWED_COST:
+            raise ValueError("unsupported cost mode")
+        if self.reviewed_at > self.expires_at:
+            raise ValueError("invalid attestation review window")
+        if not self.capabilities or not self.capabilities.issubset(_CAPABILITIES):
+            raise ValueError("unknown capability")
+        for field in ("max_input_tokens", "max_output_tokens", "daily_request_cap"):
+            value = getattr(self, field)
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"invalid {field}")
 
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS fabric_scopes(
-  scope_id TEXT PRIMARY KEY,
-  parent_scope_id TEXT REFERENCES fabric_scopes(scope_id),
-  max_tokens INTEGER NOT NULL CHECK(max_tokens>0),
-  max_calls INTEGER NOT NULL CHECK(max_calls>0),
-  reserved_tokens INTEGER NOT NULL DEFAULT 0,
-  reserved_calls INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS fabric_reservations(
-  request_id TEXT PRIMARY KEY,
-  scope_id TEXT NOT NULL REFERENCES fabric_scopes(scope_id),
-  provider TEXT NOT NULL,
-  model TEXT NOT NULL,
-  reserved_tokens INTEGER NOT NULL,
-  state TEXT NOT NULL CHECK(state IN ('reserved','completed','uncertain')),
-  created_day TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS fabric_daily_limits(
-  day TEXT NOT NULL,
-  account_id TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  model TEXT NOT NULL,
-  calls INTEGER NOT NULL,
-  PRIMARY KEY(day,account_id,provider,model)
-);
-"""
+@dataclass(frozen=True)
+class ParentBudget:
+    max_input_tokens: int
+    max_output_tokens: int
+    max_total_tokens: int
 
 
-class BudgetGuard:
-    def __init__(self, db_path: Path, *, today: date | None = None) -> None:
-        self.db_path = Path(db_path)
-        self._today = today
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
+@dataclass(frozen=True)
+class ModelAdmission:
+    allowed: bool
+    reason: str
+    provider: str = ""
+    model: str = ""
+    account_id: str = ""
+    capability: str = ""
+    reserved_input_tokens: int = 0
+    reserved_output_tokens: int = 0
+    daily_request_cap: int = 0
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=10, isolation_level=None)
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA busy_timeout=10000")
-        return conn
 
-    def create_scope(
-        self, scope_id: str, max_tokens: int, max_calls: int,
-        parent_scope_id: str | None = None,
+def _local_loopback(spec: ProviderSpec) -> bool:
+    parts = urlsplit(spec.base_url)
+    if parts.scheme not in {"http", "https"} or parts.username or parts.password:
+        return False
+    hostname = parts.hostname
+    if not hostname:
+        return False
+    if hostname.lower() == "localhost":
+        return True
+    try:
+        return ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+class ModelRegistry:
+    def __init__(
+        self,
+        providers: Iterable[ProviderSpec],
+        attestations: Iterable[ModelAttestation] = (),
+        *,
+        today: date | None = None,
     ) -> None:
-        if not scope_id or scope_id == parent_scope_id:
-            raise BudgetDenied("invalid_scope")
-        if any(type(v) is not int or v <= 0 for v in (max_tokens, max_calls)):
-            raise BudgetDenied("invalid_scope_limits")
-        with self._connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            prior = conn.execute(
-                "SELECT parent_scope_id,max_tokens,max_calls FROM fabric_scopes WHERE scope_id=?",
-                (scope_id,)
-            ).fetchone()
-            if prior is not None:
-                if prior != (parent_scope_id, max_tokens, max_calls):
-                    raise BudgetDenied("cannot_change_existing_scope")
-                conn.commit()
-                return
-            if parent_scope_id is not None:
-                parent = conn.execute(
-                    "SELECT max_tokens,max_calls FROM fabric_scopes WHERE scope_id=?",
-                    (parent_scope_id,)
-                ).fetchone()
-                if parent is None:
-                    raise BudgetDenied("parent_scope_not_found")
-                if max_tokens > parent[0] or max_calls > parent[1]:
-                    raise BudgetDenied("child_scope_exceeds_parent")
-            conn.execute(
-                "INSERT INTO fabric_scopes(scope_id,parent_scope_id,max_tokens,max_calls) VALUES(?,?,?,?)",
-                (scope_id, parent_scope_id, max_tokens, max_calls)
-            )
-            conn.commit()
+        self._today = today
+        self._providers: dict[str, ProviderSpec] = {}
+        self._evidence: dict[tuple[str, str], ModelAttestation] = {}
+        for spec in providers:
+            if spec.name in self._providers:
+                raise ValueError("duplicate provider identity")
+            if _forbidden_model_route(spec.name, spec.model):
+                raise ValueError("forbidden model")
+            self._providers[spec.name] = spec
+        for item in attestations:
+            key = (item.provider, item.model)
+            if key in self._evidence:
+                raise ValueError("duplicate model attestation")
+            self._evidence[key] = item
 
-    def reserve(self, admission: ModelAdmission, *, request_id: str, scope_id: str) -> BudgetReceipt:
-        if not admission.allowed or admission.reason != "permitted":
-            raise BudgetDenied("model_not_admitted")
-        if not request_id or not scope_id:
-            raise BudgetDenied("missing_reservation_identity")
-        tokens = admission.reserved_input_tokens + admission.reserved_output_tokens
-        if (not admission.account_id or not admission.provider or not admission.model
-                or any(type(x) is not int or x <= 0 for x in (
-                    admission.reserved_input_tokens,
-                    admission.reserved_output_tokens,
-                    admission.daily_request_cap,
-                ))):
-            raise BudgetDenied("invalid_model_reservation")
-        with self._connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            if conn.execute("SELECT 1 FROM fabric_reservations WHERE request_id=?", (request_id,)).fetchone():
-                raise BudgetDenied("duplicate_or_uncertain_request")
-            chain: list[tuple[str, int, int, int, int]] = []
-            seen: set[str] = set()
-            current: str | None = scope_id
-            while current is not None:
-                if current in seen or len(chain) >= 16:
-                    raise BudgetDenied("invalid_scope_hierarchy")
-                seen.add(current)
-                row = conn.execute(
-                    "SELECT scope_id,parent_scope_id,max_tokens,max_calls,reserved_tokens,reserved_calls "
-                    "FROM fabric_scopes WHERE scope_id=?", (current,)
-                ).fetchone()
-                if row is None:
-                    raise BudgetDenied("unknown_scope")
-                _, parent, max_tokens, max_calls, reserved_tokens, reserved_calls = row
-                if reserved_tokens + tokens > max_tokens or reserved_calls + 1 > max_calls:
-                    raise BudgetDenied("scope_budget_exhausted")
-                chain.append((current, max_tokens, max_calls, reserved_tokens, reserved_calls))
-                current = parent
-            today = (self._today or date.today()).isoformat()
-            key = (today, admission.account_id, admission.provider, admission.model)
-            daily = conn.execute(
-                "SELECT calls FROM fabric_daily_limits "
-                "WHERE day=? AND account_id=? AND provider=? AND model=?", key
-            ).fetchone()
-            if daily is not None and daily[0] >= admission.daily_request_cap:
-                raise BudgetDenied("daily_request_budget_exhausted")
-            for item in chain:
-                conn.execute(
-                    "UPDATE fabric_scopes SET reserved_tokens=reserved_tokens+?, "
-                    "reserved_calls=reserved_calls+1 WHERE scope_id=?",
-                    (tokens, item[0])
-                )
-            conn.execute(
-                "INSERT INTO fabric_daily_limits(day,account_id,provider,model,calls) "
-                "VALUES(?,?,?,?,1) ON CONFLICT(day,account_id,provider,model) "
-                "DO UPDATE SET calls=calls+1", key
-            )
-            conn.execute(
-                "INSERT INTO fabric_reservations(request_id,scope_id,provider,model,reserved_tokens,state,created_day) "
-                "VALUES(?,?,?,?,?,'reserved',?)",
-                (request_id, scope_id, admission.provider, admission.model, tokens, today)
-            )
-            conn.commit()
-        return BudgetReceipt(request_id, scope_id, admission.provider, admission.model, tokens)
+    def admit(
+        self,
+        provider: str,
+        capability: str,
+        max_input: int,
+        max_output: int,
+        parent_budget: ParentBudget | None = None,
+    ) -> ModelAdmission:
+        def deny(reason: str) -> ModelAdmission:
+            return ModelAdmission(False, reason)
 
-    def settle(self, request_id: str, *, uncertain: bool = False) -> None:
-        """No refunds, including on transport failure or unknown outcomes."""
-        with self._connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute("SELECT state FROM fabric_reservations WHERE request_id=?", (request_id,)).fetchone()
-            if row is None:
-                raise BudgetDenied("unknown_reservation")
-            if row[0] != "reserved":
-                raise BudgetDenied("reservation_already_settled")
-            conn.execute(
-                "UPDATE fabric_reservations SET state=? WHERE request_id=?",
-                ("uncertain" if uncertain else "completed", request_id)
-            )
-            conn.commit()
-
-    def inspect_scope(self, scope_id: str) -> dict[str, int]:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT max_tokens,max_calls,reserved_tokens,reserved_calls "
-                "FROM fabric_scopes WHERE scope_id=?", (scope_id,)
-            ).fetchone()
-        if row is None:
-            raise BudgetDenied("unknown_scope")
-        return dict(zip(("max_tokens", "max_calls", "reserved_tokens", "reserved_calls"), row))
+        spec = self._providers.get(provider)
+        if spec is None:
+            return deny("unknown_provider")
+        if _forbidden_model_route(spec.name, spec.model):
+            return deny("forbidden_model")
+        if capability not in _CAPABILITIES or capability not in spec.capabilities:
+            return deny("capability_not_allowed")
+        if type(max_input) is not int or type(max_output) is not int:
+            return deny("invalid_token_budget")
+        if max_input <= 0 or max_output <= 0:
+            return deny("invalid_token_budget")
+        record = self._evidence.get((spec.name, spec.model))
+        if record is None:
+            return deny("account_model_not_attested")
+        if record.cost_mode != spec.cost_mode or record.capabilities.isdisjoint({capability}):
+            return deny("attestation_mismatch")
+        if not record.production_permitted or not record.no_credit_overage_verified:
+            return deny("production_or_no_overage_unverified")
+        if record.reviewed_at > (self._today or date.today()) or record.expires_at < (self._today or date.today()):
+            return deny("attestation_expired_or_future")
+        if spec.cost_mode not in _ALLOWED_COST:
+            return deny("cost_mode_unverified")
+        if spec.cost_mode == "local":
+            if not _local_loopback(spec):
+                return deny("local_model_not_loopback")
+        elif not spec.base_url.startswith("https://") or not spec.daily_limit:
+            return deny("remote_endpoint_or_quota_unverified")
+        if max_input > record.max_input_tokens or max_output > record.max_output_tokens:
+            return deny("model_token_limit_exceeded")
+        if parent_budget is not None:
+            limits = (parent_budget.max_input_tokens, parent_budget.max_output_tokens,
+                      parent_budget.max_total_tokens)
+            if any(type(x) is not int or x <= 0 for x in limits):
+                return deny("invalid_parent_budget")
+            if (max_input > limits[0] or max_output > limits[1]
+                    or max_input + max_output > limits[2]):
+                return deny("parent_budget_exceeded")
+        daily_limit = record.daily_request_cap
+        if spec.daily_limit:
+            daily_limit = min(spec.daily_limit, daily_limit)
+        return ModelAdmission(
+            True, "permitted", spec.name, spec.model, record.account_id, capability,
+            max_input, max_output, daily_limit
+        )
