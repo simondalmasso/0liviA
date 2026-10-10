@@ -315,3 +315,26 @@ def test_shared_pool_utc_day_rollover(tmp_path):
     assert allowed.allowed
     BudgetGuard(file, today=tomorrow).reserve(
         allowed, request_id="tomorrow", scope_id="root")
+
+
+def test_serialized_request_requires_actual_output_cap():
+    from olivia.harness.execution import _verify_prepared_request
+    payload = {"model": "model-1", "messages": [], "max_tokens": 999}
+    prepared = BoundedRequest(
+        "model-1", json.dumps(payload),
+        "chat_completions", "max_tokens", 50,
+    )
+    with pytest.raises(DeniedModelInvocation, match="output_cap_not_enforced"):
+        _verify_prepared_request(
+            prepared, exact_model="model-1", messages=[],
+            max_input_tokens=200, max_output_tokens=50,
+        )
+    valid = BoundedRequest(
+        "model-1", json.dumps({"model":"model-1","messages":[],"max_tokens":50}),
+        "chat_completions", "max_tokens", 50,
+    )
+    with pytest.raises(DeniedModelInvocation, match="serialized_input_exceeds_token_reservation"):
+        _verify_prepared_request(
+            valid, exact_model="model-1", messages=[],
+            max_input_tokens=1, max_output_tokens=50,
+        )
