@@ -281,3 +281,37 @@ def test_shared_pool_blocks_cross_model_overspend(tmp_path):
     with pytest.raises(BudgetDenied, match="shared_account_budget_exhausted"):
         BudgetGuard(tmp_path/"pool.sqlite3", today=TODAY).reserve(
             o, request_id="3", scope_id="c")
+
+
+def test_external_usage_floor_and_attestation_freshness(tmp_path):
+    confirmed = ModelRegistry([spec()], [evidence(
+        shared_daily_cap_units=40, external_usage_units=20)], today=TODAY)
+    admission = confirmed.admit("safe", "chat", 30, 30)
+    assert admission.allowed
+    guard = BudgetGuard(tmp_path / "usage.sqlite3", today=TODAY)
+    guard.create_scope("root", 1000, 5)
+    guard.reserve(admission, request_id="first", scope_id="root")
+    with pytest.raises(BudgetDenied, match="shared_account_budget_exhausted"):
+        guard.reserve(replace(admission, external_usage_units=28),
+                      request_id="second", scope_id="root")
+    assert guard.inspect_scope("root")["reserved_calls"] == 1
+    for attrs, reason in (
+        ({"pool_exclusive_verified": False}, "shared_account_or_output_cap_unverified"),
+        ({"output_limit_enforced_verified": False}, "shared_account_or_output_cap_unverified"),
+        ({"usage_day": TODAY - timedelta(days=1)}, "shared_account_usage_stale"),
+        ({"endpoint": "https://different.example/v1"}, "attestation_mismatch"),
+    ):
+        assert admitted(**attrs).reason == reason
+
+
+def test_shared_pool_utc_day_rollover(tmp_path):
+    file = tmp_path / "shared.sqlite3"
+    guard = BudgetGuard(file, today=TODAY)
+    guard.create_scope("root", 1000, 4)
+    guard.reserve(admitted(), request_id="today", scope_id="root")
+    tomorrow = TODAY + timedelta(days=1)
+    e = evidence(usage_day=tomorrow, reviewed_at=tomorrow, expires_at=tomorrow)
+    allowed = ModelRegistry([spec()], [e], today=tomorrow).admit("safe", "chat", 100, 50)
+    assert allowed.allowed
+    BudgetGuard(file, today=tomorrow).reserve(
+        allowed, request_id="tomorrow", scope_id="root")
