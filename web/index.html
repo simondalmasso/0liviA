@@ -440,6 +440,7 @@ const PUBLIC_DEMO_QWEN_MODEL='Qwen3.8 27B';
 const PUBLIC_DEMO_GEMMA_MODEL='Gemma 4 26B A4B';
 const PUBLIC_DEMO_PROVIDER='workers-ai-demo';
 let publicDemoActive=false;
+let qwenChosenOnce=false;
 const CORE_PROBE_MIN_INTERVAL_MS=5*60*1000;
 let lastCoreProbeAt=0;
 // Runtime states: canonical | public_shell | bridge. Health probing selects the active state.
@@ -565,6 +566,7 @@ function updatePublicHome(){
   demoModelSelect.options[1].textContent=qwenReady?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · inactivo';
   demoModelSelect.options[2].disabled=!gemmaReady;
   demoModelSelect.options[2].textContent=gemmaReady?PUBLIC_DEMO_GEMMA_MODEL:PUBLIC_DEMO_GEMMA_MODEL+' · inactivo';
+  if(qwenReady&&!qwenChosenOnce){demoModelSelect.value='qwen';qwenChosenOnce=true}
   if(demoModelSelect.selectedOptions[0]?.disabled)demoModelSelect.value='glm';
   publicWelcome.hidden=!(isPublic&&!publicDemoActive);
   if(isPublic){
