@@ -41,9 +41,10 @@ function health(env) {
     demo_model: demoReady ? DEMO_MODEL : null,
     demo_daily_request_limit: DEMO_DAILY_REQUEST_LIMIT,
     web_read: false,
-    hard_zero_cost: true,
+    hard_zero_cost: !demoReady,
+    demo_cost_guaranteed: false,
     cost_reason: demoReady
-      ? "canonical_inference_off_demo_hard_capped"
+      ? "request_cap_is_not_a_provider_billing_cap"
       : "no_inference_or_search_backend",
     canonical_backend: "self_hosted_python_core",
   });
@@ -108,6 +109,52 @@ function extractAnswer(result) {
   ).trim();
 }
 
+function trustedDemoOrigin(request) {
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+
+async function readDemoBody(request) {
+  const contentLength = Number(request.headers.get("content-length") || "0");
+  if (!Number.isFinite(contentLength) || contentLength < 0 || contentLength > 16_384) {
+    return { error: "body_too_large", status: 413 };
+  }
+  if (!(request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) {
+    return { error: "invalid_content_type", status: 415 };
+  }
+
+  const reader = request.body?.getReader();
+  if (!reader) return { error: "invalid_body", status: 400 };
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      totalBytes += part.value.byteLength;
+      if (totalBytes > 16_384) {
+        await reader.cancel().catch(() => {});
+        return { error: "body_too_large", status: 413 };
+      }
+      chunks.push(part.value);
+    }
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const part of chunks) {
+      bytes.set(part, offset);
+      offset += part.byteLength;
+    }
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+  } catch {
+    return { error: "invalid_body", status: 400 };
+  }
+}
+
 async function demoChat(request, env) {
   if (request.method !== "POST") {
     return json({ error: "method_not_allowed" }, { status: 405, headers: { allow: "POST" } });
@@ -122,24 +169,18 @@ async function demoChat(request, env) {
     );
   }
 
-  const contentLength = Number(request.headers.get("content-length") || "0");
-  if (contentLength > 16_384) {
-    return json({ error: "body_too_large" }, { status: 413 });
+  // Browser-safety boundary, not owner authentication: the demo remains shared and anonymous.
+  if (!trustedDemoOrigin(request)) {
+    return json({ error: "origin_forbidden" }, { status: 403 });
   }
-
-  let rawBody;
-  try {
-    rawBody = await request.text();
-  } catch {
-    return json({ error: "invalid_body" }, { status: 400 });
-  }
-  if (rawBody.length > 16_384) {
-    return json({ error: "body_too_large" }, { status: 413 });
+  const bounded = await readDemoBody(request);
+  if (bounded.error) {
+    return json({ error: bounded.error }, { status: bounded.status });
   }
 
   let body;
   try {
-    body = JSON.parse(rawBody);
+    body = JSON.parse(bounded.text);
   } catch {
     return json({ error: "invalid_json" }, { status: 400 });
   }
