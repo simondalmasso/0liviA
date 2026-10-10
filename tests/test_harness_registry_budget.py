@@ -1,6 +1,8 @@
 """Agent Fabric PR-A: no inference network calls; synthetic providers only."""
 from __future__ import annotations
 
+import json
+
 import asyncio
 import sqlite3
 from dataclasses import replace
@@ -9,7 +11,7 @@ from datetime import date, timedelta
 import pytest
 
 from olivia.harness.budget import BudgetDenied, BudgetGuard
-from olivia.harness.execution import DeniedModelInvocation, guarded_stream
+from olivia.harness.execution import BoundedRequest, DeniedModelInvocation, guarded_stream
 from olivia.harness.model_registry import (
     ModelAdmission, ModelAttestation, ModelRegistry, ParentBudget,
 )
@@ -37,6 +39,10 @@ def evidence(**changes):
         production_permitted=True, no_credit_overage_verified=True,
         capabilities=frozenset({"chat", "code"}),
         max_input_tokens=1000, max_output_tokens=256, daily_request_cap=2,
+        endpoint='https://api.safe.example/v1', billing_pool='shared-ai',
+        shared_daily_cap_units=100, external_usage_units=0, usage_day=TODAY,
+        input_units_per_million=200_000, output_units_per_million=300_000,
+        pool_exclusive_verified=True, output_limit_enforced_verified=True,
     )
     defaults.update(changes)
     return ModelAttestation(**defaults)
