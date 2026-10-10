@@ -755,14 +755,17 @@ class Store:
         if not key or len(key) > 128:
             raise ValueError("dispatch_key must be 1..128 characters")
         now = time.time()
-        active = "('queued','running','dispatched','in_progress','waiting','requested')"
         with self._lock:
             self._conn.execute("BEGIN IMMEDIATE")
             try:
                 row = self._conn.execute(
-                    f"""SELECT id FROM jobs
-                        WHERE kind=? AND dispatch_key=? AND status IN {active}
-                        ORDER BY created_at DESC LIMIT 1""",
+                    """SELECT id FROM jobs
+                       WHERE kind=? AND dispatch_key=?
+                         AND status IN (
+                           'queued','running','dispatched',
+                           'in_progress','waiting','requested'
+                         )
+                       ORDER BY created_at DESC LIMIT 1""",
                     (kind, key),
                 ).fetchone()
                 if row is not None:
