@@ -10,7 +10,8 @@ def test_cloudflare_keeps_canonical_surface_public_shell_only():
     assert "provider_ready: false" in WORKER
     assert "inference_enabled: false" in WORKER
     assert "web_read: false" in WORKER
-    assert "hard_zero_cost: true" in WORKER
+    assert "hard_zero_cost: !demoReady" in WORKER
+    assert "demo_cost_guaranteed: false" in WORKER
     assert 'canonical_backend: "self_hosted_python_core"' in WORKER
 
 
@@ -126,3 +127,9 @@ def test_release_stamp_uses_validated_immutable_source_sha():
     assert 'config["vars"]["OLIVIA_RELEASE_SHA"] = os.environ["RELEASE_SHA"]' in deploy
     assert '"release_sha": body.get("release_sha") == os.environ["RELEASE_SHA"]' in deploy
     assert "release_sha: /^[0-9a-f]{40}$/" in WORKER
+
+
+def test_demo_rejects_originless_requests_and_unbounded_streamed_bytes():
+    assert 'if (!origin || origin !== new URL(request.url).origin)' in WORKER
+    assert "totalBytes > 16_384" in WORKER
+    assert "await request.text()" not in WORKER
