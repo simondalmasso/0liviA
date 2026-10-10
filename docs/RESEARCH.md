@@ -512,3 +512,24 @@ What it does **not** establish:
 - that 0liviA should depend on OpenClaw.
 
 0liviA therefore keeps the native official ChatGPT-plan transport as the preferred plan-included path and treats OpenClaw only as external interoperability evidence.
+
+
+## External OSS screening — 2026-10-09 (README-level)
+
+### Brewery (formerly Homebrew AI)
+Source: https://github.com/empero-org/brewery-ai (former `empero-org/homebrew-ai` redirects).
+
+- Scope: guided text/image fine-tuning (LoRA/QLoRA/SFT/CPT/DPO), datasets, GPU/SSH training and Hugging Face publishing.
+- 0liviA fit: research pattern, **not** an inference/coding-core dependency. Reuse ideas for GPU-cost confirmation, checkpointed jobs, reproducible evaluation and licence checks.
+- $0 gate: **not a verified zero-cost inference endpoint**. GPU rental and storage can incur costs. Do not provision or integrate by default.
+- Licence: README describes a conditional Brewery licence with a revenue threshold. Verify actual terms before copying code.
+- Evidence: README and public file tree reviewed; no training, API usage or provider billing verification.
+
+### Dev to Publish
+Source: https://github.com/amirmushichge/dev-to-publish
+
+- Scope: optional agent skill for product demos, editorial adaptation, previews, human approval and Buffer API publishing.
+- 0liviA fit: future optional publishing workflow, not browser/model routing/coding intelligence. Useful pattern: prepare → approve → execute → receipt → reconcile ambiguous submissions.
+- $0 gate: offline dry runs need no account; real delivery depends on Buffer API eligibility, connected channels and the account's terms. No verified recurring-$0 entitlement.
+- Decision: do not install as a Core dependency or activate external publication now.
+- Evidence: README inspected; no Buffer account connection or live publishing performed.
