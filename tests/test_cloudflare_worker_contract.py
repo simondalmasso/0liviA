@@ -94,3 +94,9 @@ def test_demo_rejects_unknown_origins_and_bounds_stream_before_inference():
     assert "totalBytes > 16_384" in WORKER
     assert "readDemoBody(request)" in WORKER
     assert "await request.text()" not in WORKER
+
+
+def test_demo_identity_is_instance_neutral():
+    assert "la IA personal de Simón" not in WORKER
+    assert "demostración pública" in WORKER
+    assert "No tenés identidad de propietario" in WORKER
