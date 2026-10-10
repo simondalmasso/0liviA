@@ -281,12 +281,12 @@ button.side-card{text-align:left}
     <section id="publicWelcome" class="public-home" hidden aria-label="Inicio de 0liviA">
       <div class="public-home-inner">
         <div class="brand-symbol" aria-hidden="true"></div>
-        <h1>Tu IA personal.<br>Privada y rápida.</h1>
-        <p>Chat, proyectos, memoria, investigación, herramientas y voz en un solo lugar.</p>
+        <h1>Probá 0liviA.<br>Chat de muestra.</h1>
+        <p>La demo no accede a tus proyectos ni a tu Core privado.</p>
         <div class="public-home-actions">
           <button id="publicDemoBtn" class="public-login" type="button">Probar 0liviA ahora</button>
         </div>
-        <p id="publicStatus" class="public-status">Modo prueba IA · sin cuenta · $0</p>
+        <p id="publicStatus" class="public-status">Demo limitada · sin cuenta</p>
       </div>
     </section>
 
@@ -566,7 +566,7 @@ function updatePublicHome(){
     publicDemoBtn.disabled=!demoReady;
     publicDemoBtn.textContent=demoReady?'Probar 0liviA ahora':'IA demo no disponible';
     publicStatus.textContent=demoReady
-      ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+' · sin cuenta · cupo $0 hard-cap'
+      ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+' · costo no verificado'
       :'Modo prueba IA no disponible · el Core privado sigue separado.';
   }
 }
@@ -585,7 +585,7 @@ function setCoreState(mode){
   if(backendMode==='public_shell'&&publicDemoActive&&coreHealth?.demo_provider_ready===true){
     coreOnline=false;
     coreDot.className='core-dot online';
-    coreDot.title='Modo prueba $0 · '+(demoModelSelect.value==='qwen'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
+    coreDot.title='Modo prueba · '+(demoModelSelect.value==='qwen'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
     updateComposerAvailability();
     return;
   }
@@ -789,7 +789,7 @@ function chooseJobStatus(jobId){
 function providerPresentation(name,model){
   const providerName=String(name||'');
   if(!providerName||providerName==='import')return '';
-  if(providerName===PUBLIC_DEMO_PROVIDER)return 'Demo $0 · '+(model==='@cf/qwen/qwen3.8-27b'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
+  if(providerName===PUBLIC_DEMO_PROVIDER)return 'Demo limitada · '+(model==='@cf/qwen/qwen3.8-27b'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
   if(providerName==='local-demo')return 'Sistema · '+(model==='@cf/qwen/qwen3.8-27b'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL);
   const row=(coreHealth?.provider_catalog||[]).find(item=>String(item.name||'')===providerName);
   if(!row){
@@ -986,7 +986,7 @@ function renderConfig(){
   const cards=[
     ['Modelo activo',backendMode==='public_shell'&&coreHealth?.demo_provider_ready===true?(demoModelSelect.value==='qwen'?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_MODEL):active],
     ['Preferido',preferred],
-    ['Ruta',backendMode==='public_shell'&&coreHealth?.demo_provider_ready===true?'Demo $0 hard-cap → Core privado cuando esté disponible':route],
+    ['Ruta',backendMode==='public_shell'&&coreHealth?.demo_provider_ready===true?'Demo limitada → Core privado cuando esté disponible':route],
     ['Backend',backendMode==='canonical'?'Core durable':backendMode==='public_shell'?'Shell público · demo aislado · Core desconectado':'Bridge temporal'],
     ['Idioma','es-AR'],
     ['Modo','$0 estricto · fail-closed'],
@@ -1546,7 +1546,7 @@ async function sendChat(raw,{speak=false}={}){
       chat.messages.push({
         id:uid('m'),
         role:'assistant',
-        text:'La IA demo $0 no respondió. Reintentá en unos segundos.',
+        text:'La demo no respondió. Reintentá en unos segundos.',
         status:'error',
         provider:null,
         ts:now()
