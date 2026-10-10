@@ -127,7 +127,7 @@ if (mockDemo) {
     await expect(browser.locator('.landing-greeting')).toContainText('Qué gusto verte, Simon.');
     await expect(browser.locator('.app.is-landing')).toHaveCount(1);
     await browser.locator('.rail-btn[data-side="chats"]').tap();
-    await browser.locator('.chat-row').first().tap();
+    await screen.getByRole('button',{name:'Mi primer mensaje'}).tap();
     await expect(browser.locator('#messages .msg.assistant .bubble')).toContainText('HISTORY_RETAINED');
     await screen.getByRole('button',{name:'Volver al inicio'}).tap();
     await expect(browser.locator('.landing-mark')).toHaveCount(1);
