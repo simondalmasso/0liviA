@@ -178,5 +178,5 @@ def test_static_public_release_has_no_model_provider_binding_or_ai_calls():
 
 def test_static_deploy_captures_actual_workers_dev_url_without_double_escape():
     workflow = Path(".github/workflows/deploy-public-static.yml").read_text(encoding="utf-8")
-    assert r"https://[^[:space:]]+\\.workers\\.dev" in workflow
-    assert r"https://[^[:space:]]+\\\\.workers\\\\.dev" not in workflow
+    assert r"https://[^[:space:]]+\.workers\.dev" in workflow
+    assert r"https://[^[:space:]]+\\.workers\\.dev" not in workflow
