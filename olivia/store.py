@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     repo TEXT,
     worktree TEXT,
     checkpoint_json TEXT NOT NULL DEFAULT '{}',
+    dispatch_key TEXT,
     lease_token TEXT,
     lease_expires_at REAL,
     created_at REAL NOT NULL,
@@ -221,10 +222,18 @@ class Store:
                 str(row["name"])
                 for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()
             }
+            if "dispatch_key" not in job_columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN dispatch_key TEXT")
             if "lease_token" not in job_columns:
                 self._conn.execute("ALTER TABLE jobs ADD COLUMN lease_token TEXT")
             if "lease_expires_at" not in job_columns:
                 self._conn.execute("ALTER TABLE jobs ADD COLUMN lease_expires_at REAL")
+            self._conn.execute(
+                """CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_dispatch_key
+                   ON jobs(kind, dispatch_key)
+                   WHERE dispatch_key IS NOT NULL
+                     AND status IN ('queued','running','dispatched','in_progress','waiting','requested')"""
+            )
 
             self._conn.execute(
                 """CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
@@ -730,6 +739,48 @@ class Store:
             )
         return job_id
 
+    def create_or_get_active_job(
+        self,
+        kind: str,
+        *,
+        repo: str | None,
+        dispatch_key: str,
+    ) -> tuple[str, bool]:
+        """Atomically de-duplicate active external side effects.
+
+        Returns (job_id, created). A completed/failed job does not block a later
+        intentional rerun with the same objective.
+        """
+        key = str(dispatch_key or "").strip()
+        if not key or len(key) > 128:
+            raise ValueError("dispatch_key must be 1..128 characters")
+        now = time.time()
+        active = "('queued','running','dispatched','in_progress','waiting','requested')"
+        with self._lock:
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._conn.execute(
+                    f"""SELECT id FROM jobs
+                        WHERE kind=? AND dispatch_key=? AND status IN {active}
+                        ORDER BY created_at DESC LIMIT 1""",
+                    (kind, key),
+                ).fetchone()
+                if row is not None:
+                    self._conn.execute("COMMIT")
+                    return str(row["id"]), False
+                job_id = uuid.uuid4().hex[:16]
+                self._conn.execute(
+                    """INSERT INTO jobs(
+                           id,kind,status,repo,checkpoint_json,dispatch_key,created_at,updated_at
+                       ) VALUES(?,?, 'queued', ?, '{}', ?, ?, ?)""",
+                    (job_id, kind, repo, key, now, now),
+                )
+                self._conn.execute("COMMIT")
+                return job_id, True
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
+
     def checkpoint_job(self, job_id: str, status: str, checkpoint: dict[str, Any]) -> None:
         with self._lock:
             cur = self._conn.execute(
@@ -842,6 +893,64 @@ class Store:
                      AND lease_expires_at>?""",
                 (json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
                  clock, job_id, token, clock),
+            )
+        return cur.rowcount == 1
+
+    def handoff_owned_dispatch(
+        self,
+        job_id: str,
+        token: str,
+        checkpoint: dict[str, Any],
+        *,
+        now: float | None = None,
+    ) -> bool:
+        """Preserve an acknowledged or ambiguous external dispatch once.
+
+        Unlike the ordinary lease handoff, this accepts an expired lease from
+        the same capability holder. Expired running jobs are never re-claimed,
+        so matching the original secret token is sufficient to prevent a
+        duplicate side effect while allowing slow/ambiguous dispatch recovery.
+        """
+        clock = time.time() if now is None else float(now)
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE jobs SET status='dispatched', checkpoint_json=?,
+                   lease_token=NULL, lease_expires_at=NULL, updated_at=?
+                   WHERE id=? AND status='running' AND lease_token=?""",
+                (
+                    json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
+                    clock,
+                    job_id,
+                    token,
+                ),
+            )
+        return cur.rowcount == 1
+
+    def finish_owned_job(
+        self,
+        job_id: str,
+        token: str,
+        status: str,
+        checkpoint: dict[str, Any],
+        *,
+        now: float | None = None,
+    ) -> bool:
+        """Settle an explicit local dispatch rejection even after lease expiry."""
+        if status not in {"complete", "failed", "cancelled"}:
+            raise ValueError("invalid terminal job status")
+        clock = time.time() if now is None else float(now)
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE jobs SET status=?, checkpoint_json=?,
+                   lease_token=NULL, lease_expires_at=NULL, updated_at=?
+                   WHERE id=? AND status='running' AND lease_token=?""",
+                (
+                    status,
+                    json.dumps(_scrub_value(checkpoint), ensure_ascii=False),
+                    clock,
+                    job_id,
+                    token,
+                ),
             )
         return cur.rowcount == 1
 
