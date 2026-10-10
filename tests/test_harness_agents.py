@@ -263,3 +263,34 @@ def test_checkpoint_is_durable_but_owner_only_to_read(tmp_path):
     assert value == {"seq": 1, "checkpoint": {
         "step": "review", "artifact_hash": "0"*64
     }}
+
+
+def test_expired_lease_cannot_finish_even_during_reconciliation_race(tmp_path):
+    p = tmp_path / "deadline.sqlite3"
+    times = [100.0]
+    store = AgentFabric(p,
+        owner_verifier=lambda _a,_h,proof: proof == "owner-approved",
+        executor_verifier=lambda _r,proof: proof == "trusted-worker",
+        clock=lambda: times[0])
+    approve_root(store)
+    store.create_run("lead", "race", "race-1", SHA)
+    token = store.claim("race", proof="trusted-worker", lease_seconds=2)
+    # A lease can expire after explicit expire_leases() but before the
+    # optimistic CAS; _get_lease must independently reject it.
+    original = store.expire_leases
+    def expires_during_race():
+        original()
+        times[0] = 103.0
+        return 0
+    store.expire_leases = expires_during_race
+    with pytest.raises(AgentConflict, match="lease_expired"):
+        store.finish("race", token, result_sha256="b"*64)
+    assert store.get_run("race")["state"] != "completed"
+
+
+def test_fabric_database_file_is_private(tmp_path):
+    import os
+    p = tmp_path / "agent-private.sqlite3"
+    fabric(p)
+    if os.name == "posix":
+        assert (p.stat().st_mode & 0o077) == 0
