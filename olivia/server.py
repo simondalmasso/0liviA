@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 from .agent import Agent
+from .agent_outcome import classify_external_run_status
 from .config import Settings
 from .browser_worker import (
     BrowserJobRequest,
@@ -751,20 +752,24 @@ class Gateway:
         self.coding_worker.validate_request(request_data)
 
         job_id = self.agent.store.create_job("code", repo=self.coding_worker.repo)
-        self.agent.store.checkpoint_job(job_id, "dispatching", {
+        token = self.agent.store.claim_queued_job(job_id)
+        if token is None:
+            raise CodingWorkerError("job_dispatch_claim_failed")
+        initial = {
             "base_ref": base_ref,
             "mode": mode,
             "publish_branch": publish_branch,
-        })
+        }
+        if not self.agent.store.checkpoint_leased_job(job_id, token, initial):
+            raise CodingWorkerError("job_dispatch_lease_expired")
         try:
             remote = await self.coding_worker.dispatch(job_id, request_data)
         except CodingWorkerError as exc:
-            self.agent.store.checkpoint_job(job_id, "failed", {
-                "base_ref": base_ref,
-                "mode": mode,
-                "publish_branch": publish_branch,
-                "error": str(exc)[:500],
-            })
+            # Remote API failures are not proof the dispatch was not accepted.
+            # Preserve a failure receipt and never retry automatically.
+            self.agent.store.finish_leased_job(
+                job_id, token, "failed", {**initial, "error": str(exc)[:500]}
+            )
             raise
 
         checkpoint = {
@@ -773,7 +778,8 @@ class Gateway:
             "publish_branch": publish_branch,
             **remote,
         }
-        self.agent.store.checkpoint_job(job_id, "dispatched", checkpoint)
+        if not self.agent.store.handoff_leased_job(job_id, token, checkpoint):
+            raise CodingWorkerError("job_dispatch_ack_lease_expired")
         return {
             "job_id": job_id,
             "status": "dispatched",
@@ -800,24 +806,28 @@ class Gateway:
         )
         self.browser_worker.validate_request(request)
         job_id = self.agent.store.create_job("browser", repo=self.browser_worker.repo)
+        token = self.agent.store.claim_queued_job(job_id)
+        if token is None:
+            raise BrowserWorkerError("job_dispatch_claim_failed")
         checkpoint = {
             "base_ref": base_ref,
             "url": url,
             "objective": safe_objective,
             "workflow": self.browser_worker.workflow,
         }
-        self.agent.store.checkpoint_job(job_id, "dispatching", checkpoint)
+        if not self.agent.store.checkpoint_leased_job(job_id, token, checkpoint):
+            raise BrowserWorkerError("job_dispatch_lease_expired")
         try:
             remote = await self.browser_worker.dispatch(job_id, request)
         except BrowserWorkerError as exc:
-            self.agent.store.checkpoint_job(
-                job_id,
-                "failed",
+            self.agent.store.finish_leased_job(
+                job_id, token, "failed",
                 {**checkpoint, "error": str(exc)[:500]},
             )
             raise
         checkpoint = {**checkpoint, **remote}
-        self.agent.store.checkpoint_job(job_id, "dispatched", checkpoint)
+        if not self.agent.store.handoff_leased_job(job_id, token, checkpoint):
+            raise BrowserWorkerError("job_dispatch_ack_lease_expired")
         return {
             "job_id": job_id,
             "status": "dispatched",
@@ -849,6 +859,8 @@ class Gateway:
             return None
         if job.get("kind") != "browser":
             return job
+        if job.get("status") in {"succeeded", "failed", "complete", "cancelled"}:
+            return job
         if self.browser_worker is None or not self.browser_worker.configured:
             return job
         try:
@@ -856,10 +868,12 @@ class Gateway:
         except BrowserWorkerError:
             remote = None
         if remote:
-            status = str(remote.get("remote_status") or job["status"])
-            conclusion = remote.get("remote_conclusion")
-            if status == "completed":
-                status = "succeeded" if conclusion == "success" else "failed"
+            status = classify_external_run_status(remote)
+            if status == "unknown":
+                return job
+            # Remote GitHub "queued" must not reopen the local dispatch queue.
+            if status == "queued":
+                status = "dispatched"
             checkpoint = {**job.get("checkpoint", {}), **remote}
             if (
                 status == "succeeded"
@@ -874,7 +888,7 @@ class Gateway:
                     payload = None
                 if payload:
                     checkpoint["browser_result"] = self._bounded_browser_result(payload)
-            self.agent.store.checkpoint_job(job_id, status, checkpoint)
+            self.agent.store.reconcile_verified_remote_job(job_id, status, checkpoint)
             job = self.agent.store.get_job(job_id) or job
         return job
 
@@ -892,6 +906,8 @@ class Gateway:
             return None
         if job.get("kind") != "code":
             return job
+        if job.get("status") in {"succeeded", "failed", "complete", "cancelled"}:
+            return job
         if self.coding_worker is None or not self.coding_worker.configured:
             return job
         try:
@@ -899,10 +915,12 @@ class Gateway:
         except CodingWorkerError:
             remote = None
         if remote:
-            status = str(remote.get("remote_status") or job["status"])
-            conclusion = remote.get("remote_conclusion")
-            if status == "completed":
-                status = "succeeded" if conclusion == "success" else "failed"
+            status = classify_external_run_status(remote)
+            if status == "unknown":
+                return job
+            # Remote GitHub "queued" must not reopen the local dispatch queue.
+            if status == "queued":
+                status = "dispatched"
             checkpoint = {**job.get("checkpoint", {}), **remote}
             if (
                 status == "succeeded"
@@ -919,7 +937,7 @@ class Gateway:
                     report = None
                 if report:
                     checkpoint["review_report"] = redact_secrets(report)[:40_000]
-            self.agent.store.checkpoint_job(job_id, status, checkpoint)
+            self.agent.store.reconcile_verified_remote_job(job_id, status, checkpoint)
             job = self.agent.store.get_job(job_id) or job
         return job
 

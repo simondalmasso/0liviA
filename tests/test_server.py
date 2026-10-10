@@ -1954,3 +1954,67 @@ async def test_intel_command_uses_public_feeds_without_consuming_model_quota(cli
     messages = store.recent_messages(session_id, 4)
     assert messages[-1]["provider"] == "world-intel"
     assert messages[-1]["content"].startswith("Inteligencia pública")
+
+
+@pytest.mark.asyncio
+async def test_verified_remote_completion_recovers_an_expired_dispatch_lease(aiohttp_client, tmp_path):
+    """An acknowledged GitHub run must remain inspectable after a Core lease expires."""
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "expired-dispatch.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    job_id = store.create_job("code", repo=worker.repo)
+    token = store.claim_queued_job(job_id, lease_seconds=1, now=1.0)
+    assert token is not None
+    assert store.checkpoint_leased_job(job_id, token, {"base_ref": "main"}, now=1.2)
+
+    response = await client.get(f"/api/jobs/{job_id}", headers=auth())
+    assert response.status == 200
+    job = (await response.json())["job"]
+    assert job["status"] == "succeeded"
+    assert job["checkpoint"]["remote_run_id"] == 123
+    assert store.claim_queued_job(job_id) is None
+
+
+@pytest.mark.asyncio
+async def test_terminal_remote_job_never_regresses_or_reenters_local_queue(aiohttp_client, tmp_path):
+    """A GitHub run becoming stale must not turn an already completed job back into work."""
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "stable-remote.sqlite3")
+    agent = Agent(store, FakeRouter(), settings)
+    worker = FakeCodingWorker()
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    created = await client.post(
+        "/api/jobs/code", json={"task": "Validate the repair", "base_ref": "main"}, headers=auth()
+    )
+    assert created.status == 202
+    job_id = (await created.json())["job_id"]
+
+    async def queued(_job_id):
+        return {"remote_run_id": 123, "remote_status": "queued", "remote_conclusion": None}
+
+    worker.status = queued
+    queued_response = await client.get(f"/api/jobs/{job_id}", headers=auth())
+    assert queued_response.status == 200
+    assert (await queued_response.json())["job"]["status"] == "dispatched"
+
+    async def succeeded(_job_id):
+        return {"remote_run_id": 123, "remote_status": "completed", "remote_conclusion": "success"}
+
+    worker.status = succeeded
+    completed = await client.get(f"/api/jobs/{job_id}", headers=auth())
+    assert completed.status == 200
+    assert (await completed.json())["job"]["status"] == "succeeded"
+
+    async def stale(_job_id):
+        return {"remote_run_id": 123, "remote_status": "in_progress", "remote_conclusion": None}
+
+    worker.status = stale
+    final = await client.get(f"/api/jobs/{job_id}", headers=auth())
+    assert final.status == 200
+    assert (await final.json())["job"]["status"] == "succeeded"

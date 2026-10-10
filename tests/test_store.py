@@ -385,3 +385,45 @@ def test_job_lease_duration_fails_closed(tmp_path: Path):
             store.renew_job_lease(job_id, "token", lease_seconds=invalid)
     assert store.get_job(job_id)["status"] == "queued"
     store.close()
+
+
+def test_lease_handoff_requires_owner_and_unexpired_clock(tmp_path):
+    store = Store(tmp_path / "handoff.sqlite3")
+    job_id = store.create_job("code")
+    token = store.claim_queued_job(job_id, lease_seconds=100, now=10)
+    assert token is not None
+    assert store.handoff_leased_job(job_id, "wrong", {"bad": True}, now=20) is False
+    assert store.handoff_leased_job(job_id, token, {"accepted": True}, now=111) is False
+    assert store.handoff_leased_job(job_id, token, {"accepted": True}, now=25) is True
+    assert store.handoff_leased_job(job_id, token, {"accepted": True}, now=26) is False
+    job = store.get_job(job_id)
+    assert job["status"] == "dispatched"
+    assert job["checkpoint"]["accepted"] is True
+    assert job["lease_expires_at"] is None
+    assert "lease_token" not in job
+    assert store.claim_queued_job(job_id) is None
+    store.close()
+
+
+def test_verified_remote_receipt_never_overrides_live_lease_or_terminal_state(tmp_path: Path):
+    store = Store(tmp_path / "reconcile-safe.sqlite3")
+    job_id = store.create_job("code")
+    token = store.claim_queued_job(job_id, lease_seconds=60, now=10)
+    assert token
+
+    receipt = {"remote_run_id": 789, "remote_status": "completed"}
+    assert not store.reconcile_verified_remote_job(job_id, "succeeded", receipt, now=20)
+    assert store.get_job(job_id)["status"] == "running"
+    assert store.handoff_leased_job(job_id, token, {"base_ref": "main"}, now=25)
+
+    assert not store.reconcile_verified_remote_job(
+        job_id, "succeeded", {"remote_run_id": True}, now=30
+    )
+    assert store.reconcile_verified_remote_job(job_id, "succeeded", receipt, now=30)
+    assert not store.reconcile_verified_remote_job(
+        job_id, "in_progress", {"remote_run_id": 789}, now=31
+    )
+    assert store.get_job(job_id)["status"] == "succeeded"
+    assert store.claim_queued_job(job_id) is None
+    store.close()
+
