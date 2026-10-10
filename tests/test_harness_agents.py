@@ -221,3 +221,45 @@ def test_child_cannot_be_drafted_under_unapproved_parent(tmp_path):
     with pytest.raises(AgentDenied, match="parent_not_approved"):
         f.propose("child", "child1", "coder", ("github.read",), 100, 1,
                   parent_id="lead")
+
+
+def test_sibling_agents_share_parent_dispatch_call_budget_without_refunds(tmp_path):
+    p = tmp_path / "calls.sqlite3"
+    f = fabric(p)
+    f.propose("root", "root-1", "planner", ("github.read",), 500, 2)
+    f.approve("root", proof="owner-approved")
+    for aid in ("alpha", "beta"):
+        f.propose(aid, "proposal-"+aid, "auditor", ("github.read",), 300, 2,
+                  parent_id="root")
+        f.approve(aid, proof="owner-approved")
+    f.create_run("alpha", "job-a", "call-a", SHA)
+    f.create_run("beta", "job-b", "call-b", SHA)
+    assert f.get_agent("root")["reserved_runs"] == 2
+    assert f.get_agent("alpha")["reserved_runs"] == 1
+    assert f.get_agent("beta")["reserved_runs"] == 1
+    with pytest.raises(AgentDenied, match="run_budget_exhausted"):
+        f.create_run("alpha", "job-c", "call-c", SHA)
+    assert f.get_agent("root")["reserved_runs"] == 2
+    assert f.create_run("alpha", "job-a", "call-a", SHA)["run_id"] == "job-a"
+    f.cancel_agent("alpha", proof="owner-approved")
+    with pytest.raises(AgentDenied, match="run_budget_exhausted"):
+        f.create_run("beta", "job-d", "call-d", SHA)
+    assert fabric(p).get_agent("root")["reserved_runs"] == 2
+
+
+def test_checkpoint_is_durable_but_owner_only_to_read(tmp_path):
+    p = tmp_path / "checkpoint.sqlite3"
+    f = fabric(p)
+    approve_root(f)
+    f.create_run("lead", "r1", "task1", SHA)
+    token = f.claim("r1", proof="trusted-worker")
+    f.checkpoint("r1", token, seq=1, payload={"step": "review", "artifact_hash": "0"*64})
+    reload_without_auth = fabric(p, owner=False)
+    with pytest.raises(AgentDenied, match="owner_authorization_required"):
+        reload_without_auth.inspect_checkpoint("r1", proof="owner-approved")
+    with pytest.raises(AgentDenied, match="owner_authorization_required"):
+        fabric(p).inspect_checkpoint("r1", proof="model-owner")
+    value = fabric(p).inspect_checkpoint("r1", proof="owner-approved")
+    assert value == {"seq": 1, "checkpoint": {
+        "step": "review", "artifact_hash": "0"*64
+    }}
