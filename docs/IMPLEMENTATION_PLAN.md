@@ -49,7 +49,8 @@ Provider routing must remain catalog-driven and fail closed:
 - DeepSeek V4.1 Flash/NVIDIA NIM remains development/evaluation-only unless explicit production entitlement exists;
 - canonical Cloudflare inference/read stays disabled; only the isolated public demo may use Workers AI, and only after account-wide zero-cost behavior is independently verified and the server-side daily cap is active;
 - local inference is allowed as a zero-cost fallback but is not the quality target for normal chat;
-- Intern Discovery / Intern InkStone is a promising GPU burst lane for Muse Glimmer, but remains `free_unverified` until its account-level point exhaustion/no-overage behavior and a real service response contract are proven.
+- Intern Discovery / Intern InkStone is a promising GPU burst lane for Muse Glimmer, but remains `free_unverified` until its account-level point exhaustion/no-overage behavior and a real service response contract are proven. Ephemeral worker state must live under `/data`; `scripts/ephemeral_checkpoint.py` provides bounded snapshot/restore without provider APIs or credentials.
+- pocket local models are not quality-equivalent fallbacks. Qwen2.5-Coder-0.5B-Instruct is evaluation-only for tiny bounded chores; serious chat/coding/review must fail/defer rather than silently downgrade to a sub-1B model.
 
 ### 4. Research/browser
 Implemented:
@@ -128,6 +129,6 @@ Every meaningful mutation must preserve:
 4. Certify the existing recurring-$0 `olivia-text-free` host first: recover/pin privileged `ubuntu` SSH without disturbing existing access, pass `deploy/preflight.sh`, add only the four deploy secrets (`OLIVIA_DEPLOY_HOST`, `OLIVIA_DEPLOY_USER`, `OLIVIA_DEPLOY_SSH_KEY`, `OLIVIA_DEPLOY_KNOWN_HOSTS`) in GitHub, and run the manual exact-SHA canonical workflow. Then run install/restart/encrypted-backup/restore/latency/resource gates. A1 remains an optional roomier migration target when capacity exists.
 5. Complete one real owner Sign in with ChatGPT connection, confirm the selected account/model catalog, verify ChatGPT Usage controls prevent credit overage, transfer the protected profile to the target Core, and smoke one bounded Responses turn.
 6. Muse Glimmer remains a parked OpenAI-compatible challenger: no new Core module is needed. Promote only when a recurring-free/self-owned host with adequate GPU memory is proven; current public inference-provider availability does not satisfy that gate.
-7. Evaluate the Intern Discovery GPU burst lane only as a challenger: read point/hour estimates before creating resources and implement an adapter only after a real no-overage/account gate exists.
+7. Evaluate the Intern Discovery GPU burst lane only as a challenger: checkpoint any experiment to `/data`, read point/hour estimates before creating resources, and implement lifecycle/provider automation only after an official API plus a real no-overage/account gate exist.
 8. Verify production entitlement/cost for every retained model/coding route and account-level MFA/2FA.
 9. Keep the public shell non-canonical. A demo deployment is acceptable only after exact-SHA smoke plus live E2E; independently, deploy the **canonical Python Core** only after the remaining host/provider/voice gates and smoke the authenticated product end to end.
