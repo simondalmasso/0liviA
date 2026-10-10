@@ -133,3 +133,18 @@ def test_demo_rejects_originless_requests_and_unbounded_streamed_bytes():
     assert 'if (!origin || origin !== new URL(request.url).origin)' in WORKER
     assert "totalBytes > 16_384" in WORKER
     assert "await request.text()" not in WORKER
+
+def test_cloudflare_deploy_is_manual_only_and_requires_owner_confirmation():
+    deploy = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    trigger = deploy.split("permissions:", 1)[0]
+    assert "  push:" not in trigger
+    assert "  workflow_dispatch:" in trigger
+    assert "confirm_account_no_overage:" in trigger
+    assert "default: false" in trigger
+    assert 'test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"' in deploy
+    assert 'test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"' in deploy
+    assert "Require explicit deployment approval before any external action" in deploy
+    assert "grep -Fq 'hard_zero_cost: !demoReady'" in deploy
+    assert 'body.get("hard_zero_cost") is False' in deploy
+    assert 'body.get("demo_cost_guaranteed") is False' in deploy
+    assert '-H "Origin: ${base}"' in deploy
