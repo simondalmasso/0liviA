@@ -66,8 +66,13 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .copy-btn.copied{color:#fff}
 .copy-btn svg{width:15px;height:15px}
 .composer-wrap{position:absolute;left:0;right:0;bottom:0;padding:12px 16px max(18px,env(safe-area-inset-bottom));pointer-events:none;background:transparent}
-.composer-wrap.landing{top:44%;bottom:auto;transform:translateY(-50%)}
-.messages.landing .empty{transform:translateY(-76px)}
+.composer-wrap.landing{top:calc(50% + 10px);bottom:auto;transform:none}
+.messages.landing .empty{transform:translateY(-56px)}
+.landing-mark{display:block;width:clamp(100px,11vw,140px);aspect-ratio:1;background:var(--brand-logo) center/contain no-repeat}
+.app.is-landing .topbar{visibility:hidden}
+.shell:has(.app.is-landing) .rail-logo{opacity:0;pointer-events:none}
+.composer-status{pointer-events:auto;margin:8px auto 0;max-width:780px;text-align:center;color:#777;font-size:11px}
+.composer-status[hidden]{display:none}
 .composer{pointer-events:auto;display:flex;align-items:center;gap:5px;width:min(100%,780px);min-height:52px;margin:auto;padding:5px 6px 5px 8px;border:1px solid var(--border);border-radius:27px;background:var(--panel-2)}
 .composer input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--ink);padding:11px 6px;font-size:14px}
 .composer input::placeholder{color:#9a9a9a}
@@ -96,21 +101,11 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .auth-remember input{width:16px;height:16px;accent-color:#fff}
 .auth-submit{width:100%;margin-top:10px;padding:12px 14px;border-radius:12px;background:#fff;color:#000;font-weight:650}
 .auth-error{min-height:18px;margin-top:9px;color:#ff7b7b;font-size:12px}
-.public-home{position:absolute;inset:54px 0 0;z-index:12;display:grid;place-items:center;padding:28px;background:#000}
-.public-home[hidden]{display:none}
-.public-home-inner{width:min(100%,620px);display:grid;justify-items:center;text-align:center;padding:20px}
-.brand-symbol{width:58px;height:58px;border:1px solid #303030;border-radius:17px;background:#0f0f0f var(--brand-logo) center/44px 44px no-repeat;margin-bottom:20px}
-.public-home h1{margin:0;font-size:clamp(30px,5vw,48px);line-height:1.04;letter-spacing:-.045em;font-weight:650}
-.public-home p{max-width:560px;margin:14px 0 0;color:#999;font-size:15px;line-height:1.6}
-.public-home-actions{display:flex;gap:9px;margin-top:24px;flex-wrap:wrap;justify-content:center}
-.public-login{min-width:128px;height:44px;border-radius:12px;background:#fff;color:#000;font-weight:650;padding:0 18px}
-.public-login:hover{background:#ededed}
-.public-login.secondary{background:#171717;color:#ddd;border:1px solid #303030}
-.public-login.secondary:hover{background:#202020;color:#fff}
-.public-status{font-size:12px!important;color:#6f6f6f!important;margin-top:14px!important}
 .auth-mark.brand-auth{background:#0f0f0f var(--brand-logo) center/30px 30px no-repeat;border:1px solid #303030}
 .rail-logo .brand-mini{width:24px;height:24px;display:block;flex:0 0 auto;background:var(--brand-logo) center/24px 24px no-repeat}
-@media(max-width:720px){.public-home{inset:52px 0 0;padding:18px 14px}.public-home-inner{padding:12px}.brand-symbol{width:52px;height:52px;border-radius:15px}.public-home h1{font-size:32px}.public-home p{font-size:14px}}
+.intro-overlay{pointer-events:none;position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#000;animation:intro-exit 3s linear both}
+.intro-mark{width:clamp(108px,15vw,168px);aspect-ratio:1;background:var(--brand-logo) center/contain no-repeat}
+@keyframes intro-exit{0%,83%{opacity:1;visibility:visible}100%{opacity:0;visibility:hidden}}
 .drawer-backdrop{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.64);display:none}
 .drawer-backdrop.open{display:block}
 .drawer{position:fixed;z-index:50;inset:0 auto 0 248px;width:min(86vw,326px);background:#0d0d0d;border-right:1px solid var(--border-soft);transform:translateX(calc(-100% - 10px));transition:transform .16s var(--ease);padding:max(12px,env(safe-area-inset-top)) 10px max(14px,env(safe-area-inset-bottom));display:grid;grid-template-rows:auto auto 1fr;pointer-events:none}
@@ -194,8 +189,8 @@ button.side-card{text-align:left}
   .msg-body{max-width:94%}
   .msg-actions{opacity:.72}
   .composer-wrap{padding:8px 8px max(9px,env(safe-area-inset-bottom))}
-  .composer-wrap.landing{top:46%}
-  .messages.landing .empty{transform:translateY(-66px)}
+  .composer-wrap.landing{top:calc(50% + 4px)}
+  .messages.landing .empty{transform:translateY(-58px)}
   .composer{width:100%;max-width:none;min-height:50px;padding:4px 5px 4px 6px;border-radius:24px}
   .composer input{font-size:16px;padding:9px 4px}
   .composer-icon,.send{width:40px;height:40px}
@@ -233,10 +228,11 @@ button.side-card{text-align:left}
 @keyframes msg-in{from{opacity:.5;transform:translateY(5px)}to{opacity:1;transform:none}}
 .assistant .bubble{font-size:15px}
 @media(min-width:721px) and (max-width:1100px){.shell{grid-template-columns:64px minmax(0,1fr)}.rail{align-items:center}.rail-btn,.rail-logo{width:44px;justify-content:center;padding:0}.rail-label{display:none}.drawer{left:64px}.topbar .brand{display:block}.messages{padding-left:4vw;padding-right:4vw}}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.intro-overlay{display:none!important}}
 </style>
 </head>
 <body>
+<div id="entryIntro" class="intro-overlay" aria-hidden="true"><div class="intro-mark"></div></div>
 <div class="shell">
 <aside class="rail" aria-label="Secciones de 0liviA">
 <button class="rail-logo" type="button" title="0liviA" aria-label="0liviA"><span class="brand-mini" aria-hidden="true"></span><span class="rail-label">0liviA</span></button>
@@ -279,18 +275,6 @@ button.side-card{text-align:left}
 <span id="coreDot" class="core-dot" title="Core pendiente"></span>
 </header>
 
-<section id="publicWelcome" class="public-home" hidden aria-label="Inicio de 0liviA">
-<div class="public-home-inner">
-<div class="brand-symbol" aria-hidden="true"></div>
-<h1>Probá 0liviA.<br>Chat de muestra.</h1>
-<p>La demo no accede a tus proyectos ni a tu Core privado.</p>
-<div class="public-home-actions">
-<button id="publicDemoBtn" class="public-login" type="button">Probar 0liviA ahora</button>
-</div>
-<p id="publicStatus" class="public-status">Demo limitada · sin cuenta</p>
-</div>
-</section>
-
 <section id="messages" class="messages" aria-live="polite"></section>
 
 <form id="composer" class="composer-wrap">
@@ -307,6 +291,7 @@ button.side-card{text-align:left}
 <svg id="sendIcon" viewBox="0 0 24 24"><path d="m6 12 6-6 6 6"/><path d="M12 18V6"/></svg>
 </button>
 </div>
+<p id="publicStatus" class="composer-status" aria-live="polite" hidden></p>
 </form>
 </main>
 </div>
@@ -478,9 +463,7 @@ const voiceState=$('#voiceState');
 const voiceRingPath=$('#voiceRingPath');
 const voiceRingFill=$('#voiceRingFill');
 const voiceOrb=$('.orb');
-const publicWelcome=$('#publicWelcome');
 const publicStatus=$('#publicStatus');
-const publicDemoBtn=$('#publicDemoBtn');
 const demoModelSelect=$('#demoModelSelect');
 const ownerLogin=$('#ownerLogin');
 const ownerLoginForm=$('#ownerLoginForm');
@@ -561,6 +544,7 @@ function updatePublicHome(){
   const demoReady=isPublic&&coreHealth?.demo_provider_ready===true;
   const qwenReady=demoReady&&coreHealth?.demo_qwen_ready===true;
   const gemmaReady=demoReady&&coreHealth?.demo_gemma_ready===true;
+  publicDemoActive=demoReady;
   demoModelSelect.hidden=!(isPublic&&publicDemoActive&&demoReady);
   demoModelSelect.options[1].disabled=!qwenReady;
   demoModelSelect.options[1].textContent=qwenReady?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · inactivo';
@@ -568,10 +552,8 @@ function updatePublicHome(){
   demoModelSelect.options[2].textContent=gemmaReady?PUBLIC_DEMO_GEMMA_MODEL:PUBLIC_DEMO_GEMMA_MODEL+' · inactivo';
   if(qwenReady&&!qwenChosenOnce){demoModelSelect.value='qwen';qwenChosenOnce=true}
   if(demoModelSelect.selectedOptions[0]?.disabled)demoModelSelect.value='glm';
-  publicWelcome.hidden=!(isPublic&&!publicDemoActive);
+  publicStatus.hidden=!isPublic;
   if(isPublic){
-    publicDemoBtn.disabled=!demoReady;
-    publicDemoBtn.textContent=demoReady?'Probar 0liviA ahora':'IA demo no disponible';
     publicStatus.textContent=demoReady
       ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+(gemmaReady?' / Gemma':'')+' · costo no verificado'
       :'Modo prueba IA no disponible · el Core privado sigue separado.';
@@ -813,7 +795,13 @@ function renderMessagesInto(root,chat){
   if(!chat||!chat.messages.length){
     const e=document.createElement('div');
     e.className='empty';
-    e.textContent='Listo cuando quieras.';
+    if(root===messagesEl){
+      const logo=document.createElement('span');
+      logo.className="landing-mark";
+      logo.setAttribute('role','img');
+      logo.setAttribute('aria-label','0liviA');
+      e.appendChild(logo);
+    }else e.textContent='Listo cuando quieras.';
     root.appendChild(e);
     return;
   }
@@ -880,6 +868,7 @@ function renderMessages(){
   const landing=!chat||!chat.messages.length;
   chatTitleEl.textContent=chat&&chat.title!=='Nuevo chat'?chat.title:'';
   messagesEl.classList.toggle('landing',landing);
+  $('.app').classList.toggle('is-landing',landing);
   $('#composer').classList.toggle('landing',landing);
   renderMessagesInto(messagesEl,chat);
   renderMessagesInto(voiceChat,chat);
@@ -1085,14 +1074,6 @@ function openDrawer(){drawer.classList.add('open');backdrop.classList.add('open'
 function closeDrawer(){drawer.classList.remove('open');backdrop.classList.remove('open');drawer.setAttribute('aria-hidden','true')}
 demoModelSelect.addEventListener('change',()=>{setCoreState('demo');if(workspace)renderConfig()});
 $('#projectsBtn').onclick=()=>activateSide('projects');
-publicDemoBtn.onclick=()=>{
-  if(coreHealth?.demo_provider_ready!==true)return;
-  publicDemoActive=true;
-  updatePublicHome();
-  setCoreState('demo');
-  renderMessages();
-  textInput.focus();
-};
 $('#drawerClose').onclick=closeDrawer;
 backdrop.onclick=closeDrawer;
 document.addEventListener('click',event=>{

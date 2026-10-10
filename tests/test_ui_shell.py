@@ -33,17 +33,17 @@ def test_unified_navigation_and_composer_contract():
 
 def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     html = _shell()
-    assert 'id="publicWelcome"' in html
-    assert 'id="publicDemoBtn"' in html
+    assert 'id="publicWelcome"' not in html
+    assert 'id="publicDemoBtn"' not in html
     assert 'id="publicLoginBtn"' not in html
-    assert "Probar 0liviA ahora" in html
-    assert "Probá 0liviA." in html
-    assert "Chat de muestra." in html
-    assert "La demo no accede a tus proyectos ni a tu Core privado." in html
+    assert "Probá 0liviA." not in html
+    assert "Chat de muestra." not in html
+    assert "Probar 0liviA ahora" not in html
+    assert 'className="landing-mark"' in html
+    assert 'id="publicStatus"' in html
     assert "costo no verificado" in html
     assert "Modo prueba IA" in html
-    assert "publicDemoActive=false" in html
-    assert "publicWelcome.hidden=!(isPublic&&!publicDemoActive)" in html
+    assert "publicDemoActive=demoReady" in html
     assert "PUBLIC_DEMO_ENDPOINT='/api/demo-chat'" in html
     assert "PUBLIC_DEMO_MODEL='GLM 4.7 Flash'" in html
     assert "PUBLIC_DEMO_PROVIDER='workers-ai-demo'" in html
@@ -83,3 +83,17 @@ def test_closed_drawer_hidden_at_all_widths_and_model_select_is_gate_driven():
     assert "model:demoModelSelect.value" in html
     assert "function providerPresentation(name,model)" in html
     assert "{command:'/intel',label:" in html
+
+def test_home_intro_is_time_bounded_and_accessible():
+    html = _shell()
+    assert 'id="entryIntro"' in html
+    assert 'aria-hidden="true"' in html
+    assert 'class="intro-mark"' in html
+    assert "animation:intro-exit 3s" in html
+    assert "@keyframes intro-exit" in html
+    assert ".intro-overlay{pointer-events:none" in html
+    assert "@media(prefers-reduced-motion:reduce)" in html
+    assert ".intro-overlay{display:none!important}" in html
+    assert ".app.is-landing .topbar{visibility:hidden}" in html
+    assert ".shell:has(.app.is-landing) .rail-logo{opacity:0" in html
+    assert "publicDemoActive=demoReady" in html

@@ -43,12 +43,10 @@ test('public demo opens and returns an AI answer', async ({ app, screen, browser
 
   await app.open('/');
 
-  await expect(screen.getByRole('button', { name: 'Probar 0liviA ahora' })).toBeVisible();
+  await expect(browser.locator('#publicDemoBtn')).toHaveCount(0);
   await expect(browser.locator('#publicLoginBtn')).toHaveCount(0);
   await expect(browser.locator('#modeChat')).toHaveCount(0);
   await expect(browser.locator('#modeWork')).toHaveCount(0);
-
-  await screen.getByRole('button', { name: 'Probar 0liviA ahora' }).tap();
 
   const message = screen.getByRole('textbox', { name: 'Mensaje' });
   await expect(message).toBeEnabled();
@@ -101,7 +99,6 @@ if (mockDemo) {
       }),
     );
     await app.open('/');
-    await screen.getByRole('button', { name: 'Probar 0liviA ahora' }).tap();
     await screen.getByRole('textbox', { name: 'Mensaje' }).fill('Verificar fallo explícito');
     await screen.getByRole('button', { name: 'Enviar' }).tap();
     await expect(browser.locator('#messages [role="alert"]')).toContainText('La demo no respondió');

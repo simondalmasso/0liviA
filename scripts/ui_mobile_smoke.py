@@ -50,7 +50,13 @@ async def main() -> int:
                 page_errors: list[str] = []
                 page.on("pageerror", lambda exc: page_errors.append(str(exc)))
                 await page.goto(args.url, wait_until="domcontentloaded")
-                await page.wait_for_timeout(800)
+                await page.wait_for_timeout(3200)
+                assert await page.locator("#entryIntro").evaluate(
+                    "el => getComputedStyle(el).opacity"
+                ) == "0", (name, "intro did not fade")
+                assert await page.locator("#publicDemoBtn").count() == 0
+                assert await page.locator(".landing-mark").count() == 1
+                assert await page.locator("#composer").is_visible()
 
                 base = await page.evaluate(
                     """() => ({
