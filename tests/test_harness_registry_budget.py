@@ -259,3 +259,25 @@ def test_daily_limit_atomic_with_multiple_connections(tmp_path):
     with pytest.raises(BudgetDenied, match="daily_request_budget_exhausted"):
         BudgetGuard(file, today=TODAY).reserve(m, request_id="second", scope_id="root")
     assert BudgetGuard(file, today=TODAY).inspect_scope("root")["reserved_calls"] == 1
+
+
+def test_shared_pool_blocks_cross_model_overspend(tmp_path):
+    one = spec(name="q", model="model-q", daily_limit=10)
+    two = spec(name="o", model="model-o", daily_limit=10)
+    common = dict(billing_pool="workers_ai", shared_daily_cap_units=190, daily_request_cap=10)
+    a = evidence(provider="q", model="model-q", input_units_per_million=40909,
+                 output_units_per_million=290909, **common)
+    b = evidence(provider="o", model="model-o", input_units_per_million=31818,
+                 output_units_per_million=68182, **common)
+    registry = ModelRegistry([one, two], [a, b], today=TODAY)
+    q = registry.admit("q", "chat", 1000, 250)
+    o = registry.admit("o", "chat", 1000, 250)
+    assert q.shared_request_units == 114 and o.shared_request_units == 50
+    guard = BudgetGuard(tmp_path/"pool.sqlite3", today=TODAY)
+    for key in ("a", "b", "c"):
+        guard.create_scope(key, 5000, 3)
+    guard.reserve(q, request_id="1", scope_id="a")
+    guard.reserve(o, request_id="2", scope_id="b")
+    with pytest.raises(BudgetDenied, match="shared_account_budget_exhausted"):
+        BudgetGuard(tmp_path/"pool.sqlite3", today=TODAY).reserve(
+            o, request_id="3", scope_id="c")
