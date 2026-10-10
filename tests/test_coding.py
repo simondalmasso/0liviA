@@ -277,3 +277,85 @@ async def test_coding_dispatch_session_teardown_after_204_remains_uncertain(monk
             "0123456789abcdef",
             CodingJobRequest(task="bounded task", base_ref="main"),
         )
+
+
+@pytest.mark.asyncio
+async def test_coding_status_finds_verified_receipt_beyond_first_hundred_runs(monkeypatch):
+    job_id = "0123456789abcdef"
+    visited = []
+    stale = [{"id": i + 1, "display_title": "unrelated workflow"} for i in range(100)]
+    target = {
+        "id": 424242,
+        "display_title": f"0liviA code {job_id}",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "signed-test-sha",
+        "html_url": "https://github.com/example/actions/runs/424242",
+    }
+
+    class Response:
+        status = 200
+        def __init__(self, runs):
+            self.runs = runs
+        async def json(self):
+            return {"workflow_runs": self.runs}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+
+    class Session:
+        def get(self, url, *, headers):
+            visited.append(url)
+            return Response([target] if "page=2" in url else stale)
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA", session_factory=lambda **_: Session()
+    )
+    receipt = await worker.status(job_id)
+    assert receipt is not None
+    assert receipt["remote_run_id"] == 424242
+    assert receipt["remote_conclusion"] == "success"
+    assert len(visited) == 2
+    assert all("per_page=100" in url for url in visited)
+    assert "page=2" in visited[1]
+
+
+@pytest.mark.asyncio
+async def test_coding_status_exhausted_scan_fails_closed_without_dispatch(monkeypatch):
+    calls = []
+    stale = [{"id": i + 1, "display_title": "unrelated workflow"} for i in range(100)]
+
+    class Response:
+        status = 200
+        async def json(self):
+            return {"workflow_runs": stale}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+
+    class Session:
+        def get(self, url, *, headers):
+            calls.append(url)
+            return Response()
+        def post(self, *args, **kwargs):
+            raise AssertionError("status reconciliation must never dispatch")
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA", session_factory=lambda **_: Session()
+    )
+    from olivia.coding import CodingWorkerError
+    with pytest.raises(CodingWorkerError, match="scan exhausted"):
+        await worker.status("0123456789abcdef")
+    assert len(calls) == 10
