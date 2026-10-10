@@ -2,6 +2,7 @@ const PUBLIC_SHELL_ONLY = true;
 const TRANSITIONAL_BRIDGE_ENABLED = false;
 const DEMO_MODEL = "@cf/zai-org/glm-4.7-flash";
 const DEMO_QWEN_MODEL = "@cf/qwen/qwen3.8-27b";
+const DEMO_GEMMA_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const DEMO_PROVIDER = "workers-ai-demo";
 const DEMO_DAILY_REQUEST_LIMIT = 25;
 const DEMO_MAX_TOTAL_CHARS = 8000;
@@ -62,9 +63,19 @@ function qwenEnabled(env) {
   return Boolean(demoEnabled(env) && env?.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED === "1");
 }
 
+function gemmaEnabled(env) {
+  // GLM/Qwen admission never proves Gemma cost safety or live availability.
+  return Boolean(
+    demoEnabled(env) &&
+    env?.OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED === "1" &&
+    env?.OLIVIA_DEMO_GEMMA_LIVE_VERIFIED === "1"
+  );
+}
+
 function health(env) {
   const demoReady = Boolean(demoEnabled(env));
   const qwenReady = qwenEnabled(env);
+  const gemmaReady = gemmaEnabled(env);
   return json({
     process_alive: true,
     release_sha: /^[0-9a-f]{40}$/.test(String(env?.OLIVIA_RELEASE_SHA || "")) ? env.OLIVIA_RELEASE_SHA : null,
@@ -78,9 +89,11 @@ function health(env) {
     demo_provider: demoReady ? DEMO_PROVIDER : null,
     demo_model: demoReady ? DEMO_MODEL : null,
     demo_qwen_ready: qwenReady,
+    demo_gemma_ready: gemmaReady,
     demo_models: [
       { id: "glm", model: DEMO_MODEL, label: "GLM 4.7 Flash", available: demoReady },
       { id: "qwen", model: DEMO_QWEN_MODEL, label: "Qwen3.8 27B", available: qwenReady },
+      { id: "gemma", model: DEMO_GEMMA_MODEL, label: "Gemma 4 26B A4B", available: gemmaReady },
     ],
     demo_daily_request_limit: DEMO_DAILY_REQUEST_LIMIT,
     web_read: false,
@@ -226,13 +239,22 @@ async function demoChat(request, env) {
 
   // Validate model before burning daily quota; no arbitrary model IDs reach Workers AI.
   const selected = body?.model === undefined ? "glm" : body.model;
-  if (selected !== "glm" && selected !== "qwen") {
+  if (selected !== "glm" && selected !== "qwen" && selected !== "gemma") {
     return json({ error: "invalid_demo_model" }, { status: 400 });
   }
   if (selected === "qwen" && !qwenEnabled(env)) {
     return json({ error: "qwen_unavailable", message: "Qwen needs separately verified zero-cost admission." }, { status: 503 });
   }
-  const model = selected === "qwen" ? DEMO_QWEN_MODEL : DEMO_MODEL;
+  if (selected === "gemma" && !gemmaEnabled(env)) {
+    return json({
+      error: "gemma_unavailable",
+      message: "Gemma needs independent zero-cost admission and a verified live canary.",
+    }, { status: 503 });
+  }
+  const model =
+    selected === "qwen" ? DEMO_QWEN_MODEL :
+    selected === "gemma" ? DEMO_GEMMA_MODEL :
+    DEMO_MODEL;
   const lastQuestion = messages[messages.length - 1]?.content || "";
   // Model identity is a shell fact, not generative text. Do not spend public quota
   // on an answer that the provider might misidentify.
