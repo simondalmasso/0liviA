@@ -32,7 +32,7 @@ _KNOWN_STATUS = frozenset({
 
 def _seal(request_id: str, job_id: str, kind: str, repo: str) -> str:
     body = json.dumps(
-        {"repo": repo, "job_id": job_id, "kind": kind},
+        {"request_id": request_id, "repo": repo, "job_id": job_id, "kind": kind},
         sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
