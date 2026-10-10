@@ -72,6 +72,9 @@ jobs:
               "workers_dev": True,
               "preview_urls": False,
               "assets": {"directory": "./web", "binding": "ASSETS"},
+              # Preserve the provisioned namespace metadata without providing a
+              # COST_GUARD binding: Cloudflare requires exports reconciliation.
+              "exports": {"CostGuard": {"type": "durable-object", "storage": "sqlite"}},
               "vars": {
                   "OLIVIA_STATIC_ONLY": "1",
                   "OLIVIA_DEMO_ZERO_COST_CONFIRMED": "0",
@@ -82,6 +85,7 @@ jobs:
               },
           }
           assert "ai" not in config and "durable_objects" not in config
+          assert config["exports"]["CostGuard"] == {"type": "durable-object", "storage": "sqlite"}
           Path("wrangler.static.release.json").write_text(json.dumps(config, indent=2))
           PY
 

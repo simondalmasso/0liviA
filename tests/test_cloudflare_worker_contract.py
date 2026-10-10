@@ -165,6 +165,7 @@ def test_static_public_release_has_no_model_provider_binding_or_ai_calls():
     assert '"OLIVIA_DEMO_GEMMA_LIVE_VERIFIED": "0"' in static
     assert '"ai":' not in static
     assert '"durable_objects":' not in static
+    assert '"exports": {"CostGuard": {"type": "durable-object", "storage": "sqlite"}}' in static
     assert "wrangler@4.127.1" in static
     assert 'body.get("demo_inference_enabled") is False' in static
     assert 'body.get("hard_zero_cost") is True' in static
