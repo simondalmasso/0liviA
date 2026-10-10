@@ -37,9 +37,11 @@ def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     assert 'id="publicDemoBtn"' in html
     assert 'id="publicLoginBtn"' not in html
     assert "Probar 0liviA ahora" in html
-    assert "Tu IA personal." in html
-    assert "Privada y rápida." in html
+    assert "Probá 0liviA." in html
+    assert "Simple y rápida." in html
+    assert "Proyectos, memoria, herramientas y voz requieren tu Core privado." in html
     assert "Modo prueba IA" in html
+    assert "costo no verificado" in html
     assert "publicDemoActive=false" in html
     assert "publicWelcome.hidden=!(isPublic&&!publicDemoActive)" in html
     assert "PUBLIC_DEMO_ENDPOINT='/api/demo-chat'" in html
