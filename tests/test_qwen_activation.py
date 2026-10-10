@@ -76,3 +76,15 @@ def test_workflow_only_once_and_secret_safety():
     assert "if: failure() && steps.deploy.outcome == 'success'" in raw
     assert "npm exec --yes wrangler@4.127.1" in raw
     assert "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}" in raw
+
+
+def test_live_qwen_canary_waits_for_exact_sha_without_spending_quota():
+    raw = WORKFLOW.read_text(encoding="utf-8")
+    assert "Wait for exact immutable release at the public edge" in raw
+    assert "for attempt in $(seq 1 24)" in raw
+    assert 'h.get("release_sha") == os.environ["RELEASE_SHA"]' in raw
+    assert raw.index("EXACT_SHA_EDGE_READY=TRUE") < raw.index(
+        "Live Qwen3.8 model canary (one inference request)"
+    )
+    assert raw.count('--data \'{"model":"qwen"') == 1
+    assert "QWEN_ROLLED_BACK=YES" in raw
