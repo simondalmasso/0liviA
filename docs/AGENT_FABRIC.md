@@ -68,3 +68,53 @@ provider admission with PR-A, and verify a real bounded workflow in an isolated
 sandbox. Do **not** expose these internal methods as unauthenticated API routes.
 The cloud public shell remains static-only, and OCI admin access remains blocked
 under issue #43.
+
+
+## PR-C1: Tool Gateway control plane (NO live adapters)
+
+`olivia/harness/tools.py` provides an opt-in gate for run-scoped tools.
+Nothing registers automatically. With an empty adapter registry every attempt
+is rejected; PR-C1 contains **no** real GitHub Actions, browser, MCP, shell or
+SentinelX adapter and cannot invoke a model. It is not an authenticated HTTP
+surface and is not deployed to Cloudflare.
+
+Authorization is enforced in one SQLite `BEGIN IMMEDIATE` reservation:
+
+1. A run must be claimed with a valid unexpired PR-B executor lease, its
+   agent must remain approved, and cancellation must not be pending.
+2. The tool must be explicitly registered as `ToolRule`, present in the
+   agent's inherited approved `allowed_tools`, and the requested action
+   must be in its exact action allowlist.
+3. Read-only registrations accept only `get/list/inspect/search/head`. This
+   is **not** a URL/egress sanitizer; a live browser adapter must still check
+   URL schemes, redirects, DNS/IP destinations and private-network access.
+4. Every write action requires separate authenticated owner action proof,
+   bound to the exact **request ID, run ID, tool, action and SHA-256 of the
+   prepared arguments**. A separate trusted sandbox verifier must attest the
+   exact isolation environment and tool capability. The callbacks are
+   injected only by privileged Core code and deny by default. Proof strings
+   themselves are not security credentials unless a trusted verifier validates
+   and consumes them; the gateway never fabricates an approval.
+5. Maximum actions per run is 4 by default (absolute supported ceiling 16),
+   with permanently consumed slots and a unique action ID. The action receipt
+   is inserted **before** calling the registered adapter. On any error or
+   unknown outcome, state becomes `uncertain`; a crash can leave `reserved`
+   and that identity is still unreplayable. A remote `accepted` receipt is
+   not mislabeled `completed`. Manual owner reconciliation requires an
+   evidence SHA; no automatic resubmission.
+6. Structured audit events contain event type, IDs and timestamps only, not
+   raw prompts, secret tokens, approval proofs or tool payloads.
+
+**PR-C2 work remaining:** inspect and adapt the existing coding and browser
+GitHub Actions workers plus authenticated SentinelX/MCP bridges; verify
+sandbox creation, job receipts, safe read-only URL rules, tool-specific
+idempotency keys, write-scope and worktree isolation and cancellation
+propagation with negative integration tests. In particular, an adapter
+must prove the `args_sha256` matches the actual sealed arguments sent, not
+merely trust a hash string from an LLM.
+
+**PR-D still pending:** Core auth/approval API, mobile-first agent workbench,
+ACP/MCP/AG-UI interfaces and a user-visible cost ledger. The public home is
+still static/no-inference; do not claim a working multi-agent system until the
+real adapter chain, provider billing and privileged OCI Core access pass their
+acceptance gates.
