@@ -1,6 +1,6 @@
 # Research notes
 
-Last updated: 2026-10-04
+Last updated: 2026-10-09
 
 This file records externally verified facts that can affect architecture. Candidate status is not approval.
 
@@ -332,6 +332,42 @@ Experiment order:
 3. Prefer the managed Inference Service for 0liviA once a compatible Muse model format is available.
 4. Capture only the request/response **schema** from a successful service smoke; never record the credential in the repo.
 5. Add a disabled-by-default provider adapter and only promote it after latency, quality, uptime and strict no-overage gates pass.
+
+## Pocket local fallback candidates — 2026-10-09
+
+### Qwen2.5-Coder-0.5B-Instruct GGUF
+Source: https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF
+
+Verified facts:
+- official Qwen GGUF repository exists;
+- license is Apache-2.0;
+- llama.cpp supports the published `Q4_K_M` quantization directly;
+- this is a code-specialized sub-1B model and therefore materially below 0liviA's desired primary coding quality floor.
+
+0liviA role:
+- **evaluation-only pocket helper**, never the default chat/coding brain;
+- eligible tasks are bounded local chores such as diff summarization, error classification, tiny syntax completion or test suggestion;
+- not eligible for architecture decisions, autonomous multi-file implementation, security review, final code review or silent fallback from a frontier route;
+- activation must be explicit in the provider catalog and must surface degraded capability rather than pretending equivalent quality;
+- runtime memory must be measured separately from model-file size because KV cache, tokenizer/buffers and the OS add substantial overhead.
+
+### Qwen3.5-0.8B
+Source: https://huggingface.co/Qwen/Qwen3.5-0.8B
+
+Verified facts:
+- official Qwen post-trained 0.8B model;
+- Apache-2.0;
+- multimodal/generalist rather than a dedicated code model.
+
+0liviA role:
+- challenger for instruction-following or tiny multimodal/local tasks;
+- not a presumed upgrade over Qwen2.5-Coder-0.5B for code;
+- benchmark before any use, and keep outside primary routing unless it independently meets a task-specific quality floor.
+
+Pocket-model decision:
+- **availability is not allowed to override quality**;
+- if no frontier/approved route exists, 0liviA may expose a clearly labeled degraded local helper for narrow tasks or fail closed;
+- it must not silently answer serious coding/architecture tasks with a pocket model merely to avoid an outage.
 
 ## Required benchmarks before architecture freeze
 
