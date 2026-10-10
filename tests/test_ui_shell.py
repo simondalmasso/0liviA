@@ -52,7 +52,8 @@ def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     assert "Ese comando necesita el Core privado." in html
     assert 'class="brand-mini"' in html
     assert 'class="auth-mark brand-auth"' in html
-    assert '--brand-logo:url("data:image/png;base64,' in html
+    assert '--brand-logo:url("/logo-mark.svg")' in html
+    assert 'data:image/png;base64' not in html
     assert "<title>0liviA — Tu IA personal</title>" in html
 
 
@@ -162,3 +163,20 @@ def test_pending_remote_request_is_always_marked_as_review_required():
     html = _shell()
     assert "Sin enviar · requiere revisión manual" in html
     assert "No se reintentará automáticamente" in html
+
+
+def test_vector_brand_asset_is_crisp_at_any_dpi_and_has_no_remote_content():
+    from xml.etree import ElementTree as ET
+    html = _shell()
+    svg = Path("web/logo-mark.svg").read_text(encoding="utf-8")
+    root = ET.fromstring(svg)
+    assert root.tag.endswith("svg")
+    assert root.attrib["viewBox"] == "0 0 100 126"
+    assert "data:image/png;base64" not in html
+    assert "<image" not in svg
+    assert "<script" not in svg
+    assert "foreignObject" not in svg
+    assert svg.count("http://") == 1
+    assert "https://" not in svg
+    assert "filter:drop-shadow(0 0 7px" in html
+    assert 'id="entryIntro"' in html
