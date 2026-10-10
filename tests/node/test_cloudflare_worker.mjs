@@ -146,6 +146,7 @@ test("Qwen is selectable only after independently verified no-overage admission"
   assert.equal(health.demo_qwen_ready, false);
   assert.equal(health.demo_models.length, 3);
   assert.equal(health.demo_models[1].available, false);
+  assert.equal(health.demo_models[2].available, false);
   const qwen = post([{ role: "user", content: "hola" }], { model: "qwen" });
   assert.equal((await worker.fetch(qwen, f.env)).status, 503);
   assert.equal(f.calls.length, 0);
