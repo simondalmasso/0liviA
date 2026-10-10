@@ -61,7 +61,7 @@ def gateway(fabric, read=None, write=None, *, owner=True, sandbox=True,
     return ToolGateway(
         fabric, registry,
         owner_action_verifier=(
-            lambda run, tool, action, digest, proof: proof == "owner-action"
+            lambda request, run, tool, action, digest, proof: proof == "owner-action"
         ) if owner else None,
         sandbox_verifier=(
             lambda kind, sid, tool, proof: (
@@ -210,3 +210,35 @@ def test_invalid_write_registration_cannot_disable_approval_or_sandbox(tmp_path)
         ToolRule("github.pr", frozenset({"open"}), read_only=False)
     with pytest.raises(ValueError, match="invalid_tool_registration"):
         gateway(f, read=object())
+
+
+@pytest.mark.asyncio
+async def test_write_approval_is_bound_to_exact_request_id_and_digest(tmp_path):
+    f, lease, _ = setup_runtime(tmp_path)
+    adapter = FakeAdapter()
+    g = ToolGateway(
+        f, {"github.pr": (
+            ToolRule("github.pr", frozenset({"open"}), read_only=False,
+                     sandbox_kind="github-actions"), adapter
+        )},
+        owner_action_verifier=(
+            lambda req, rid, tool, action, digest, proof:
+            req == "specific1" and rid == "run1" and digest == SHA
+            and proof == "single-approved-receipt"
+        ),
+        sandbox_verifier=(
+            lambda kind, sid, tool, proof: sid == "isolated-worktree"
+            and proof == "sandbox-attested"
+        ),
+    )
+    kw = {"approval_proof": "single-approved-receipt",
+          "sandbox_id": "isolated-worktree",
+          "sandbox_proof": "sandbox-attested"}
+    with pytest.raises(ToolDenied, match="owner_action_approval_required"):
+        await g.execute("run1", lease, "specific2", "github.pr", "open", SHA, **kw)
+    assert adapter.calls == 0
+    value = await g.execute("run1", lease, "specific1", "github.pr", "open", SHA, **kw)
+    assert value.state == "completed"
+    assert adapter.calls == 1
+    with pytest.raises(ToolConflict, match="duplicate_or_uncertain_action"):
+        await g.execute("run1", lease, "specific1", "github.pr", "open", SHA, **kw)
