@@ -143,3 +143,30 @@ async def test_worker_malformed_result_does_not_claim_completion(tmp_path):
         await g.execute("run1", lease, "op1", "github.read", "get", q.args_sha256)
     assert g.get_action("op1")["state"] == "uncertain"
     assert worker.dispatch_calls == 0
+
+
+def test_status_seal_is_specific_to_exact_request_id():
+    one = seal_status_query("op1", "0123456789abcdef",
+                            "coding", FakeWorker.repo)
+    two = seal_status_query("op2", "0123456789abcdef",
+                            "coding", FakeWorker.repo)
+    assert one.args_sha256 != two.args_sha256
+    from dataclasses import replace
+    with pytest.raises(ValueError, match="invalid_prepared_digest"):
+        replace(one, request_id="op2")
+
+
+@pytest.mark.asyncio
+async def test_worker_repo_cannot_change_after_sealed_query(tmp_path):
+    f, lease = active(tmp_path, "github.read")
+    worker = FakeWorker(None)
+    q = seal_status_query("op1", "0123456789abcdef", "coding", worker.repo)
+    adapter = GitHubStatusAdapter(worker, kind="coding", prepared=[q])
+    worker.repo = "other/repository"
+    g = ToolGateway(f, {"github.read": (
+        ToolRule("github.read", frozenset({"get"}), read_only=True), adapter
+    )})
+    with pytest.raises(ToolOutcomeUnknown, match="remote_outcome_uncertain"):
+        await g.execute("run1", lease, "op1", "github.read", "get", q.args_sha256)
+    assert worker.status_calls == []
+    assert worker.dispatch_calls == 0

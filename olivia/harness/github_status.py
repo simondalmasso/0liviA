@@ -113,6 +113,8 @@ class GitHubStatusAdapter:
         query = self._queries.get(request_id)
         if query is None or query.args_sha256 != args_sha256:
             raise ValueError("unsealed_or_mismatched_status_query")
+        if getattr(self._worker, "repo", None) != query.repo:
+            raise ValueError("worker_repo_changed_after_seal")
         # Explicitly call only .status(); NEVER .dispatch() or .result().
         item = await self._worker.status(query.job_id)
         if item is None:
