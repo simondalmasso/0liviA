@@ -125,3 +125,13 @@ def test_from_env_reads_build_sha(monkeypatch, tmp_path):
     monkeypatch.setenv("OLIVIA_BUILD_SHA", sha)
     settings = Settings.from_env()
     assert settings.build_sha == sha
+
+
+def test_default_router_budget_is_one_primary_plus_one_pre_token_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("OLIVIA_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("OLIVIA_MAX_PROVIDER_ATTEMPTS", raising=False)
+    assert Settings.from_env().max_provider_attempts == 2
+    monkeypatch.setenv("OLIVIA_MAX_PROVIDER_ATTEMPTS", "16")
+    assert Settings.from_env().max_provider_attempts == 2
+    monkeypatch.setenv("OLIVIA_MAX_PROVIDER_ATTEMPTS", "1")
+    assert Settings.from_env().max_provider_attempts == 1
