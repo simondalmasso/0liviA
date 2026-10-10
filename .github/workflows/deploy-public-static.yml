@@ -89,13 +89,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.static.release.json --keep-vars --message "STATIC NO-AI main@${RELEASE_SHA}"
+          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.static.release.json --keep-vars --message "STATIC NO-AI main@${RELEASE_SHA}" 2>&1 | tee /tmp/olivia-static-deploy.log
+          public_url="$(grep -Eo 'https://[^[:space:]]+\\.workers\\.dev' /tmp/olivia-static-deploy.log | tail -n1 || true)"
+          [[ "${public_url}" == https://*.workers.dev ]]
+          echo "PUBLIC_SHELL_URL=${public_url}" >> "$GITHUB_ENV"
 
       - name: Verify live home and fail-closed health (GET only)
         shell: bash
         run: |
           set -euo pipefail
-          base="https://0livia.simondalmasso44.workers.dev"
+          base="${PUBLIC_SHELL_URL}"
+          [[ "${base}" == https://*.workers.dev ]]
           root="$(curl -fsS --max-time 20 "${base}/?sha=${RELEASE_SHA}")"
           grep -Fq 'id="entryIntro"' <<<"${root}"
           grep -Fq 'id="text"' <<<"${root}"
