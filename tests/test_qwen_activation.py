@@ -98,3 +98,14 @@ def test_qwen_canary_diagnoses_http_failures_without_echoing_provider_body():
     assert '"unclassified"' in yaml
     assert 'if [[ "${status}" != "200" ]]; then' in yaml
     assert "QWEN_ROLLED_BACK=YES" in yaml
+
+
+def test_qwen_edge_retries_only_before_inference():
+    raw = WORKFLOW.read_text(encoding="utf-8")
+    assert '"${status}" == "503" && "${canary_error}" == "qwen_unavailable"' in raw
+    assert "for attempt in $(seq 1 18)" in raw
+    assert "WAIT_QWEN_ROUTE_PROPAGATION" in raw
+    assert "Any other status immediately fails; at most one AI.run occurs." in raw
+    assert raw.count('--data \'{"model":"qwen"') == 1
+    assert 'if [[ "${status}" != "200" ]]; then' in raw
+    assert "QWEN_ROLLED_BACK=YES" in raw
