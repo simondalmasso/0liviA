@@ -139,6 +139,19 @@ async def main() -> int:
                 await page.locator("#text").fill("")
                 await page.locator("#text").dispatch_event("input")
 
+                # Home deliberately hides secondary composer controls. Exercise
+                # voice in a populated chat without issuing any model request.
+                assert not await page.locator("#voiceBtn").is_visible()
+                await page.evaluate(
+                    """() => {
+                      selectedChat().messages.push({
+                        id:'smoke-ui',role:'user',text:'UI QA',status:'synced',ts:Date.now()
+                      });
+                      homeView=false;
+                      renderMessages();
+                    }"""
+                )
+                assert await page.locator("#voiceBtn").is_visible()
                 await page.locator("#voiceBtn").click()
                 await page.wait_for_timeout(180)
                 voice = await rect(page, "#voiceLive")
