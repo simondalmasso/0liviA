@@ -859,6 +859,8 @@ class Gateway:
             return None
         if job.get("kind") != "browser":
             return job
+        if job.get("status") in {"succeeded", "failed", "complete", "cancelled"}:
+            return job
         if self.browser_worker is None or not self.browser_worker.configured:
             return job
         try:
@@ -869,6 +871,9 @@ class Gateway:
             status = classify_external_run_status(remote)
             if status == "unknown":
                 return job
+            # Remote GitHub "queued" must not reopen the local dispatch queue.
+            if status == "queued":
+                status = "dispatched"
             checkpoint = {**job.get("checkpoint", {}), **remote}
             if (
                 status == "succeeded"
@@ -883,7 +888,7 @@ class Gateway:
                     payload = None
                 if payload:
                     checkpoint["browser_result"] = self._bounded_browser_result(payload)
-            self.agent.store.checkpoint_job(job_id, status, checkpoint)
+            self.agent.store.reconcile_verified_remote_job(job_id, status, checkpoint)
             job = self.agent.store.get_job(job_id) or job
         return job
 
@@ -901,6 +906,8 @@ class Gateway:
             return None
         if job.get("kind") != "code":
             return job
+        if job.get("status") in {"succeeded", "failed", "complete", "cancelled"}:
+            return job
         if self.coding_worker is None or not self.coding_worker.configured:
             return job
         try:
@@ -911,6 +918,9 @@ class Gateway:
             status = classify_external_run_status(remote)
             if status == "unknown":
                 return job
+            # Remote GitHub "queued" must not reopen the local dispatch queue.
+            if status == "queued":
+                status = "dispatched"
             checkpoint = {**job.get("checkpoint", {}), **remote}
             if (
                 status == "succeeded"
@@ -927,7 +937,7 @@ class Gateway:
                     report = None
                 if report:
                     checkpoint["review_report"] = redact_secrets(report)[:40_000]
-            self.agent.store.checkpoint_job(job_id, status, checkpoint)
+            self.agent.store.reconcile_verified_remote_job(job_id, status, checkpoint)
             job = self.agent.store.get_job(job_id) or job
         return job
 
