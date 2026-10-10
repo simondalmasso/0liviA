@@ -2090,7 +2090,7 @@ async def test_cancelled_dispatch_preserves_uncertain_job_and_repeat_dedupes(tmp
             publish_branch=False,
         )
     )
-    await worker.started.wait()
+    await asyncio.wait_for(worker.started.wait(), timeout=2)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -2150,18 +2150,18 @@ async def test_concurrent_identical_dispatches_create_one_external_side_effect(t
             publish_branch=False,
         )
     )
-    await worker.started.wait()
-    second = await gateway._dispatch_code_job(
+    await asyncio.wait_for(worker.started.wait(), timeout=2)
+    second = await asyncio.wait_for(gateway._dispatch_code_job(
         task="Concurrent objective",
         base_ref="main",
         mode="implement",
         publish_branch=False,
-    )
+    ), timeout=2)
     assert second["deduplicated"] is True
     assert second["status"] == "running"
     assert len(worker.dispatched) == 1
 
     worker.release.set()
-    first = await first_task
+    first = await asyncio.wait_for(first_task, timeout=2)
     assert first["job_id"] == second["job_id"]
     assert len(worker.dispatched) == 1
