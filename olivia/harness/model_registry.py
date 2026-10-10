@@ -7,7 +7,7 @@ attestations from a trusted server-side source, never model-generated text.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from ipaddress import ip_address
 from typing import Iterable
 from urllib.parse import urlsplit
@@ -33,6 +33,15 @@ class ModelAttestation:
     max_input_tokens: int
     max_output_tokens: int
     daily_request_cap: int
+    endpoint: str = ""
+    billing_pool: str = ""
+    shared_daily_cap_units: int = 0
+    external_usage_units: int = -1
+    usage_day: date | None = None
+    input_units_per_million: int = 0
+    output_units_per_million: int = 0
+    pool_exclusive_verified: bool = False
+    output_limit_enforced_verified: bool = False
 
     def __post_init__(self) -> None:
         if not self.provider or not self.model or not self.account_id or not self.evidence_ref:
@@ -49,6 +58,19 @@ class ModelAttestation:
             value = getattr(self, field)
             if type(value) is not int or value <= 0:
                 raise ValueError(f"invalid {field}")
+        # Production-eligible remote routes require an independently reviewed
+        # shared account billing pool and model-specific conservative pricing.
+        if self.cost_mode == "free_hard_cap":
+            if not self.endpoint.startswith("https://") or not self.billing_pool:
+                raise ValueError("remote endpoint and billing pool evidence required")
+            if any(type(getattr(self, key)) is not int or getattr(self, key) <= 0 for key in (
+                "shared_daily_cap_units", "input_units_per_million", "output_units_per_million"
+            )):
+                raise ValueError("invalid shared pool cap or conservative rates")
+            if type(self.external_usage_units) is not int or self.external_usage_units < 0:
+                raise ValueError("missing externally observed usage floor")
+            if self.usage_day is None:
+                raise ValueError("missing official usage day")
 
 
 @dataclass(frozen=True)
@@ -69,6 +91,11 @@ class ModelAdmission:
     reserved_input_tokens: int = 0
     reserved_output_tokens: int = 0
     daily_request_cap: int = 0
+    billing_pool: str = ""
+    shared_daily_cap_units: int = 0
+    shared_request_units: int = 0
+    external_usage_units: int = 0
+    usage_day: date | None = None
 
 
 def _local_loopback(spec: ProviderSpec) -> bool:
@@ -134,11 +161,13 @@ class ModelRegistry:
         record = self._evidence.get((spec.name, spec.model))
         if record is None:
             return deny("account_model_not_attested")
-        if record.cost_mode != spec.cost_mode or record.capabilities.isdisjoint({capability}):
+        if (record.cost_mode != spec.cost_mode or record.capabilities.isdisjoint({capability})
+                or (spec.cost_mode == "free_hard_cap" and record.endpoint != spec.base_url)):
             return deny("attestation_mismatch")
         if not record.production_permitted or not record.no_credit_overage_verified:
             return deny("production_or_no_overage_unverified")
-        if record.reviewed_at > (self._today or date.today()) or record.expires_at < (self._today or date.today()):
+        today = self._today or datetime.now(timezone.utc).date()
+        if record.reviewed_at > today or record.expires_at < today:
             return deny("attestation_expired_or_future")
         if spec.cost_mode not in _ALLOWED_COST:
             return deny("cost_mode_unverified")
@@ -147,6 +176,13 @@ class ModelRegistry:
                 return deny("local_model_not_loopback")
         elif not spec.base_url.startswith("https://") or not spec.daily_limit:
             return deny("remote_endpoint_or_quota_unverified")
+        if spec.cost_mode == "free_hard_cap":
+            if not record.pool_exclusive_verified or not record.output_limit_enforced_verified:
+                return deny("shared_account_or_output_cap_unverified")
+            if record.usage_day != today:
+                return deny("shared_account_usage_stale")
+            if record.external_usage_units >= record.shared_daily_cap_units:
+                return deny("shared_account_budget_exhausted")
         if max_input > record.max_input_tokens or max_output > record.max_output_tokens:
             return deny("model_token_limit_exceeded")
         if parent_budget is not None:
@@ -160,7 +196,16 @@ class ModelRegistry:
         daily_limit = record.daily_request_cap
         if spec.daily_limit:
             daily_limit = min(spec.daily_limit, daily_limit)
+        units = 0
+        if spec.cost_mode == "free_hard_cap":
+            # ceil() at each leg: never round a small request down to zero.
+            units = ((max_input * record.input_units_per_million + 999_999) // 1_000_000
+                     + (max_output * record.output_units_per_million + 999_999) // 1_000_000)
+            if units + record.external_usage_units > record.shared_daily_cap_units:
+                return deny("shared_account_budget_exhausted")
         return ModelAdmission(
             True, "permitted", spec.name, spec.model, record.account_id, capability,
-            max_input, max_output, daily_limit
+            max_input, max_output, daily_limit, record.billing_pool,
+            record.shared_daily_cap_units, units, record.external_usage_units,
+            record.usage_day,
         )
