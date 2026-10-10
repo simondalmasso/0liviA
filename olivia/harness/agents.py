@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import secrets
 import sqlite3
@@ -164,6 +165,8 @@ class AgentFabric:
         # PR-A's hierarchy uses exactly the same DB and is inserted atomically
         # on approval; draft agents have NO spendable budget scope.
         BudgetGuard(self.db_path)
+        # Stored checkpoints and owner approval state are private by default.
+        os.chmod(self.db_path, 0o600)
         with self._transaction() as conn:
             conn.executescript(_SCHEMA)
 
@@ -455,6 +458,10 @@ class AgentFabric:
         if (not isinstance(lease_token, str)
                 or not secrets.compare_digest(str(run["lease_token"]), lease_token)):
             raise AgentDenied("lease_token_invalid")
+        # Close the interval between explicit expiry reconciliation and CAS.
+        # Never accept checkpoint/success after the lease's actual deadline.
+        if run["lease_expires_at"] is None or run["lease_expires_at"] <= self._clock():
+            raise AgentConflict("lease_expired")
         return run
 
     def checkpoint(
