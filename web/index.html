@@ -242,7 +242,7 @@ button.side-card{text-align:left}
 .send,.send:disabled{background:#000;color:#fff}
 .send:disabled{opacity:.45}
 .user .bubble{background:#fff;color:#000}
-.app.is-landing .composer-status,.app.is-landing .composer-icon{display:none}
+.app.is-landing .composer-icon{display:none}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.intro-overlay{display:none!important}}
 </style>
 </head>
@@ -572,7 +572,7 @@ function updatePublicHome(){
   if(isPublic){
     publicStatus.textContent=demoReady
       ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+(gemmaReady?' / Gemma':'')+' · costo no verificado'
-      :'Modo prueba IA no disponible · el Core privado sigue separado.';
+      :'Chat IA no conectado. Esta versión muestra la interfaz, pero no tiene un modelo habilitado.';
   }
 }
 function updateComposerAvailability(){
