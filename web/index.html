@@ -175,7 +175,6 @@ button.side-card{text-align:left}
   .rail{height:100dvh;padding:max(7px,env(safe-area-inset-top)) 4px max(7px,env(safe-area-inset-bottom))}
   .rail-logo,.rail-btn{width:40px;min-height:40px;padding:0;justify-content:center;border-radius:9px}
   .rail-logo{font-size:0}
-  .rail-logo::before{content:"0";font-size:15px;font-weight:700}
   .rail-label{display:none}
   .app{height:100dvh;overflow:hidden}
   .drawer{left:48px;width:calc(100vw - 48px);max-width:330px;height:100dvh;padding:max(9px,env(safe-area-inset-top)) 9px max(11px,env(safe-area-inset-bottom));overflow:hidden}
@@ -191,7 +190,7 @@ button.side-card{text-align:left}
   .msg-body{max-width:94%}
   .msg-actions{opacity:.72}
   .composer-wrap{padding:8px 8px max(9px,env(safe-area-inset-bottom))}
-  .composer-wrap.landing{top:calc(50% + 40px)}
+  .composer-wrap.landing{top:calc(50% + 20px)}
   .messages.landing .empty{top:calc(50% - 135px)}
   .composer{width:100%;max-width:none;min-height:50px;padding:4px 5px 4px 6px;border-radius:24px}
   .composer input{font-size:16px;padding:9px 4px}
@@ -239,7 +238,7 @@ button.side-card{text-align:left}
 .send,.send:disabled{background:#000;color:#fff}
 .send:disabled{opacity:.45}
 .user .bubble{background:#fff;color:#000}
-.app.is-landing .composer-status{display:none}
+.app.is-landing .composer-status,.app.is-landing .composer-icon{display:none}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.intro-overlay{display:none!important}}
 </style>
 </head>

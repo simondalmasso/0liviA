@@ -127,6 +127,9 @@ def test_home_initial_view_is_independent_of_saved_chat_and_strict_bw():
     assert "greeting.textContent='Qué gusto verte, Simon.'" in html
     assert ".messages.landing .empty{position:absolute" in html
     assert ".composer-wrap.landing{top:calc(50% + 40px)" in html
+    assert "  .composer-wrap.landing{top:calc(50% + 20px)}" in html
+    assert '.rail-logo::before{content:"0"' not in html
+    assert '.app.is-landing .composer-status,.app.is-landing .composer-icon{display:none}' in html
     assert ".rail{background:#000;border-color:#fff}" in html
     assert ".composer{background:#fff;border-color:#fff}" in html
     assert ".composer input,.composer-icon{color:#000}" in html
