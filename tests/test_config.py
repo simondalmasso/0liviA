@@ -12,7 +12,7 @@ def test_reliability_defaults_are_backwards_compatible(tmp_path):
     assert settings.circuit_half_open_probes == 1
     assert settings.circuit_jitter_ratio == pytest.approx(0.2)
     assert settings.probe_lease_s == pytest.approx(90.0)
-    assert settings.max_provider_attempts == 3
+    assert settings.max_provider_attempts == 2
     assert settings.cooldown_rate_limit_s == 60
     assert settings.stream_idle_timeout_s == 0.0
     assert settings.visible_prefix_max_chars == 256
@@ -49,7 +49,7 @@ def test_from_env_reads_reliability_settings(monkeypatch, tmp_path):
     assert settings.circuit_half_open_probes == 2
     assert settings.circuit_jitter_ratio == pytest.approx(0.1)
     assert settings.probe_lease_s == pytest.approx(20.0)
-    assert settings.max_provider_attempts == 5
+    assert settings.max_provider_attempts == 2
     assert settings.cooldown_rate_limit_s == 45
     assert settings.stream_idle_timeout_s == pytest.approx(9.0)
     assert settings.visible_prefix_max_chars == 64
@@ -70,7 +70,7 @@ def test_from_env_clamps_nonsense_values(monkeypatch, tmp_path):
     settings = Settings.from_env()
     assert settings.circuit_half_open_probes == 1
     assert settings.circuit_jitter_ratio == 0.0
-    assert settings.max_provider_attempts == 16
+    assert settings.max_provider_attempts == 2
     assert settings.quota_utc_offset_h == 14
     assert settings.ttft_timeout_s == 12.0
     assert settings.probe_lease_s == pytest.approx(1.0)
