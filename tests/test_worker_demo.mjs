@@ -68,6 +68,8 @@ test("valid same-origin demo is bounded and reports no billing guarantee", async
   assert.equal(body.canonical, false);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].payload.max_completion_tokens, 256);
+  assert.match(calls[0].payload.messages[0].content, /demostración pública/);
+  assert.doesNotMatch(calls[0].payload.messages[0].content, /Simón/);
 });
 test("canonical chat endpoint stays disabled even with demo enabled", async () => {
   const { env, calls } = makeEnv();
