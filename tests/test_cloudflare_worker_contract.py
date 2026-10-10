@@ -152,3 +152,24 @@ def test_cloudflare_deploy_is_manual_only_and_requires_owner_confirmation():
     assert 'body.get("hard_zero_cost") is False' in deploy
     assert 'body.get("demo_cost_guaranteed") is False' in deploy
     assert '-H "Origin: ${base}"' in deploy
+
+
+def test_static_public_release_has_no_model_provider_binding_or_ai_calls():
+    static = Path(".github/workflows/deploy-public-static.yml").read_text(encoding="utf-8")
+    assert 'env?.OLIVIA_STATIC_ONLY !== "1"' in WORKER
+    assert 'static_only: env?.OLIVIA_STATIC_ONLY === "1"' in WORKER
+    assert '"OLIVIA_STATIC_ONLY": "1"' in static
+    assert '"OLIVIA_DEMO_ZERO_COST_CONFIRMED": "0"' in static
+    assert '"OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "0"' in static
+    assert '"OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED": "0"' in static
+    assert '"OLIVIA_DEMO_GEMMA_LIVE_VERIFIED": "0"' in static
+    assert '"ai":' not in static
+    assert '"durable_objects":' not in static
+    assert "wrangler@4.127.1" in static
+    assert 'body.get("demo_inference_enabled") is False' in static
+    assert 'body.get("hard_zero_cost") is True' in static
+    assert 'body.get("static_only") is True' in static
+    assert "npm exec" in static
+    assert '/api/demo-chat' not in static  # no POST, no live model canary
+    assert "confirm_account_no_overage" not in static  # no inference has to be approved
+    assert "run_worker_first" not in static

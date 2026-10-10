@@ -1,0 +1,140 @@
+name: 0liviA Public Static Deploy (No AI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Exact 40-hex SHA from canonical main (optional; defaults to selected branch)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: olivia-public-shell-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout read-only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve exact main SHA
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          sha="${REQUESTED_SHA:-${GITHUB_SHA}}"
+          [[ "${sha}" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "${sha}^{commit}"
+          git merge-base --is-ancestor "${sha}" origin/main
+          git checkout --detach "${sha}"
+          test "$(git rev-parse HEAD)" = "${sha}"
+          echo "RELEASE_SHA=${sha}" >> "$GITHUB_ENV"
+
+      - name: Enforce no-inference static release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          grep -Fq 'env?.OLIVIA_STATIC_ONLY !== "1"' cloudflare/worker.mjs
+          grep -Fq 'id="entryIntro"' web/index.html
+          grep -Fq 'id="text"' web/index.html
+          grep -Fq 'Content-Security-Policy:' web/_headers
+          test ! -e wrangler.static.release.json
+
+      - name: Build no-provider deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          sha = os.environ["RELEASE_SHA"]
+          config = {
+              "name": "0livia",
+              "main": "./cloudflare/worker.mjs",
+              "compatibility_date": "2026-10-04",
+              "compatibility_flags": ["global_fetch_strictly_public"],
+              "workers_dev": True,
+              "preview_urls": False,
+              "assets": {"directory": "./web", "binding": "ASSETS"},
+              "vars": {
+                  "OLIVIA_STATIC_ONLY": "1",
+                  "OLIVIA_DEMO_ZERO_COST_CONFIRMED": "0",
+                  "OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "0",
+                  "OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED": "0",
+                  "OLIVIA_DEMO_GEMMA_LIVE_VERIFIED": "0",
+                  "OLIVIA_RELEASE_SHA": sha,
+              },
+          }
+          assert "ai" not in config and "durable_objects" not in config
+          Path("wrangler.static.release.json").write_text(json.dumps(config, indent=2))
+          PY
+
+      - name: Deploy static public shell (zero inference)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.static.release.json --keep-vars --message "STATIC NO-AI main@${RELEASE_SHA}" 2>&1 | tee /tmp/olivia-static-deploy.log
+          public_url="$(grep -Eo 'https://[^[:space:]]+\\.workers\\.dev' /tmp/olivia-static-deploy.log | tail -n1 || true)"
+          [[ "${public_url}" == https://*.workers.dev ]]
+          echo "PUBLIC_SHELL_URL=${public_url}" >> "$GITHUB_ENV"
+
+      - name: Verify live home and fail-closed health (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${PUBLIC_SHELL_URL}"
+          [[ "${base}" == https://*.workers.dev ]]
+          root="$(curl -fsS --max-time 20 "${base}/?sha=${RELEASE_SHA}")"
+          grep -Fq 'id="entryIntro"' <<<"${root}"
+          grep -Fq 'id="text"' <<<"${root}"
+          grep -Fq 'id="demoModelSelect"' <<<"${root}"
+          ! grep -Fq 'Probar 0liviA ahora' <<<"${root}"
+          health="$(curl -fsS --max-time 20 "${base}/healthz?sha=${RELEASE_SHA}")"
+          HEALTH_JSON="${health}" python3 - <<'PY'
+          import json, os
+          body = json.loads(os.environ["HEALTH_JSON"])
+          checks = {
+              "release_sha": body.get("release_sha") == os.environ["RELEASE_SHA"],
+              "process_alive": body.get("process_alive") is True,
+              "api_mode": body.get("api_mode") == "public_shell",
+              "static_only": body.get("static_only") is True,
+              "demo_inference_enabled": body.get("demo_inference_enabled") is False,
+              "demo_provider_ready": body.get("demo_provider_ready") is False,
+              "demo_qwen_ready": body.get("demo_qwen_ready") is False,
+              "demo_gemma_ready": body.get("demo_gemma_ready") is False,
+              "hard_zero_cost": body.get("hard_zero_cost") is True,
+              "demo_cost_guaranteed": body.get("demo_cost_guaranteed") is False,
+              "bridge_enabled": body.get("bridge_enabled") is False,
+          }
+          bad = [key for key, value in checks.items() if not value]
+          if bad: raise SystemExit("static-release smoke failed: " + ", ".join(bad))
+          print("STATIC_HOME_OK=" + os.environ["RELEASE_SHA"])
+          PY
+
+      - name: Release evidence
+        if: success()
+        shell: bash
+        run: |
+          echo "Static home deployed: main@${RELEASE_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "No AI binding, no CostGuard binding, no model inference smoke." >> "$GITHUB_STEP_SUMMARY"
+          echo "Verified GET / and GET /healthz (demo inference unavailable)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean temporary configuration
+        if: always()
+        run: rm -f wrangler.static.release.json
