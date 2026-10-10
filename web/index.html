@@ -274,7 +274,7 @@ button.side-card{text-align:left}
       <select id="demoModelSelect" aria-label="Modelo de la demo" title="Modelo de la demo" hidden>
         <option value="glm">GLM 4.7 Flash</option>
         <option value="qwen" disabled>Qwen3.8 27B · inactivo</option>
-        <option value="gemma" disabled>Gemma 4 26B A4B · inactivo</option>
+        <option value="gemma" disabled>Gemma · off</option>
       </select>
       <span id="coreDot" class="core-dot" title="Core pendiente"></span>
     </header>
@@ -556,25 +556,14 @@ function composerAvailable(){
   return true;
 }
 function updatePublicHome(){
-  const isPublic=backendMode==='public_shell';
-  const demoReady=isPublic&&coreHealth?.demo_provider_ready===true;
-  const qwenReady=demoReady&&coreHealth?.demo_qwen_ready===true;
-  const gemmaReady=demoReady&&coreHealth?.demo_gemma_ready===true;
-  demoModelSelect.hidden=!(isPublic&&publicDemoActive&&demoReady);
-  demoModelSelect.options[1].disabled=!qwenReady;
-  demoModelSelect.options[1].textContent=qwenReady?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · inactivo';
-  demoModelSelect.options[2].disabled=!gemmaReady;
-  demoModelSelect.options[2].textContent=gemmaReady?PUBLIC_DEMO_GEMMA_MODEL:PUBLIC_DEMO_GEMMA_MODEL+' · inactivo';
-  if((!qwenReady&&demoModelSelect.value==='qwen')||(!gemmaReady&&demoModelSelect.value==='gemma'))demoModelSelect.value='glm';
-  publicWelcome.hidden=!(isPublic&&!publicDemoActive);
-  if(isPublic){
-    publicDemoBtn.disabled=!demoReady;
-    publicDemoBtn.textContent=demoReady?'Probar 0liviA ahora':'IA demo no disponible';
-    const availableModels=['GLM 4.7 Flash',...(qwenReady?['Qwen3.8']:[]),...(gemmaReady?['Gemma 4']:[])];
-    publicStatus.textContent=demoReady
-      ?'Modo prueba IA · '+availableModels.join(' / ')+' · sin cuenta · cupo $0 hard-cap'
-      :'Modo prueba IA no disponible · el Core privado sigue separado.';
-  }
+ const p=backendMode==='public_shell',d=p&&coreHealth?.demo_provider_ready===true,q=d&&coreHealth?.demo_qwen_ready===true,g=d&&coreHealth?.demo_gemma_ready===true;
+ demoModelSelect.hidden=!(p&&publicDemoActive&&d);
+ const qo=demoModelSelect.options[1],go=demoModelSelect.options[2];
+ qo.disabled=!q;qo.textContent=q?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · inactivo';
+ go.disabled=!g;go.textContent=g?PUBLIC_DEMO_GEMMA_MODEL:'Gemma · off';
+ if(demoModelSelect.selectedOptions[0]?.disabled)demoModelSelect.value='glm';
+ publicWelcome.hidden=!(p&&!publicDemoActive);
+ if(p){publicDemoBtn.disabled=!d;publicDemoBtn.textContent=d?'Probar 0liviA ahora':'IA demo no disponible';publicStatus.textContent=d?'Modo prueba IA · modelos $0 verificados · sin cuenta':'Modo prueba IA no disponible · Core privado separado.'}
 }
 function updateComposerAvailability(){
   const available=composerAvailable();
@@ -591,12 +580,7 @@ function setCoreState(mode){
   if(backendMode==='public_shell'&&publicDemoActive&&coreHealth?.demo_provider_ready===true){
     coreOnline=false;
     coreDot.className='core-dot online';
-    const selectedLabel=demoModelSelect.value==='qwen'
-      ?PUBLIC_DEMO_QWEN_MODEL
-      :demoModelSelect.value==='gemma'
-        ?PUBLIC_DEMO_GEMMA_MODEL
-        :PUBLIC_DEMO_MODEL;
-    coreDot.title='Modo prueba $0 · '+selectedLabel;
+    coreDot.title='Modo prueba $0 · '+(demoModelSelect.selectedOptions[0]?.textContent||PUBLIC_DEMO_MODEL);
     updateComposerAvailability();
     return;
   }
