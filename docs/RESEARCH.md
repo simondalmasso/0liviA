@@ -327,11 +327,13 @@ Zero-cost status:
 - 0liviA's hard-zero-cost router must therefore exclude this route until account-level exhaustion/billing behavior is verified.
 
 Experiment order:
-1. Read the platform's point/hour estimate for a short GPU development-machine run and inference-service run before creating anything.
-2. Benchmark official Muse GGUF on a short-lived GPU development machine if the selected GPU has enough VRAM.
-3. Prefer the managed Inference Service for 0liviA once a compatible Muse model format is available.
-4. Capture only the request/response **schema** from a successful service smoke; never record the credential in the repo.
-5. Add a disabled-by-default provider adapter and only promote it after latency, quality, uptime and strict no-overage gates pass.
+1. Keep worker outputs/checkpoints under `/data`; 0liviA includes `scripts/ephemeral_checkpoint.py` to snapshot/restore bounded worker state without provider APIs or credentials.
+2. Read the platform's point/hour estimate for a short GPU development-machine run and inference-service run before creating anything.
+3. Benchmark official Muse GGUF on a short-lived GPU development machine if the selected GPU has enough VRAM.
+4. Prefer the managed Inference Service for 0liviA once a compatible Muse model format is available.
+5. Capture only the request/response **schema** from a successful service smoke; never record the credential in the repo.
+6. Add a disabled-by-default provider adapter and only promote it after latency, quality, uptime and strict no-overage gates pass.
+7. Do not automate start/extend/restart through UI clicking; only add lifecycle automation after an official management API and account authorization are verified.
 
 ## Pocket local fallback candidates — 2026-10-09
 
