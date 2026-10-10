@@ -144,7 +144,7 @@ test("Qwen is selectable only after independently verified no-overage admission"
   const f = fixture();
   const health = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
   assert.equal(health.demo_qwen_ready, false);
-  assert.equal(health.demo_models.length, 2);
+  assert.equal(health.demo_models.length, 3);
   assert.equal(health.demo_models[1].available, false);
   const qwen = post([{ role: "user", content: "hola" }], { model: "qwen" });
   assert.equal((await worker.fetch(qwen, f.env)).status, 503);
