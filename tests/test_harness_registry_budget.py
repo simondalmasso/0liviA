@@ -201,8 +201,13 @@ async def test_guarded_model_execution_one_call_no_retry_when_outcome_uncertain(
         def __init__(self):
             self.spec = spec()
             self.calls = 0
-        async def stream(self, _messages):
+        def prepare_bounded(self, messages, *, max_output_tokens):
+            return BoundedRequest(self.spec.model, json.dumps({"model": self.spec.model,
+                "messages": messages, "max_tokens": max_output_tokens}),
+                "chat_completions", "max_tokens", max_output_tokens)
+        async def stream_prepared(self, prepared):
             self.calls += 1
+            assert prepared.max_output_tokens == 50
             yield "visible"
             raise RuntimeError("stream interruption")
 
@@ -227,7 +232,12 @@ async def test_success_marks_receipt_and_no_double_settlement(tmp_path):
     class Fake:
         def __init__(self):
             self.spec = spec()
-        async def stream(self, _messages):
+        def prepare_bounded(self, messages, *, max_output_tokens):
+            return BoundedRequest(self.spec.model, json.dumps({"model": self.spec.model,
+                "messages": messages, "max_tokens": max_output_tokens}),
+                "chat_completions", "max_tokens", max_output_tokens)
+        async def stream_prepared(self, prepared):
+            assert prepared.max_output_tokens == 50
             yield "ok"
 
     bg = BudgetGuard(tmp_path / "b.sqlite3", today=TODAY)
