@@ -25,8 +25,12 @@ def test_public_demo_is_isolated_and_fail_closed_until_zero_cost_is_confirmed():
     assert "await env.AI.run(model" in WORKER
     assert 'const DEMO_QWEN_MODEL = "@cf/qwen/qwen3.8-27b";' in WORKER
     assert 'env?.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED === "1"' in WORKER
-    assert "selected !== \"glm\" && selected !== \"qwen\"" in WORKER
+    assert 'const DEMO_GEMMA_MODEL = "@cf/google/gemma-4-26b-a4b-it";' in WORKER
+    assert 'env?.OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED === "1"' in WORKER
+    assert 'env?.OLIVIA_DEMO_GEMMA_LIVE_VERIFIED === "1"' in WORKER
+    assert "selected !== \"glm\" && selected !== \"qwen\" && selected !== \"gemma\"" in WORKER
     assert 'selected === "qwen" && !qwenEnabled(env)' in WORKER
+    assert 'selected === "gemma" && !gemmaEnabled(env)' in WORKER
     assert 'selected === "qwen" ? { max_completion_tokens: 512, reasoning_effort: "low" }' in WORKER
     assert "demo_provider_ready" in WORKER
     assert "canonical: false" in WORKER
