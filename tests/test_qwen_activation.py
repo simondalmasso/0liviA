@@ -88,3 +88,13 @@ def test_live_qwen_canary_waits_for_exact_sha_without_spending_quota():
     )
     assert raw.count('--data \'{"model":"qwen"') == 1
     assert "QWEN_ROLLED_BACK=YES" in raw
+
+
+def test_qwen_canary_diagnoses_http_failures_without_echoing_provider_body():
+    yaml = WORKFLOW.read_text(encoding="utf-8")
+    assert "QWEN_CANARY_HTTP_STATUS=" in yaml
+    assert "QWEN_CANARY_ERROR=" in yaml
+    assert "re.fullmatch" in yaml
+    assert '"unclassified"' in yaml
+    assert 'if [[ "${status}" != "200" ]]; then' in yaml
+    assert "QWEN_ROLLED_BACK=YES" in yaml
