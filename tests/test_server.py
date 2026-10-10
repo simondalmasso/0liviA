@@ -1912,7 +1912,7 @@ async def test_ui_does_not_poll_cloudflare_runtime(client):
     assert "CORE_PROBE_MIN_INTERVAL_MS=5*60*1000" in html
     assert "lastCoreProbeAt" in html
     assert "probeCore({force=false}" in html
-    assert "window.addEventListener('online',()=>syncQueued({forceProbe:true}))" in html
+    assert "window.addEventListener('online',()=>syncQueued({forceProbe:true}))" not in html
 
 
 @pytest.mark.asyncio

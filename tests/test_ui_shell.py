@@ -145,3 +145,20 @@ def test_chat_list_reopens_saved_history_instead_of_leaving_home_active():
     assert "workspace.selectedChatId=chat.id;homeView=false;" in section
     assert "await saveState();renderAll();closeDrawer();" in section
     assert "'IA demo no disponible'" not in html[html.index("function updateComposerAvailability()"):html.index("function setCoreState(")]
+
+
+def test_ui_never_replays_queued_model_requests_on_load_login_or_network_recovery():
+    html = _shell()
+    assert "syncQueued(" not in html
+    assert "window.addEventListener('online',()=>syncQueued" not in html
+    assert "await syncCanonicalWorkspace();syncQueued();" not in html
+    assert "renderAll();await probeCore({force:true})" in html
+    assert "async function sendChat(raw" in html
+    assert "chat.messages.push(msg)" in html
+    assert "window.addEventListener('online',()=>syncQueued({force:true}))" not in html
+
+
+def test_pending_remote_request_is_always_marked_as_review_required():
+    html = _shell()
+    assert "Sin enviar · requiere revisión manual" in html
+    assert "No se reintentará automáticamente" in html

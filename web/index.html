@@ -752,7 +752,7 @@ ownerLoginForm.onsubmit=async e=>{
     hideOwnerLogin();
     await probeCore({force:true});
     await syncCanonicalWorkspace();
-    syncQueued();
+    // Pending messages require an explicit owner review; never replay on login.
   }catch(e){ownerLoginError.textContent='Core no disponible'}
 };
 
@@ -827,6 +827,8 @@ function renderMessagesInto(root,chat){
     if(m.status==='queued'&&m.role==='user'){
       const mark=document.createElement('span');
       mark.className='pending-mark';
+      mark.title='Sin enviar · requiere revisión manual. No se reintentará automáticamente';
+      mark.setAttribute('aria-label',mark.title);
       row.appendChild(mark);
     }
     const body=document.createElement('div');
@@ -1569,16 +1571,8 @@ $('#composer').onsubmit=async e=>{
   const value=textInput.value.trim();if(!value)return;
   textInput.value='';closeSlashPalette();await sendChat(value);
 };
-async function syncQueued({forceProbe=false}={}){
-  if(syncing||controller)return;
-  const ready=await probeCore({force:forceProbe});if(!ready)return;
-  syncing=true;
-  try{
-    for(const p of workspace.projects)for(const c of p.chats)for(const m of c.messages.filter(x=>x.role==='user'&&x.status==='queued')){
-      try{await sendRemote(c,m,false)}catch(e){return}
-    }
-  }finally{syncing=false}
-}
+// Ambiguous or offline messages remain queued for manual review.
+// Replaying them automatically may repeat a charged or externally effective call.
 
 const RING_POINTS=72,RING_CENTER=120,RING_RADIUS=88;
 function ringCurve(points){
@@ -1909,14 +1903,13 @@ $('#voiceMain').onclick=async()=>{
 };
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();if(voiceLive.classList.contains('open'))closeVoice()}});
-window.addEventListener('online',()=>syncQueued({forceProbe:true}));
 
 (async()=>{
   try{workspace=await readState()}catch(e){workspace=null}
   normalizeWorkspace();
   const p=selectedProject();if(!p.chats.length)p.chats.push({id:uid('c'),title:'Nuevo chat',messages:[]});
   if(!workspace.selectedChatId)workspace.selectedChatId=p.chats[0].id;
-  await saveState();renderAll();await probeCore({force:true});if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();syncQueued();
+  await saveState();renderAll();await probeCore({force:true});if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();
 })();
 </script>
 </body>
