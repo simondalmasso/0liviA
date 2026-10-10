@@ -24,7 +24,6 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       OLIVIA_DEMO_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_ZERO_COST_CONFIRMED }}
       RELEASE_SHA: ${{ github.sha }}
-      PUBLIC_SHELL_URL: https://0livia.simondalmasso44.workers.dev
     steps:
       - name: Require exact owner-authorized one-time activation event
         shell: bash
@@ -111,7 +110,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.qwen.once.jsonc --keep-vars --message "Qwen Free activation @${RELEASE_SHA}"
+          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.qwen.once.jsonc --keep-vars --message "Qwen Free activation @${RELEASE_SHA}" 2>&1 | tee /tmp/qwen-deploy.log
+          public_url="$(grep -Eo 'https://[^[:space:]]+\\.workers\\.dev' /tmp/qwen-deploy.log | tail -n1 || true)"
+          test -n "${public_url}"
+          echo "PUBLIC_SHELL_URL=${public_url}" >> "${GITHUB_ENV}"
 
       - name: Live exact-SHA and Qwen model canary
         shell: bash
