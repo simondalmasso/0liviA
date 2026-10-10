@@ -153,32 +153,50 @@ class GitHubActionsBrowserWorker:
         }
 
     async def status(self, job_id: str) -> dict[str, Any] | None:
-        url = (
-            f"{self.api_base}/repos/{self.repo}/actions/workflows/"
-            f"{self.workflow}/runs?event=workflow_dispatch&per_page=30"
-        )
-        timeout = aiohttp.ClientTimeout(total=20)
-        async with self._session_factory(timeout=timeout) as session:
-            async with session.get(url, headers=self._headers()) as response:
-                if response.status != 200:
-                    detail = (await response.text())[:500]
-                    raise BrowserWorkerError(
-                        f"github browser status HTTP {response.status}: {detail}"
-                    )
-                body = await response.json()
+        """Read-only, bounded search for an attributable GitHub Actions run.
 
+        Never treat a truncated listing as proof that dispatch failed.
+        A missing receipt never triggers a second dispatch.
+        """
+        base_url = (
+            f"{self.api_base}/repos/{self.repo}/actions/workflows/"
+            f"{self.workflow}/runs?event=workflow_dispatch&per_page=100"
+        )
         needle = f"0liviA browse {job_id}"
-        for run in body.get("workflow_runs", []):
-            if str(run.get("display_title") or "") != needle:
-                continue
-            return {
-                "remote_run_id": run.get("id"),
-                "remote_status": run.get("status"),
-                "remote_conclusion": run.get("conclusion"),
-                "remote_url": run.get("html_url"),
-                "remote_head_sha": run.get("head_sha"),
-            }
-        return None
+        timeout = aiohttp.ClientTimeout(total=20)
+        try:
+            # One total deadline, not a new 20s allowance per page.
+            async with asyncio.timeout(20):
+                async with self._session_factory(timeout=timeout) as session:
+                    for page in range(1, 11):
+                        url = f"{base_url}&page={page}"
+                        async with session.get(url, headers=self._headers()) as response:
+                            if response.status != 200:
+                                detail = (await response.text())[:500]
+                                raise BrowserWorkerError(
+                                    f"github browser status HTTP {response.status}: {detail}"
+                                )
+                            body = await response.json()
+                        runs = body.get("workflow_runs") if isinstance(body, dict) else None
+                        if not isinstance(runs, list):
+                            raise BrowserWorkerError("github workflow run listing is invalid")
+                        for run in runs:
+                            if not isinstance(run, dict):
+                                continue
+                            if str(run.get("display_title") or "") != needle:
+                                continue
+                            return {
+                                "remote_run_id": run.get("id"),
+                                "remote_status": run.get("status"),
+                                "remote_conclusion": run.get("conclusion"),
+                                "remote_url": run.get("html_url"),
+                                "remote_head_sha": run.get("head_sha"),
+                            }
+                        if len(runs) < 100:
+                            return None
+        except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
+            raise BrowserWorkerError("github status reconciliation unavailable") from exc
+        raise BrowserWorkerError("github workflow run scan exhausted; manual reconciliation required")
 
     async def result(self, run_id: int | str) -> dict[str, Any] | None:
         try:
