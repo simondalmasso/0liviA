@@ -577,7 +577,7 @@ function updateComposerAvailability(){
   sendBtn.disabled=!available;
   sendBtn.title=available?'Enviar':'IA no conectada';
   textInput.setAttribute('aria-disabled',textInput.disabled?'true':'false');
-  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive&&coreHealth?.demo_provider_ready===true?'Preguntale a 0liviA':'IA demo no disponible';
+  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive&&coreHealth?.demo_provider_ready===true?'Preguntale a 0liviA':'';
   else if(backendMode==='canonical'&&!ownerAuthReady)textInput.placeholder='Iniciá sesión para usar 0liviA';
   else if(coreHealth&&coreHealth.provider_ready!==true)textInput.placeholder='Sin proveedor $0 disponible';
   else textInput.placeholder='Preguntale a 0liviA';
@@ -982,7 +982,7 @@ function renderChats(){
     button.append(strong,small);
     button.onclick=async()=>{
       workspace.selectedProjectId=project.id;
-      workspace.selectedChatId=chat.id;
+      workspace.selectedChatId=chat.id;homeView=false;
       await saveState();renderAll();closeDrawer();
       if(backendMode==='canonical'&&chat.remoteSessionId&&!chat.messages.length)await hydrateCanonicalChat(chat);
     };
