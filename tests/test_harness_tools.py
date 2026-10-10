@@ -244,7 +244,8 @@ async def test_write_approval_is_bound_to_exact_request_id_and_digest(tmp_path):
         await g.execute("run1", lease, "specific1", "github.pr", "open", SHA, **kw)
 
 
-def test_crash_left_reserved_action_never_replays_and_can_be_reconciled(tmp_path):
+@pytest.mark.asyncio
+async def test_crash_left_reserved_action_never_replays_and_can_be_reconciled(tmp_path):
     f, lease, _ = setup_runtime(tmp_path)
     adapter = FakeAdapter()
     g = gateway(f, read=adapter)
@@ -256,6 +257,5 @@ def test_crash_left_reserved_action_never_replays_and_can_be_reconciled(tmp_path
     g.reconcile("crash1", "owner-action", RESULT_SHA, success=False)
     assert g.get_action("crash1")["state"] == "failed"
     with pytest.raises(ToolConflict, match="duplicate_or_uncertain_action"):
-        import asyncio
-        asyncio.run(g.execute("run1", lease, "crash1", "github.read", "get", SHA))
+        await g.execute("run1", lease, "crash1", "github.read", "get", SHA)
     assert adapter.calls == 0
