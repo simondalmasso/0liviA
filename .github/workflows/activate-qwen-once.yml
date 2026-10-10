@@ -111,7 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.qwen.once.jsonc --keep-vars --message "Qwen Free activation @${RELEASE_SHA}" 2>&1 | tee /tmp/qwen-deploy.log
-          public_url="$(grep -Eo 'https://[^[:space:]]+\\.workers\\.dev' /tmp/qwen-deploy.log | tail -n1 || true)"
+          public_url="$(grep -Eo 'https://[^[:space:]]+\.workers\.dev' /tmp/qwen-deploy.log | tail -n1 || true)"
           test -n "${public_url}"
           echo "PUBLIC_SHELL_URL=${public_url}" >> "${GITHUB_ENV}"
 
