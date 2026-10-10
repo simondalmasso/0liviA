@@ -24,3 +24,47 @@ Durable AgentSpec/AgentRun, parent-child permission intersection, approval and c
 - **Three selected candidates are OFF:** `@cf/qwen/qwen3.8-27b`, `@cf/openai/gpt-oss-120b` (shared Workers AI account neurons, pending account-specific billing proof and bounded adapters) and NVIDIA `deepseek-ai/deepseek-v4.1-flash` (existing manual one-request evaluation workflow only; never this production router). GLM 4.7 Flash stays as previously implemented and disabled on the static demo. Nemotron is forbidden.
 
 This module has no trusted production attestation loaded by default. All positive test attestations are **synthetic fixtures**, never evidence of a real account entitlement.
+
+
+## PR-B: durable agents and run-state (control plane only)
+
+**No automatic execution is possible in PR-B.** `AgentFabric` in
+`olivia/harness/agents.py` is not wired to an HTTP endpoint, canonical chat,
+GitHub Actions, SentinelX, a model, or an MCP service.
+
+- Every `propose(...)` creates a **draft** agent. A planning LLM may propose an
+  agent, but it cannot approve it. Reuse of the exact proposal key and immutable
+  spec is idempotent; conflicting changes are rejected.
+- `approve(agent_id, proof)` needs a separate, trusted Core owner-verification
+  callback. With no callback, it always denies. The callback must check
+  authenticated owner context and a one-time approval proof against the exact
+  stored proposal SHA; **passing a string is not authentication**. Never expose
+  arbitrary callback injection through HTTP, prompts, or tool arguments.
+- Children may be proposed only below already approved parents and inherit
+  **strict subsets** of their tool permissions and token/call ceilings. Each
+  child still requires its own owner approval. Budget scope creation and
+  approval are one SQLite transaction. Draft agents have no usable PR-A scope.
+- Queuing a run consumes a permanent call slot across **all ancestor agents**,
+  atomically, even if that run later fails, is cancelled or expires. A separate
+  PR-A budget reservation still applies to actual model inference and shared
+  account limits. This over-reservation is intentional until end-to-end
+  accounting is audited.
+- A distinct trusted executor verifier must authorize a **single** lease.
+  Workers cannot claim based only on knowing a job ID. Expired leases transition
+  to `uncertain`; no scheduler or automatic retries are implemented. Sequential
+  checkpoints are stored durably and readable only through owner verification.
+- Cancelling an agent recursively revokes its children. Queued runs become
+  cancelled; already leased runs become `cancellation_requested`, **not**
+  falsely reported as stopped. They require a matching lease acknowledgment,
+  or expire to `uncertain`.
+- An uncertain run is only reconciled manually with owner verification and
+  a 64-character SHA-256 evidence digest. No replay or new dispatch is implied.
+- Audit events are immutable structured names and timestamps; they intentionally
+  omit prompts, API keys and raw approval proofs.
+
+**Pending PR-C:** bind authenticated Core owner and executor identities to
+these callbacks, implement tool/action approvals and safe adapters, check live
+provider admission with PR-A, and verify a real bounded workflow in an isolated
+sandbox. Do **not** expose these internal methods as unauthenticated API routes.
+The cloud public shell remains static-only, and OCI admin access remains blocked
+under issue #43.
