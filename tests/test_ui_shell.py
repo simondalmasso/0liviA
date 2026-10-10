@@ -95,4 +95,5 @@ def test_home_intro_is_time_bounded_and_accessible():
     assert "@media(prefers-reduced-motion:reduce)" in html
     assert ".intro-overlay{display:none!important}" in html
     assert ".app.is-landing .topbar{visibility:hidden}" in html
+    assert ".shell:has(.app.is-landing) .rail-logo{opacity:0" in html
     assert "publicDemoActive=demoReady" in html

@@ -70,6 +70,7 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .messages.landing .empty{transform:translateY(-56px)}
 .landing-mark{display:block;width:clamp(100px,11vw,140px);aspect-ratio:1;background:var(--brand-logo) center/contain no-repeat}
 .app.is-landing .topbar{visibility:hidden}
+.shell:has(.app.is-landing) .rail-logo{opacity:0;pointer-events:none}
 .composer-status{pointer-events:auto;margin:8px auto 0;max-width:780px;text-align:center;color:#777;font-size:11px}
 .composer-status[hidden]{display:none}
 .composer{pointer-events:auto;display:flex;align-items:center;gap:5px;width:min(100%,780px);min-height:52px;margin:auto;padding:5px 6px 5px 8px;border:1px solid var(--border);border-radius:27px;background:var(--panel-2)}
@@ -543,6 +544,7 @@ function updatePublicHome(){
   const demoReady=isPublic&&coreHealth?.demo_provider_ready===true;
   const qwenReady=demoReady&&coreHealth?.demo_qwen_ready===true;
   const gemmaReady=demoReady&&coreHealth?.demo_gemma_ready===true;
+  publicDemoActive=demoReady;
   demoModelSelect.hidden=!(isPublic&&publicDemoActive&&demoReady);
   demoModelSelect.options[1].disabled=!qwenReady;
   demoModelSelect.options[1].textContent=qwenReady?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · inactivo';
@@ -550,7 +552,6 @@ function updatePublicHome(){
   demoModelSelect.options[2].textContent=gemmaReady?PUBLIC_DEMO_GEMMA_MODEL:PUBLIC_DEMO_GEMMA_MODEL+' · inactivo';
   if(qwenReady&&!qwenChosenOnce){demoModelSelect.value='qwen';qwenChosenOnce=true}
   if(demoModelSelect.selectedOptions[0]?.disabled)demoModelSelect.value='glm';
-  publicDemoActive=demoReady;
   publicStatus.hidden=!isPublic;
   if(isPublic){
     publicStatus.textContent=demoReady
