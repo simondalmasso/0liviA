@@ -10,7 +10,8 @@ def test_cloudflare_keeps_canonical_surface_public_shell_only():
     assert "provider_ready: false" in WORKER
     assert "inference_enabled: false" in WORKER
     assert "web_read: false" in WORKER
-    assert "hard_zero_cost: true" in WORKER
+    assert "hard_zero_cost: !demoReady" in WORKER
+    assert "demo_cost_guaranteed: false" in WORKER
     assert 'canonical_backend: "self_hosted_python_core"' in WORKER
 
 
@@ -84,3 +85,12 @@ def test_cost_guard_is_active_only_for_explicit_demo_route():
     assert 'env.COST_GUARD.idFromName("public-demo-global")' in WORKER
     assert "this.state.storage.get" in WORKER
     assert "this.state.storage.put" in WORKER
+
+
+def test_demo_rejects_unknown_origins_and_bounds_stream_before_inference():
+    assert 'const origin = request.headers.get("origin")' in WORKER
+    assert "if (!trustedDemoOrigin(request))" in WORKER
+    assert "origin_forbidden" in WORKER
+    assert "totalBytes > 16_384" in WORKER
+    assert "readDemoBody(request)" in WORKER
+    assert "await request.text()" not in WORKER
