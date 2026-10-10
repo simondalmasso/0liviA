@@ -126,24 +126,49 @@ jobs:
           test -n "${public_url}"
           echo "PUBLIC_SHELL_URL=${public_url}" >> "${GITHUB_ENV}"
 
-      - name: Live exact-SHA and Qwen model canary
+      - name: Wait for exact immutable release at the public edge
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A successful Wrangler upload does not guarantee this edge serves
+          # the new version immediately. Poll HEALTH only; no model tokens.
+          for attempt in $(seq 1 24); do
+            health="$(curl -fsS --max-time 20 "${PUBLIC_SHELL_URL}/healthz?cb=${RELEASE_SHA}-${attempt}" || true)"
+            if HEALTH_JSON="${health}" python3 - <<'PY'
+          import json
+          import os
+          try:
+              h = json.loads(os.environ["HEALTH_JSON"])
+              ok = (
+                  h.get("release_sha") == os.environ["RELEASE_SHA"]
+                  and h.get("api_mode") == "public_shell"
+                  and h.get("demo_qwen_ready") is True
+                  and h.get("demo_gemma_ready") is False
+                  and h.get("demo_daily_request_limit") == 25
+                  and any(
+                      m.get("id") == "qwen" and m.get("available") is True
+                      and m.get("model") == "@cf/qwen/qwen3.8-27b"
+                      for m in h.get("demo_models", [])
+                  )
+              )
+          except (ValueError, AttributeError, TypeError):
+              ok = False
+          raise SystemExit(0 if ok else 1)
+          PY
+            then
+              echo "EXACT_SHA_EDGE_READY=TRUE"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "BLOCKED: exact release did not propagate after polling" >&2
+          exit 1
+
+      - name: Live Qwen3.8 model canary (one inference request)
         shell: bash
         run: |
           set -euo pipefail
           cb="${RELEASE_SHA}"
-          health="$(curl -fsS --max-time 25 "${PUBLIC_SHELL_URL}/healthz?cb=${cb}")"
-          HEALTH_JSON="${health}" python3 - <<'PY'
-          import json, os
-          h = json.loads(os.environ["HEALTH_JSON"])
-          assert h.get("release_sha") == os.environ["RELEASE_SHA"]
-          assert h.get("api_mode") == "public_shell"
-          assert h.get("demo_qwen_ready") is True
-          assert h.get("demo_gemma_ready") is False
-          assert h.get("demo_daily_request_limit") == 25
-          assert any(m.get("id") == "qwen" and m.get("available") is True and
-                     m.get("model") == "@cf/qwen/qwen3.8-27b"
-                     for m in h.get("demo_models", []))
-          PY
           status="$(curl -sS --max-time 60 -o /tmp/qwen-canary.json -w '%{http_code}' -X POST "${PUBLIC_SHELL_URL}/api/demo-chat?cb=${cb}"             -H "Origin: ${PUBLIC_SHELL_URL}" -H "Content-Type: application/json"             --data '{"model":"qwen","messages":[{"role":"user","content":"Respondé brevemente: OK."}]}')"
           test "${status}" = "200"
           DEMO_JSON="$(cat /tmp/qwen-canary.json)" python3 - <<'PY'
