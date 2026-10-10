@@ -793,7 +793,7 @@ class Gateway:
             "code",
             {
                 "repo": self.coding_worker.repo,
-                "workflow": self.coding_worker.workflow,
+                "workflow": getattr(self.coding_worker, "workflow", "coding-agent.yml"),
                 "task": task,
                 "base_ref": base_ref,
                 "mode": mode,
@@ -892,7 +892,7 @@ class Gateway:
             "browser",
             {
                 "repo": self.browser_worker.repo,
-                "workflow": self.browser_worker.workflow,
+                "workflow": getattr(self.browser_worker, "workflow", "browser-worker.yml"),
                 "url": url,
                 "objective": safe_objective,
                 "base_ref": base_ref,
