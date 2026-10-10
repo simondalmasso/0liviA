@@ -427,3 +427,106 @@ def test_verified_remote_receipt_never_overrides_live_lease_or_terminal_state(tm
     assert store.claim_queued_job(job_id) is None
     store.close()
 
+
+
+def test_active_dispatch_key_dedupes_concurrent_jobs_but_allows_rerun_after_terminal(tmp_path: Path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = tmp_path / "dispatch-dedupe.sqlite3"
+    stores = [Store(path) for _ in range(6)]
+    try:
+        with ThreadPoolExecutor(max_workers=len(stores)) as executor:
+            results = list(
+                executor.map(
+                    lambda s: s.create_or_get_active_job(
+                        "code",
+                        repo="owner/repo",
+                        dispatch_key="same-objective",
+                    ),
+                    stores,
+                )
+            )
+        ids = {job_id for job_id, _created in results}
+        assert len(ids) == 1
+        assert sum(created for _job_id, created in results) == 1
+
+        job_id = next(iter(ids))
+        token = stores[0].claim_queued_job(job_id, now=10, lease_seconds=60)
+        assert token is not None
+        assert stores[0].finish_owned_job(
+            job_id,
+            token,
+            "failed",
+            {"reason": "explicit rejection"},
+            now=20,
+        )
+        rerun_id, created = stores[1].create_or_get_active_job(
+            "code",
+            repo="owner/repo",
+            dispatch_key="same-objective",
+        )
+        assert created is True
+        assert rerun_id != job_id
+    finally:
+        for store in stores:
+            store.close()
+
+
+def test_owned_dispatch_handoff_survives_lease_expiry_without_replay(tmp_path: Path):
+    store = Store(tmp_path / "slow-dispatch.sqlite3")
+    job_id, created = store.create_or_get_active_job(
+        "code",
+        repo="owner/repo",
+        dispatch_key="slow-objective",
+    )
+    assert created is True
+    token = store.claim_queued_job(job_id, now=10, lease_seconds=5)
+    assert token is not None
+    assert store.handoff_leased_job(
+        job_id,
+        token,
+        {"dispatch_acknowledged": True},
+        now=16,
+    ) is False
+    assert store.handoff_owned_dispatch(
+        job_id,
+        token,
+        {"dispatch_acknowledged": True},
+        now=16,
+    ) is True
+    job = store.get_job(job_id)
+    assert job["status"] == "dispatched"
+    assert job["checkpoint"]["dispatch_acknowledged"] is True
+    assert store.claim_queued_job(job_id, now=17) is None
+
+
+def test_owned_dispatch_uncertainty_can_be_reconciled_by_remote_receipt(tmp_path: Path):
+    store = Store(tmp_path / "uncertain-dispatch.sqlite3")
+    job_id, created = store.create_or_get_active_job(
+        "browser",
+        repo="owner/private-browser",
+        dispatch_key="browse-objective",
+    )
+    assert created is True
+    token = store.claim_queued_job(job_id, now=10, lease_seconds=5)
+    assert token is not None
+    assert store.handoff_owned_dispatch(
+        job_id,
+        token,
+        {"dispatch_uncertain": True},
+        now=20,
+    )
+    assert store.reconcile_verified_remote_job(
+        job_id,
+        "succeeded",
+        {
+            "dispatch_uncertain": True,
+            "remote_run_id": 42,
+            "remote_status": "completed",
+            "remote_conclusion": "success",
+        },
+        now=21,
+    )
+    job = store.get_job(job_id)
+    assert job["status"] == "succeeded"
+    assert job["checkpoint"]["remote_run_id"] == 42
