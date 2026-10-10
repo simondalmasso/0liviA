@@ -41,7 +41,7 @@ def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     assert "Privada y rápida." in html
     assert "Modo prueba IA" in html
     assert "publicDemoActive=false" in html
-    assert "publicWelcome.hidden=!(isPublic&&!publicDemoActive)" in html
+    assert "publicWelcome.hidden=!(p&&!publicDemoActive)" in html
     assert "PUBLIC_DEMO_ENDPOINT='/api/demo-chat'" in html
     assert "PUBLIC_DEMO_MODEL='GLM 4.7 Flash'" in html
     assert "PUBLIC_DEMO_PROVIDER='workers-ai-demo'" in html
