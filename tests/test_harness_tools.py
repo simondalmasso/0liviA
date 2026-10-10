@@ -242,3 +242,20 @@ async def test_write_approval_is_bound_to_exact_request_id_and_digest(tmp_path):
     assert adapter.calls == 1
     with pytest.raises(ToolConflict, match="duplicate_or_uncertain_action"):
         await g.execute("run1", lease, "specific1", "github.pr", "open", SHA, **kw)
+
+
+def test_crash_left_reserved_action_never_replays_and_can_be_reconciled(tmp_path):
+    f, lease, _ = setup_runtime(tmp_path)
+    adapter = FakeAdapter()
+    g = gateway(f, read=adapter)
+    g._reserve("run1", lease, "crash1", "github.read", "get", SHA, "", "", "")
+    assert g.get_action("crash1")["state"] == "reserved"
+    assert adapter.calls == 0
+    with pytest.raises(ToolDenied, match="owner_action_approval_required"):
+        g.reconcile("crash1", "model-owner", RESULT_SHA, success=False)
+    g.reconcile("crash1", "owner-action", RESULT_SHA, success=False)
+    assert g.get_action("crash1")["state"] == "failed"
+    with pytest.raises(ToolConflict, match="duplicate_or_uncertain_action"):
+        import asyncio
+        asyncio.run(g.execute("run1", lease, "crash1", "github.read", "get", SHA))
+    assert adapter.calls == 0
