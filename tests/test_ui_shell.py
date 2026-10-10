@@ -97,3 +97,13 @@ def test_home_intro_is_time_bounded_and_accessible():
     assert ".app.is-landing .topbar{visibility:hidden}" in html
     assert ".shell:has(.app.is-landing) .rail-logo{opacity:0" in html
     assert "publicDemoActive=demoReady" in html
+
+def test_deployment_smoke_tracks_live_monogram_home_not_removed_demo_cta():
+    workflow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert "grep -Fq 'id=\"entryIntro\"'" in workflow
+    assert "grep -Fq 'id=\"text\"'" in workflow
+    assert "grep -Fq 'id=\"demoModelSelect\"'" in workflow
+    assert "grep -Fq 'Probar 0liviA ahora'" not in workflow
+    assert "confirm_account_no_overage:" in workflow
+    assert 'test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"' in workflow
+    assert '"release_sha": body.get("release_sha") == os.environ["RELEASE_SHA"]' in workflow
