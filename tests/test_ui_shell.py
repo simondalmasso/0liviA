@@ -107,3 +107,11 @@ def test_deployment_smoke_tracks_live_monogram_home_not_removed_demo_cta():
     assert "confirm_account_no_overage:" in workflow
     assert 'test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"' in workflow
     assert '"release_sha": body.get("release_sha") == os.environ["RELEASE_SHA"]' in workflow
+
+
+def test_home_monogram_gets_subtle_backlight_without_glowing_the_entire_shell():
+    html = _shell()
+    assert ".landing-mark,.intro-mark{filter:drop-shadow(0 0 7px rgba(255,255,255,.22)) drop-shadow(0 0 19px rgba(255,255,255,.09))}" in html
+    assert ".rail-logo,.landing-mark" not in html
+    assert "animation:intro-exit 3s" in html
+    assert ".intro-overlay{display:none!important}" in html
