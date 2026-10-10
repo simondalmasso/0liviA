@@ -7,6 +7,7 @@ tool adapters belong to an independently audited PR-C2.
 from __future__ import annotations
 
 import inspect
+import json
 import re
 import secrets
 import sqlite3
@@ -238,7 +239,6 @@ class ToolGateway:
                     )):
                 raise ToolDenied("lease_token_invalid")
             # AgentSpec permissions are owner-approved and inherited by children.
-            import json
             if tool not in json.loads(agent["tools_json"]):
                 raise ToolDenied("tool_not_permitted")
             if action not in rule.actions:
