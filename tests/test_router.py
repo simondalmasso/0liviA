@@ -1,7 +1,7 @@
 import pytest
 
 from olivia.config import Settings
-from olivia.router import AllProvidersFailed, OpenAICompatibleProvider, ProviderPool, ProviderSpec, ProviderStreamInterrupted
+from olivia.router import AllProvidersFailed, OpenAICompatibleProvider, ProviderPool, ProviderSpec, ProviderStreamInterrupted, ProviderConfigError
 from olivia.store import Store
 
 
@@ -434,3 +434,50 @@ def test_provider_rejects_unknown_fallback_policy():
             "cost_mode": "local",
             "fallback_policy": "guess",
         })
+
+
+@pytest.mark.parametrize(
+    "name,model",
+    [
+        ("nEmOtRoN", "harmless"),
+        ("free", "@cf/nvidia/nemotron-3-120b-a12b"),
+        ("NVIDIA-NEMOTRON-provider", "not-this-model"),
+        ("clean", "Nemotron3Super"),
+        ("safe", "nemot\u200bron-3-model"),
+    ],
+)
+def test_forbidden_nemotron_model_never_enters_provider_config(name, model):
+    with pytest.raises(ProviderConfigError, match="forbidden model"):
+        ProviderSpec.from_dict({
+            "name": name,
+            "base_url": "http://127.0.0.1:9999/v1",
+            "model": model,
+            "cost_mode": "local",
+        })
+    with pytest.raises(ProviderConfigError, match="forbidden model"):
+        ProviderSpec(
+            name=name,
+            base_url="http://127.0.0.1:9999/v1",
+            model=model,
+            api_key_env="",
+            cost_mode="local",
+        )
+
+
+def test_forbidden_nemotron_pseudoprovider_cannot_be_inserted_as_fallback(tmp_path, settings):
+    with pytest.raises(ProviderConfigError, match="forbidden model"):
+        ProviderPool(
+            [
+                FakeProvider("clean", ["allowed"]),
+                FakeProvider("Nemotron3Super", ["must-never-stream"]),
+            ],
+            Store(tmp_path / "veto.sqlite3"),
+            settings,
+        )
+
+
+def test_forbidden_nemotron_model_in_custom_pool_spec_never_admitted(tmp_path, settings):
+    provider = FakeProvider("innocent-provider-name", ["must-never-stream"])
+    provider.spec = type("ProviderStub", (), {"model": "@cf/NVIDIA/NEMOTRON-3"})()
+    with pytest.raises(ProviderConfigError, match="forbidden model"):
+        ProviderPool([provider], Store(tmp_path / "veto-spec.sqlite3"), settings)

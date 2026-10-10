@@ -29,6 +29,16 @@ _FALLBACK_POLICIES = frozenset({"allow", "stop"})
 _AUTH_MODES = frozenset({"bearer", "none"})
 
 
+def _forbidden_model_route(*values: object) -> bool:
+    """Enforce the owner's Nemotron veto even for aliases and masked IDs."""
+    for value in values:
+        normalized = str(value or "").translate(_ZERO_WIDTH).casefold()
+        compact = "".join(char for char in normalized if char.isalnum())
+        if "nemotron" in compact:
+            return True
+    return False
+
+
 def is_visible_segment(text: str | None) -> bool:
     if not text:
         return False
@@ -130,6 +140,11 @@ class ProviderSpec:
     capabilities: tuple[str, ...] = ("chat",)
     fallback_policy: str = "allow"
     auth_mode: str = "bearer"
+
+    def __post_init__(self) -> None:
+        # Applies to direct dataclass construction as well as JSON specs.
+        if _forbidden_model_route(self.name, self.model):
+            raise ProviderConfigError("forbidden model: Nemotron is disabled by owner policy")
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ProviderSpec":
@@ -608,6 +623,11 @@ class ProviderPool:
         ordered: list[StreamProvider] = []
         seen: set[str] = set()
         for provider in sorted(providers, key=lambda p: (p.priority, p.name)):
+            spec = getattr(provider, "spec", None)
+            if _forbidden_model_route(provider.name, getattr(spec, "model", None)):
+                raise ProviderConfigError(
+                    "forbidden model: Nemotron is disabled by owner policy"
+                )
             if provider.name in seen:
                 self.duplicates.append(provider.name)
                 continue
