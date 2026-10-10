@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS fabric_agents (
   model_provider TEXT NOT NULL DEFAULT '',
   max_tokens INTEGER NOT NULL CHECK (max_tokens > 0),
   max_calls INTEGER NOT NULL CHECK (max_calls > 0),
+  reserved_runs INTEGER NOT NULL DEFAULT 0 CHECK (reserved_runs >= 0),
   state TEXT NOT NULL CHECK (state IN ('draft','approved','revoked')),
   created_at REAL NOT NULL,
   updated_at REAL NOT NULL
@@ -117,6 +118,7 @@ def _agent_view(row: sqlite3.Row) -> dict[str, Any]:
         "model_provider": row["model_provider"],
         "max_tokens": row["max_tokens"],
         "max_calls": row["max_calls"],
+        "reserved_runs": row["reserved_runs"],
         "state": row["state"],
         "approved": row["state"] == "approved",
     }
@@ -360,12 +362,30 @@ class AgentFabric:
                         and existing[0]["input_sha256"] == input_sha256):
                     return _run_view(existing[0])
                 raise AgentConflict("request_conflict")
-            agent = conn.execute(
-                "SELECT state FROM fabric_agents WHERE agent_id=?", (agent_id,)
-            ).fetchone()
-            if agent is None or agent["state"] != "approved":
-                raise AgentDenied("not_approved")
+            # Reserve one permanent dispatch slot against every ancestor,
+            # not just the immediate agent. Never refund on failure or
+            # uncertain outcomes: a replay could duplicate external effects.
+            ancestors: list[str] = []
+            current: str | None = agent_id
+            while current is not None:
+                if len(ancestors) >= _MAX_DEPTH:
+                    raise AgentDenied("invalid_parent_hierarchy")
+                agent = conn.execute(
+                    "SELECT parent_id,state,max_calls,reserved_runs FROM fabric_agents "
+                    "WHERE agent_id=?", (current,)
+                ).fetchone()
+                if agent is None or agent["state"] != "approved":
+                    raise AgentDenied("not_approved")
+                if agent["reserved_runs"] >= agent["max_calls"]:
+                    raise AgentDenied("run_budget_exhausted")
+                ancestors.append(current)
+                current = agent["parent_id"]
             now = self._clock()
+            for ancestor_id in ancestors:
+                conn.execute(
+                    "UPDATE fabric_agents SET reserved_runs=reserved_runs+1,"
+                    "updated_at=? WHERE agent_id=?", (now, ancestor_id)
+                )
             conn.execute(
                 "INSERT INTO fabric_agent_runs(run_id,agent_id,request_key,input_sha256,"
                 "state,created_at,updated_at) VALUES(?,?,?,?,'queued',?,?)",
