@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from pathlib import Path
 
+import aiohttp
 import pytest
+from aiohttp.client_reqrep import ConnectionKey
 
-from olivia.coding import CodingJobRequest, GitHubActionsCodingWorker
+from olivia.coding import (
+    CodingDispatchUncertainError,
+    CodingJobRequest,
+    GitHubActionsCodingWorker,
+)
 
 
 def test_coding_worker_validates_fixed_repo_and_refs(monkeypatch):
@@ -131,3 +138,142 @@ def test_publish_job_receives_default_branch_for_validation():
     assert "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in publish
     assert 'test -n "$DEFAULT_BRANCH"' in publish
     assert 'refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH' in publish
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_kind", ["timeout", "connector"])
+async def test_coding_dispatch_transport_failures_are_uncertain(monkeypatch, failure_kind):
+    class FakeSession:
+        def post(self, url, *, json, headers):
+            if failure_kind == "timeout":
+                raise asyncio.TimeoutError()
+            key = ConnectionKey(
+                host="api.github.com",
+                port=443,
+                is_ssl=True,
+                ssl=True,
+                proxy=None,
+                proxy_auth=None,
+                proxy_headers_hash=None,
+            )
+            raise aiohttp.ClientConnectorError(key, OSError("connection lost"))
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA",
+        session_factory=lambda **_: FakeSession(),
+    )
+    with pytest.raises(CodingDispatchUncertainError, match="outcome uncertain"):
+        await worker.dispatch(
+            "0123456789abcdef",
+            CodingJobRequest(task="bounded task", base_ref="main"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_coding_dispatch_204_then_connection_loss_is_uncertain(monkeypatch):
+    class AcceptedResponse:
+        status = 204
+
+        async def text(self):
+            return ""
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            raise asyncio.TimeoutError()
+
+    class FakeSession:
+        def post(self, url, *, json, headers):
+            return AcceptedResponse()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA",
+        session_factory=lambda **_: FakeSession(),
+    )
+    with pytest.raises(CodingDispatchUncertainError, match="outcome uncertain"):
+        await worker.dispatch(
+            "0123456789abcdef",
+            CodingJobRequest(task="bounded task", base_ref="main"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_coding_dispatch_http_503_remains_uncertain(monkeypatch):
+    class Response:
+        status = 503
+
+        async def text(self):
+            return "temporarily unavailable"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    class Session:
+        def post(self, url, *, json, headers):
+            return Response()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA", session_factory=lambda **_: Session()
+    )
+    with pytest.raises(CodingDispatchUncertainError):
+        await worker.dispatch(
+            "0123456789abcdef",
+            CodingJobRequest(task="bounded task", base_ref="main"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_coding_dispatch_session_teardown_after_204_remains_uncertain(monkeypatch):
+    class Response:
+        status = 204
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    class Session:
+        def post(self, url, *, json, headers):
+            return Response()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            raise aiohttp.ClientConnectionError("connection lost on close")
+
+    monkeypatch.setenv("OLIVIA_GITHUB_TOKEN", "test-token")
+    worker = GitHubActionsCodingWorker(
+        "simondalmasso/0liviA", session_factory=lambda **_: Session()
+    )
+    with pytest.raises(CodingDispatchUncertainError):
+        await worker.dispatch(
+            "0123456789abcdef",
+            CodingJobRequest(task="bounded task", base_ref="main"),
+        )

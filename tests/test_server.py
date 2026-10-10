@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 import pytest
 
 from olivia.agent import Agent
+from olivia.coding import CodingDispatchUncertainError
 from olivia.config import Settings
 from olivia.server import create_app, default_es_ar_validator
 from olivia.security import make_password_verifier
@@ -2018,3 +2019,149 @@ async def test_terminal_remote_job_never_regresses_or_reenters_local_queue(aioht
     final = await client.get(f"/api/jobs/{job_id}", headers=auth())
     assert final.status == 200
     assert (await final.json())["job"]["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_uncertain_coding_dispatch_reconciles_by_job_id_without_replay(aiohttp_client, tmp_path):
+    class UncertainWorker(FakeCodingWorker):
+        async def dispatch(self, job_id, request):
+            self.dispatched.append((job_id, request))
+            raise CodingDispatchUncertainError("github dispatch transport outcome uncertain")
+
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "uncertain-server.sqlite3")
+    worker = UncertainWorker()
+    agent = Agent(store, FakeRouter(), settings)
+    client = await aiohttp_client(
+        create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    )
+    payload = {
+        "task": "Same bounded objective",
+        "base_ref": "main",
+        "mode": "implement",
+        "publish_branch": False,
+    }
+
+    first = await client.post("/api/jobs/code", json=payload, headers=auth())
+    assert first.status == 202
+    first_body = await first.json()
+    assert first_body["dispatch_uncertain"] is True
+    job_id = first_body["job_id"]
+    assert len(worker.dispatched) == 1
+
+    repeated = await client.post("/api/jobs/code", json=payload, headers=auth())
+    assert repeated.status == 202
+    repeated_body = await repeated.json()
+    assert repeated_body["job_id"] == job_id
+    assert repeated_body["deduplicated"] is True
+    assert len(worker.dispatched) == 1
+
+    refreshed = await client.get(f"/api/jobs/{job_id}", headers=auth())
+    assert refreshed.status == 200
+    job = (await refreshed.json())["job"]
+    assert job["status"] == "succeeded"
+    assert job["checkpoint"]["remote_run_id"] == 123
+
+
+@pytest.mark.asyncio
+async def test_cancelled_dispatch_preserves_uncertain_job_and_repeat_dedupes(tmp_path):
+    class SlowWorker(FakeCodingWorker):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+
+        async def dispatch(self, job_id, request):
+            self.dispatched.append((job_id, request))
+            self.started.set()
+            await asyncio.Event().wait()
+
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "cancelled-dispatch.sqlite3")
+    worker = SlowWorker()
+    agent = Agent(store, FakeRouter(), settings)
+    app = create_app(agent, settings, auth_token="test-token", coding_worker=worker)
+    gateway = app["gateway"]
+
+    task = asyncio.create_task(
+        gateway._dispatch_code_job(
+            task="Cancelled objective",
+            base_ref="main",
+            mode="implement",
+            publish_branch=False,
+        )
+    )
+    await asyncio.wait_for(worker.started.wait(), timeout=2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    with store._lock:
+        row = store._conn.execute(
+            "SELECT id FROM jobs WHERE kind='code' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    job_id = row["id"]
+    stored = store.get_job(job_id)
+    assert stored["status"] == "dispatched"
+    assert stored["checkpoint"]["dispatch_uncertain"] is True
+    assert stored["checkpoint"]["cancelled_during_dispatch"] is True
+
+    repeated = await gateway._dispatch_code_job(
+        task="Cancelled objective",
+        base_ref="main",
+        mode="implement",
+        publish_branch=False,
+    )
+    assert repeated["job_id"] == job_id
+    assert repeated["deduplicated"] is True
+    assert len(worker.dispatched) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_identical_dispatches_create_one_external_side_effect(tmp_path):
+    class BlockingWorker(FakeCodingWorker):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def dispatch(self, job_id, request):
+            self.dispatched.append((job_id, request))
+            self.started.set()
+            await self.release.wait()
+            return {
+                "repo": self.repo,
+                "workflow": "coding-agent.yml",
+                "remote_status": "dispatched",
+            }
+
+    settings = Settings(data_dir=tmp_path)
+    store = Store(tmp_path / "concurrent-dispatch.sqlite3")
+    worker = BlockingWorker()
+    agent = Agent(store, FakeRouter(), settings)
+    gateway = create_app(
+        agent, settings, auth_token="test-token", coding_worker=worker
+    )["gateway"]
+
+    first_task = asyncio.create_task(
+        gateway._dispatch_code_job(
+            task="Concurrent objective",
+            base_ref="main",
+            mode="implement",
+            publish_branch=False,
+        )
+    )
+    await asyncio.wait_for(worker.started.wait(), timeout=2)
+    second = await asyncio.wait_for(gateway._dispatch_code_job(
+        task="Concurrent objective",
+        base_ref="main",
+        mode="implement",
+        publish_branch=False,
+    ), timeout=2)
+    assert second["deduplicated"] is True
+    assert second["status"] == "running"
+    assert len(worker.dispatched) == 1
+
+    worker.release.set()
+    first = await asyncio.wait_for(first_task, timeout=2)
+    assert first["job_id"] == second["job_id"]
+    assert len(worker.dispatched) == 1
