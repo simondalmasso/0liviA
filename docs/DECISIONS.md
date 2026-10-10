@@ -148,3 +148,14 @@
 - [NVIDIA/OpenShell](https://github.com/NVIDIA/OpenShell) is the preferred future *optional* policy-enforcing sandbox challenger for code/browser workers. The current OCI micro's privileged access, RAM and kernel/runtime requirements remain unverified, so neither its gateway nor Docker is deployed now. A stable pinned runtime and fail-closed capability proof are prerequisites.
 - InternAI A100 dev machines can be evaluated for short-lived, synthetic Muse Glimmer benchmarks when credit points are confirmed; DigitalOcean MicroVMs charge for compute/storage/egress, Dame is paid, MillionSend depends on email infrastructure, and neither DEV-OS nor getvmio supplies useful $0 compute.
 - Detailed source evidence, pricing and integration sequence: `docs/OSS_COMPUTE_INTEGRATION_2026-10-09.md`.
+
+
+## ADR-0016 — OpenShell readiness + OpenMuse leases in real dispatch; evidence over agent self-claims
+- Date: 2026-10-09
+- Status: **code integrated on branch; release gated by tests**
+- OpenMuse: `Store` lease primitives from ADR-0015 now govern actual coding/browser Actions dispatch, via atomic claim, own-token checkpoint, conditional acknowledged handoff and terminal failure receipt. Expired/uncertain remote dispatch is not automatically retried. Successful status requires an attributable external `remote_run_id`.
+- OpenShell: optional, **non-mutating** host readiness inspection and narrow GitHub read-only REST policy added. Running OpenShell on any machine remains blocked pending verified machine resources, signed/pinned release, credential broker, kernel enforcement, sandbox negative tests, account billing no-overage and owner authorization. Neither CI nor the public site can automatically start it.
+- MiniAGI: legacy 2023 agent with unrestricted shell and Python execution; its real advantage is a separate critic perspective but extra LLM calls could consume allowances and merely claim task success. Adopt zero-cost deterministic outcome verification based on trusted GitHub receipt, **not** its runner or prompting.
+- InternAI: 7-day runtime is a **per-session** cap, not a quota refill. Restart on existing stopped machine is supported manually, preserving only `/data` and consuming available points. Do not automate repeated sessions until an official authorized management API is confirmed and a non-billable quota guard is in place.
+- Pocket coder candidates Qwen2.5-Coder-0.5B, Qwen3.5-0.8B, Liquid LFM2.5-1.2B are **benchmarks only**; do not present a 398MB GGUF as a hosted model or presume fit in 1GB without actual peak RSS.
+- Source references and acceptance: `docs/POCKET_CODER_AND_AGENT_GATES_2026-10-09.md`.
