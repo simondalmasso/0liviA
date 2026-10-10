@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import re
@@ -15,6 +16,10 @@ _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
 class CodingWorkerError(RuntimeError):
     pass
+
+
+class CodingDispatchUncertainError(CodingWorkerError):
+    """Transport failed after dispatch may already have reached GitHub."""
 
 
 @dataclass(frozen=True)
@@ -97,12 +102,19 @@ class GitHubActionsCodingWorker:
         }
         timeout = aiohttp.ClientTimeout(total=20)
         async with self._session_factory(timeout=timeout) as session:
-            async with session.post(url, json=payload, headers=self._headers()) as response:
-                if response.status != 204:
-                    detail = (await response.text())[:500]
-                    raise CodingWorkerError(
-                        f"github dispatch HTTP {response.status}: {detail}"
-                    )
+            try:
+                async with session.post(url, json=payload, headers=self._headers()) as response:
+                    if response.status != 204:
+                        detail = (await response.text())[:500]
+                        raise CodingWorkerError(
+                            f"github dispatch HTTP {response.status}: {detail}"
+                        )
+            except asyncio.CancelledError:
+                raise
+            except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
+                raise CodingDispatchUncertainError(
+                    "github dispatch transport outcome uncertain"
+                ) from exc
         return {
             "repo": self.repo,
             "workflow": self.workflow,

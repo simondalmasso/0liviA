@@ -17,11 +17,32 @@ def test_agent_claim_of_success_requires_actual_remote_receipt():
 
 
 def test_agent_unknown_and_failure_states_fail_closed():
-    assert classify_external_run_status({"remote_status": "completed", "remote_conclusion": "failure"}) == "failed"
-    assert classify_external_run_status({"remote_status": "completed", "remote_conclusion": "weird"}) == "unknown"
+    for conclusion in (
+        "failure",
+        "cancelled",
+        "timed_out",
+        "action_required",
+        "neutral",
+        "skipped",
+        "stale",
+        "startup_failure",
+    ):
+        assert classify_external_run_status({
+            "remote_status": "completed",
+            "remote_conclusion": conclusion,
+            "remote_run_id": 123,
+        }) == "failed"
+    assert classify_external_run_status({
+        "remote_status": "completed",
+        "remote_conclusion": "failure",
+    }) == "unknown"
+    assert classify_external_run_status({
+        "remote_status": "completed",
+        "remote_conclusion": "weird",
+        "remote_run_id": 123,
+    }) == "unknown"
     assert classify_external_run_status({"remote_status": "in_progress"}) == "in_progress"
     assert classify_external_run_status({"remote_status": "not_a_status"}) == "unknown"
-    assert classify_external_run_status({"remote_status": "completed", "remote_conclusion": "cancelled"}) == "failed"
 
 
 def test_miniagi_raw_shell_not_imported():

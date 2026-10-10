@@ -15,7 +15,7 @@ filesystem_policy:
     - /tmp
 
 landlock:
-  compatibility: best_effort
+  compatibility: hard_requirement
 
 process:
   run_as_user: sandbox
@@ -34,4 +34,4 @@ network_policies:
       - path: /usr/bin/curl
       - path: /usr/bin/git
 # No general outbound access, credentials, git push, localhost or model endpoint.
-# Do not rely on best_effort isolation until host enforcement is proved.
+# Filesystem isolation is fail-closed: sandbox startup must abort if Landlock cannot enforce the policy.

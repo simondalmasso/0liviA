@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import os
@@ -19,6 +20,10 @@ _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
 class BrowserWorkerError(RuntimeError):
     pass
+
+
+class BrowserDispatchUncertainError(BrowserWorkerError):
+    """Transport failed after dispatch may already have reached GitHub."""
 
 
 @dataclass(frozen=True)
@@ -117,12 +122,19 @@ class GitHubActionsBrowserWorker:
                     "browser worker requires a private GitHub repository for result artifacts"
                 )
 
-            async with session.post(url, json=payload, headers=headers) as response:
-                if response.status != 204:
-                    detail = (await response.text())[:500]
-                    raise BrowserWorkerError(
-                        f"github browser dispatch HTTP {response.status}: {detail}"
-                    )
+            try:
+                async with session.post(url, json=payload, headers=headers) as response:
+                    if response.status != 204:
+                        detail = (await response.text())[:500]
+                        raise BrowserWorkerError(
+                            f"github browser dispatch HTTP {response.status}: {detail}"
+                        )
+            except asyncio.CancelledError:
+                raise
+            except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
+                raise BrowserDispatchUncertainError(
+                    "github browser dispatch transport outcome uncertain"
+                ) from exc
         return {
             "repo": self.repo,
             "workflow": self.workflow,
