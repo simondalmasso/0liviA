@@ -4,6 +4,12 @@
 
 0liviA is **zero-cost-first**: the runtime fails closed before unverified spending. That is an engineering policy, **not a guarantee** that third-party infrastructure or model providers will remain free forever.
 
+## Repository visibility and license
+
+This public repository publishes source code and architecture for review. **No root `LICENSE` file is currently present**; public visibility alone is not an open-source license or a grant of reuse rights. The owner must select and publish an appropriate license after copyright/dependency review. Do not describe the project as licensed open source until then.
+
+The public site is a **static-only interface** until a separate verified-free demo is explicitly activated. The authenticated Python Core, persistent memory and tools are not running behind the current public Worker. Deployment and provider readiness are tracked independently; successful frontend CI or deployment does not certify the Core.
+
 ## Product invariants
 
 - normal operation does not depend on the owner's PC;
@@ -55,7 +61,7 @@ Cloudflare may host a thin public shell, but it is not the canonical chat/memory
 - replaceable `/search` contract that is disabled by default and refuses unverified paid routes;
 - bounded `/research` tool: one search plus safe reads of up to three results, injected only as ephemeral untrusted context;
 - opt-in `/browse` GitHub Actions burst worker with JavaScript rendering, GET/HEAD-only navigation, reserved/private-network egress guards and bounded artifacts; `/inspect <job_id>` can explicitly analyze a completed render as ephemeral untrusted model context without persisting page text into chat/memory;
-- violet/blue/cyan rail UI with Chats, Projects, Library, Memory, Config and Session surfaces, plus fullscreen Live Voice; responsive gates cover 360–430 px mobile layouts;
+- monochrome black-and-white rail UI with Chats, Projects, Library, Memory, Config and Session surfaces, plus fullscreen Live Voice; responsive gates cover 360–430 px mobile layouts;
 - public-shell runtime is event-driven: periodic 15-second/focus polling was removed, health probes are cached for five minutes, and retries occur only on explicit actions or connectivity recovery;
 - isolated GitHub Actions coding jobs with `/code`, `/repair`, `/review`, durable job status and deterministic verification;
 - review mode constrained to `AGENT_REVIEW.md`; product mutations fail the job;
@@ -72,9 +78,9 @@ Cloudflare may host a thin public shell, but it is not the canonical chat/memory
 - production STT/VAD/TTS selection and es-AR voice acceptance;
 - a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
-- exact-SHA **canonical Core** deployment and production smoke; the public demo now has a verified real GLM-4.7-Flash response and a live tester-army/e2e browser pass (2026-10-08), but the exact Worker deployment SHA, account-level no-overage, owner login and canonical Core release remain uncertified; the public Worker must continue to reject canonical `/api/chat`;
+- exact-SHA **canonical Core** deployment and production smoke; a historical GLM-4.7-Flash demo response was observed on 2026-10-08, but the current public release is **static-only with no model inference** (2026-10-10); the account-level no-overage, owner login and canonical Core deployment remain uncertified; the public Worker continues to reject canonical `/api/chat`;
 - the public Workers AI demo is deployment-gated by explicit zero-cost confirmation; without it `/api/demo-chat` returns 503 rather than consuming unverified capacity.
-- the optional Qwen3 30B public-demo lane remains disabled unless `OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED=1` is independently justified by a verified account-level no-overage boundary; enabling GLM is not sufficient. The demo returns the real model ID and answers direct model-identity questions locally.
+- the optional Qwen3.8 27B public-demo lane remains disabled unless `OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED=1` is independently justified by a verified account-level no-overage boundary; enabling GLM is not sufficient. The demo returns the real model ID and answers direct model-identity questions locally.
 
 ## Development
 
