@@ -37,8 +37,10 @@ def test_public_home_and_login_are_spanish_and_demo_is_explicit():
     assert 'id="publicDemoBtn"' in html
     assert 'id="publicLoginBtn"' not in html
     assert "Probar 0liviA ahora" in html
-    assert "Tu IA personal." in html
-    assert "Privada y rápida." in html
+    assert "Probá 0liviA." in html
+    assert "Chat de muestra." in html
+    assert "La demo no accede a tus proyectos ni a tu Core privado." in html
+    assert "costo no verificado" in html
     assert "Modo prueba IA" in html
     assert "publicDemoActive=false" in html
     assert "publicWelcome.hidden=!(isPublic&&!publicDemoActive)" in html
@@ -58,7 +60,7 @@ def test_demo_errors_are_not_presented_as_model_answers():
     html = _shell()
     assert "m.status==='error'?' error'" in html
     assert "bubble.setAttribute('role','alert')" in html
-    assert "text:'La IA demo $0 no respondió. Reintentá en unos segundos.'" in html
+    assert "text:'La demo no respondió. Reintentá en unos segundos.'" in html
     assert "status:'error',\n        provider:null," in html
 
     e2e = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")

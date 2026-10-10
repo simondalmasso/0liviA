@@ -71,7 +71,8 @@ jobs:
           expected = {
               "api_mode": "public_shell",
               "demo_provider_ready": True,
-              "hard_zero_cost": True,
+              "hard_zero_cost": False,
+              "demo_cost_guaranteed": False,
               "demo_provider": "workers-ai-demo",
           }
           for key, value in expected.items():

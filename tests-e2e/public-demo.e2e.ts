@@ -22,7 +22,8 @@ test('public demo opens and returns an AI answer', async ({ app, screen, browser
           demo_model: '@cf/zai-org/glm-4.7-flash',
           demo_daily_request_limit: 25,
           web_read: false,
-          hard_zero_cost: true,
+          hard_zero_cost: false,
+          demo_cost_guaranteed: false,
           canonical_backend: 'self_hosted_python_core',
         },
       }),
@@ -87,7 +88,8 @@ if (mockDemo) {
           demo_model: '@cf/zai-org/glm-4.7-flash',
           demo_daily_request_limit: 25,
           web_read: false,
-          hard_zero_cost: true,
+          hard_zero_cost: false,
+          demo_cost_guaranteed: false,
           canonical_backend: 'self_hosted_python_core',
         },
       }),
@@ -102,7 +104,7 @@ if (mockDemo) {
     await screen.getByRole('button', { name: 'Probar 0liviA ahora' }).tap();
     await screen.getByRole('textbox', { name: 'Mensaje' }).fill('Verificar fallo explícito');
     await screen.getByRole('button', { name: 'Enviar' }).tap();
-    await expect(browser.locator('#messages [role="alert"]')).toContainText('La IA demo $0 no respondió');
+    await expect(browser.locator('#messages [role="alert"]')).toContainText('La demo no respondió');
     await expect(browser.locator('#messages .msg.assistant:not(.error)')).toHaveCount(0);
     await expect(browser.locator('#messages .provider-pill')).toHaveCount(0);
   });

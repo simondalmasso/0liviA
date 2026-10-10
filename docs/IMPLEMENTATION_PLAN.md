@@ -4,6 +4,16 @@ Branch: `main`
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
+## 2026-10-10 UTC — demo safety and deployment-control checkpoint
+
+- Main integration commit: `1c87b8dbeb0aea60a7c72fa89d074473e099c257` (PR #80). Branch CI for Python 3.11/3.12, static security, 360/430-px mobile smoke and mocked local E2E were GREEN; post-merge CI, mobile and local E2E also passed.
+- Public demo: POST `/api/demo-chat` requires exact matching `Origin` and JSON bodies bounded by actual bytes (max 16 KiB), even without `Content-Length`. Origin is not owner authentication and can be forged server-side.
+- Metering truth: when Workers AI demo is enabled, `/healthz` reports `hard_zero_cost:false` and `demo_cost_guaranteed:false`; 25 shared daily requests is not an account/provider spending limit.
+- Public UI now distinguishes the anonymous demo from the private Core; canonical chat, projects, memory and privileged tools remain unavailable on the public Worker.
+- `.github/workflows/deploy-public-shell.yml` is **manual `workflow_dispatch` only**, with an explicit `confirm_account_no_overage=true` approval gate before external actions. The merge did not trigger a Cloudflare Wrangler deploy.
+- No Cloudflare account/API/inference/deploy action was performed during this work. The public production URL is **not** claimed to run this SHA. Provider account no-overage evidence, authorized exact-SHA deploy and production smoke remain pending.
+- Next product gate: recover trusted privileged SSH access to existing recurring-$0 OCI micro VM and validate the canonical Core, rather than enabling unverified shared inference.
+
 ## 2026-10-09 Core readiness continuation
 
 - `main@5d3bc113df3ee67142c89efb3932f0fab87324fd` is the last verified public Worker deployment; full CI, live browser chat E2E, exact `/healthz.release_sha` and security headers passed. This is **not** the authenticated Python Core.

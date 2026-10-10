@@ -1,21 +1,17 @@
 name: 0liviA Public Shell Deploy
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - web/**
-      - cloudflare/**
-      - e2e.config.ts
-      - tests-e2e/**
-      - .github/workflows/deploy-public-shell.yml
   workflow_dispatch:
     inputs:
       release_sha:
         description: "Exact 40-hex canonical main SHA; defaults to the selected branch HEAD when omitted"
         required: false
         type: string
+      confirm_account_no_overage:
+        description: "I explicitly authorize one Cloudflare deployment and live inference smoke; I verified no paid overage is possible"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -33,8 +29,16 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       OLIVIA_DEMO_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_ZERO_COST_CONFIRMED }}
       OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED }}
+      CONFIRM_ACCOUNT_NO_OVERAGE: ${{ inputs.confirm_account_no_overage && 'true' || 'false' }}
 
     steps:
+      - name: Require explicit deployment approval before any external action
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+          test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -78,7 +82,8 @@ jobs:
           grep -Fq 'provider_ready: false' cloudflare/worker.mjs
           grep -Fq 'inference_enabled: false' cloudflare/worker.mjs
           grep -Fq 'web_read: false' cloudflare/worker.mjs
-          grep -Fq 'hard_zero_cost: true' cloudflare/worker.mjs
+          grep -Fq 'hard_zero_cost: !demoReady' cloudflare/worker.mjs
+          grep -Fq 'demo_cost_guaranteed: false' cloudflare/worker.mjs
           grep -Fq 'url.pathname === "/api/demo-chat"' cloudflare/worker.mjs
           grep -Fq 'OLIVIA_DEMO_ZERO_COST_CONFIRMED' cloudflare/worker.mjs
           grep -Fq '@cf/zai-org/glm-4.7-flash' cloudflare/worker.mjs
@@ -190,7 +195,8 @@ jobs:
               "demo_model": body.get("demo_model") == "@cf/zai-org/glm-4.7-flash",
               "demo_qwen_ready": body.get("demo_qwen_ready") is (os.getenv("OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED") == "1"),
               "web_read": body.get("web_read") is False,
-              "hard_zero_cost": body.get("hard_zero_cost") is True,
+              "hard_zero_cost": body.get("hard_zero_cost") is False,
+              "demo_cost_guaranteed": body.get("demo_cost_guaranteed") is False,
           }
           failed = [name for name, ok in checks.items() if not ok]
           if failed:
@@ -202,6 +208,7 @@ jobs:
 
           demo_status="$(curl -sS --max-time 45 -o /tmp/olivia-demo-response -w '%{http_code}' \
             -X POST "${base}/api/demo-chat?cb=${cb}" \
+            -H "Origin: ${base}" \
             -H 'Content-Type: application/json' \
             --data '{"messages":[{"role":"user","content":"Respondé con una frase breve."}]}')"
           test "${demo_status}" = "200"
