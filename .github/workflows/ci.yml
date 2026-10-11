@@ -49,6 +49,10 @@ jobs:
         run: node --check cloudflare/worker.mjs
       - name: Check public Auth0 browser bridge syntax
         run: node --check web/auth0_bridge.js
+      - name: Check offline Auth0 Post-Login Action syntax
+        run: node --check auth0/actions/owner_google_claims.cjs
+      - name: Test Auth0 owner claim gates without live identities
+        run: node --test tests/node/test_auth0_action.mjs
       - name: Test Cloudflare Worker behavior without external inference
         run: node --test tests/node/test_cloudflare_worker.mjs
       - name: Test
