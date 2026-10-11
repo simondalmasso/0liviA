@@ -182,7 +182,12 @@ def test_ui_never_replays_queued_model_requests_on_load_login_or_network_recover
     assert "syncQueued(" not in html
     assert "window.addEventListener('online',()=>syncQueued" not in html
     assert "await syncCanonicalWorkspace();syncQueued();" not in html
-    assert "renderAll();await probeCore({force:true})" in html
+    # Render an empty workspace before network/auth checks; never replay a model turn.
+    boot = html[html.rindex("(async()=>{"):]
+    assert "workspace=blankWorkspace();renderAll();" in boot
+    assert "await probeCore({force:true});" in boot
+    assert boot.index("workspace=blankWorkspace();renderAll();") < boot.index("await probeCore({force:true});")
+    assert "syncQueued(" not in boot
     assert "async function sendChat(raw" in html
     assert "chat.messages.push(msg)" in html
     assert "window.addEventListener('online',()=>syncQueued({force:true}))" not in html
