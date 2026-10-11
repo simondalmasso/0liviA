@@ -20,6 +20,7 @@ The source-of-truth release order is [issue #115](https://github.com/simondalmas
 For **read-only** inspection of an installation, set `PUBLIC_BASE` to its own verified HTTPS origin, then use:
 
 ```sh
+: "${PUBLIC_BASE:?Set PUBLIC_BASE to this installation\'s HTTPS origin}"
 curl -fsS "$PUBLIC_BASE/healthz"
 curl -sS -o /dev/null -w '%{http_code}\n' "$PUBLIC_BASE/auth0_bridge.js"
 curl -sS -o /dev/null -w '%{http_code}\n' "$PUBLIC_BASE/api/auth/public-config"
