@@ -677,6 +677,7 @@ class ProviderPool:
                 settings.hard_zero_cost
                 and (
                     spec.cost_mode not in ZERO_COST_ALLOWED_MODES
+                    or (spec.cost_mode == "free_hard_cap" and spec.daily_limit <= 0)
                     or (
                         spec.kind == "chatgpt_plan"
                         and not spec.no_credit_overage_verified
