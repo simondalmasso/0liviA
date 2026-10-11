@@ -317,3 +317,29 @@ test("50 simultaneous requests spend at most 25 daily permits", async () => {
   assert.equal(f.stored.get("count"), 25);
   assert.equal(f.calls.length, 25);
 });
+
+test("browser public Auth0 configuration reveals no owner secrets and never invokes AI", async () => {
+  const f=fixture({enabled:false});
+  const url=BASE+"/api/auth/public-config";
+  assert.deepEqual(await body(await worker.fetch(new Request(url),f.env)),{enabled:false});
+  f.env.OLIVIA_AUTH0_CLIENT_ID="clientPublic0123456789";
+  const conf=await body(await worker.fetch(new Request(url),f.env));
+  assert.equal(conf.enabled,true);
+  assert.equal(conf.client_id,f.env.OLIVIA_AUTH0_CLIENT_ID);
+  assert.equal(conf.issuer,f.env.OLIVIA_AUTH0_ISSUER);
+  assert.equal(conf.audience,f.env.OLIVIA_AUTH0_AUDIENCE);
+  assert.ok(!JSON.stringify(conf).includes(f.env.OLIVIA_OWNER_GOOGLE_EMAIL));
+  assert.ok(!JSON.stringify(conf).includes(f.env.OLIVIA_OWNER_AUTH0_SUB));
+  assert.equal((await worker.fetch(new Request(url,{method:"POST"}),f.env)).status,405);
+  assert.equal(f.calls.length,0);
+  assert.equal(f.stored.has("count"),false);
+});
+test("browser owner-status enforces JWT before any cost guard debit",async()=>{
+  const f=fixture();
+  const url=BASE+"/api/auth/owner-status";
+  assert.equal((await worker.fetch(new Request(url),f.env)).status,401);
+  assert.equal((await worker.fetch(new Request(url,{headers:{Authorization:"Bearer "+OWNER_TOKEN}}),f.env)).status,200);
+  assert.equal((await worker.fetch(new Request(url,{headers:{Authorization:"Bearer forged"}}),f.env)).status,401);
+  assert.equal(f.calls.length,0);
+  assert.equal(f.stored.has("count"),false);
+});

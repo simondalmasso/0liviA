@@ -105,6 +105,7 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .auth-card input+input{margin-top:8px}
 .auth-remember{display:flex;align-items:center;gap:8px;margin:12px 2px 2px;color:#aaa;font-size:12px;cursor:pointer}
 .auth-remember input{width:16px;height:16px;accent-color:#fff}
+.auth-card [hidden]{display:none!important}
 .auth-submit{width:100%;margin-top:10px;padding:12px 14px;border-radius:12px;background:#fff;color:#000;font-weight:650}
 .auth-error{min-height:18px;margin-top:9px;color:#ff7b7b;font-size:12px}
 .auth-mark.brand-auth{background:#0f0f0f var(--brand-logo) center/30px 30px no-repeat;border:1px solid #303030}
@@ -427,6 +428,7 @@ button.side-card{text-align:left}
 </div>
 </section>
 
+<script src="/auth0_bridge.js"></script>
 <script>
 const DB_NAME='olivia-ui-v3';
 const STORE='state';
@@ -552,7 +554,7 @@ function selectedChat(){
 }
 
 function composerAvailable(){
-  if(backendMode==='public_shell')return publicDemoActive&&coreHealth?.demo_provider_ready===true;
+  if(backendMode==='public_shell')return publicDemoActive&&coreHealth?.demo_provider_ready===true&&window.OliviaOwnerAuth.isOwner();
   if(backendMode==='canonical')return ownerAuthReady&&coreHealth?.provider_ready===true;
   return true;
 }
@@ -612,16 +614,7 @@ async function canonicalAuthCheck(){
 }
 function showOwnerLogin(){
   const registering=coreHealth?.registration_open===true;
-  if(backendMode==='public_shell'){
-    ownerAuthTitle.textContent='Entrar a 0liviA';
-    ownerAuthCopy.textContent='Tu cuenta vive en el Core privado. El acceso se habilita apenas el backend canónico esté conectado.';
-    ownerAuthSubmit.textContent='Entrar';
-    ownerPassword.autocomplete='current-password';
-    ownerLogin.classList.add('open');
-    ownerLogin.setAttribute('aria-hidden','false');
-    setTimeout(()=>ownerEmail.focus(),0);
-    return;
-  }
+  if(backendMode==='public_shell'){window.OliviaOwnerAuth.showLogin();return}
   ownerAuthTitle.textContent=registering?'Registrate':'Entrar a 0liviA';
   ownerAuthCopy.textContent=registering
     ?(coreHealth?.registration_protected&&!setupToken
@@ -1368,15 +1361,18 @@ async function ensureRemoteSession(chat,excludeMessageId=null){
 }
 
 async function sendPublicDemo(chat,userMessage,speak){
+  const auth=window.OliviaOwnerAuth.authorization();
+  if(!auth)throw new Error('Entrá con Google para usar la IA privada.');
   controller=new AbortController();setSendMode(true);
   try{
     const r=await fetch(PUBLIC_DEMO_ENDPOINT,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json',Authorization:auth},
       credentials:'same-origin',
       body:JSON.stringify({messages:demoHistory(chat),model:demoModelSelect.value}),
       signal:controller.signal
     });
+    if(r.status===401||r.status===403){window.OliviaOwnerAuth.invalidate();updateComposerAvailability();throw new Error('Acceso privado denegado. Volvé a entrar.')}
     if(r.status===429)throw new Error('límite demo alcanzado');
     if(!r.ok)throw new Error('ruta demo no disponible');
     const body=await r.json();
@@ -1914,7 +1910,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();if(vo
   normalizeWorkspace();
   const p=selectedProject();if(!p.chats.length)p.chats.push({id:uid('c'),title:'Nuevo chat',messages:[]});
   if(!workspace.selectedChatId)workspace.selectedChatId=p.chats[0].id;
-  await saveState();renderAll();await probeCore({force:true});if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();
+  await saveState();renderAll();await probeCore({force:true});await window.OliviaOwnerAuth.init(backendMode==='public_shell');updateComposerAvailability();if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();
 })();
 </script>
 </body>
