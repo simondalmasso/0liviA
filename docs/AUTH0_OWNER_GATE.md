@@ -1,8 +1,8 @@
 # Owner-only Auth0 Google authentication gate — P0 (unreleased)
 
-Status: **security code and synthetic tests only**. This does **not** create
-an Auth0 account, Google connection, owner enrollment, Auth0 tenant app,
-production Core deployment, or permission to enable Workers AI. It is
+Status: **Google social connection Try Connection PASS, but owner-only API access
+and production chat NOT RELEASED**. This document does **not** enroll an owner,
+activate the reviewed Action, publish the Worker/Core or authorize Workers AI. It is
 **impossible to declare a live owner chat** before separate login, provider
 entitlement, no-overage and direct HTTP negative tests in the deployed account.
 
@@ -21,7 +21,7 @@ from the Google identity provider. Never accept frontend-supplied claims.
 
 Every `/api/*` Worker endpoint now enforces that identity on the server.
 On `/api/demo-chat` this check occurs before `COST_GUARD` and `AI.run`.
-The backend remains **static-only** in Cloudflare deployments. Other
+The currently published Worker remains **static-only**; the unreleased PR contains a separate manually gated dynamic path. Other
 `/api/*` routes remain unavailable even to the owner: 503.
 `/healthz` remains public without identity/email fields.
 
@@ -73,27 +73,16 @@ floor. This policy is a release blocker for real login/logout acceptance.
    and Action private secret. Do **not** derive them from `event.request`,
    client metadata, query parameters, URL fragments or frontend headers.
 
-```js
-exports.onExecutePostLogin = async (event, api) => {
-  if (event.connection?.strategy !== "google-oauth2" ||
-      event.user?.email_verified !== true) return;
-  const identity = (event.user.identities || []).find(
-    (i) => i.provider === "google-oauth2"
-  );
-  const googleId = String(identity?.user_id || "");
-  if (!/^\d{8,32}$/.test(googleId) ||
-      !event.secrets?.OLIVIA_OWNER_SESSION_VERSION) return;
-
-  const ns = "https://0livia.app/claims/";
-  api.accessToken.setCustomClaim(ns + "provider", "google-oauth2");
-  api.accessToken.setCustomClaim(ns + "google_sub", googleId);
-  api.accessToken.setCustomClaim(ns + "email", String(event.user.email || ""));
-  api.accessToken.setCustomClaim(ns + "email_verified", true);
-  api.accessToken.setCustomClaim(
-    ns + "session_version", event.secrets.OLIVIA_OWNER_SESSION_VERSION
-  );
-};
-```
+**Single source of truth:** `auth0/actions/owner_google_claims.cjs` in PR #114.
+Copy **that entire reviewed file**, not older snippets or examples, into the Auth0
+Post-Login Action editor. The canonical Action additionally requires the exact
+API audience `https://0livia.app/api`, the configured SPA Client ID, the
+unlinked Google identity with a verified email, and a private session
+generation. Its tests are `tests/node/test_auth0_action.mjs`, executed in
+`.github/workflows/ci.yml`. The Action must not be deployed or added to
+the Post Login flow before its private secrets are correctly provisioned
+and the owner-only release gates are satisfied. Offline tests are **not**
+evidence that an Auth0 Action is installed, deployed or connected to a flow.
 
 4. Enroll Auth0 `sub` and the real Google identity `sub` **privately**
    after authenticating the owner through the configured connection; never
@@ -108,9 +97,10 @@ exports.onExecutePostLogin = async (event, api) => {
 
 ## Remaining blockers
 
-- The frontend currently has a legacy owner password form. Real Auth0 login,
-  mobile PKCE flow, guest-only local profile, personalized greeting,
-  token-lifecycle handling and user experience are **not implemented** here.
+- The PR contains the browser Google PKCE bridge and owner-only login controls,
+  tested offline with mocks. This does **not** validate production SPA login,
+  mobile behavior, token lifecycle or real owner access until deployment and
+  end-to-end authenticated testing.
 - Canonical Python Core still uses a legacy bearer/cookie; its private routes,
   jobs, streaming and websocket upgrade need a separately proven
   `requireOwnerCore` bridge. Keep OCI Core isolated and not publicly routed

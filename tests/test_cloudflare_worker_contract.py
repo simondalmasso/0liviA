@@ -310,3 +310,15 @@ def test_real_owner_chat_release_acceptance_is_separate_from_mock_ci():
     ):
         assert criterion in release
     assert "Esta guía **no autoriza**" in release
+
+
+def test_legacy_auth0_gate_uses_canonical_reviewed_action_only():
+    """Never copy a permissive outdated Action snippet into Auth0."""
+    older = Path("docs/AUTH0_OWNER_GATE.md").read_text(encoding="utf-8")
+    action = Path("auth0/actions/owner_google_claims.cjs").read_text(encoding="utf-8")
+    assert "auth0/actions/owner_google_claims.cjs" in older
+    assert "tests/node/test_auth0_action.mjs" in older
+    assert "exports.onExecutePostLogin" not in older
+    assert "event.resource_server?.identifier !== API_AUDIENCE" in action
+    assert "event.client?.client_id !== expectedSpa" in action
+    assert "user.user_id !== `google-oauth2|${googleIdentity.user_id}`" in action
