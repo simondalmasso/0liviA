@@ -84,6 +84,7 @@ def test_hard_zero_cost_blocks_unverified_and_paid_routes(tmp_path):
                 "model": "m",
                 "api_key_env": "SAFE_KEY",
                 "cost_mode": "free_hard_cap",
+            "daily_limit": 3,
             },
             {
                 "name": "maybe-free",
@@ -236,6 +237,7 @@ def test_provider_capabilities_default_to_chat_and_reject_unknown(tmp_path):
                 "model": "m",
                 "api_key_env": "SAFE_KEY",
                 "cost_mode": "free_hard_cap",
+            "daily_limit": 3,
             },
         ),
     )
@@ -292,6 +294,7 @@ def test_provider_catalog_exposes_models_capabilities_without_secrets(tmp_path):
                 "model": "model-x",
                 "api_key_env": "VERY_SECRET_ENV_NAME",
                 "cost_mode": "free_hard_cap",
+                "daily_limit": 3,
                 "capabilities": ["chat", "research", "vision"],
                 "priority": 3,
             },
@@ -306,6 +309,7 @@ def test_provider_catalog_exposes_models_capabilities_without_secrets(tmp_path):
             "priority": 3,
             "daily_limit": 0,
             "cost_mode": "free_hard_cap",
+            "daily_limit": 3,
             "capabilities": ["chat", "research", "vision"],
             "fallback_policy": "allow",
         }
@@ -351,6 +355,7 @@ def test_remote_zero_cost_provider_can_explicitly_disable_bearer_auth(tmp_path):
                 "model": "anonymous-model",
                 "auth_mode": "none",
                 "cost_mode": "free_hard_cap",
+                "daily_limit": 3,
                 "fallback_policy": "stop",
             },
         ),
@@ -588,3 +593,24 @@ async def test_canonical_openai_request_actually_sends_bounded_output(monkeypatc
     assert sent[0]["json"]["max_tokens"] == 123
     assert sent[0]["json"]["model"] == "local-tested"
     assert sent[0]["url"] == "http://127.0.0.1:11434/v1/chat/completions"
+
+
+def test_hard_zero_cost_refuses_free_hard_cap_without_explicit_daily_ceiling(tmp_path):
+    raw = {"name": "free-but-unbounded",
+           "base_url": "https://example.com/v1", "model": "m",
+           "cost_mode": "free_hard_cap", "no_credit_overage_verified": True}
+    settings = Settings(data_dir=tmp_path, hard_zero_cost=True, providers=(raw,))
+    pool = ProviderPool.from_settings(settings, Store(tmp_path / "no-limit.sqlite3"))
+    assert pool.providers == []
+    assert pool.zero_cost_blocked == [{"provider": "free-but-unbounded",
+                                        "cost_mode": "free_hard_cap"}]
+    assert any(e["kind"] == "cost.blocked" for e in pool.telemetry)
+
+
+def test_hard_zero_cost_allows_explicit_limited_free_provider(tmp_path):
+    raw = {"name": "limited", "base_url": "https://example.com/v1",
+           "model": "m", "cost_mode": "free_hard_cap", "daily_limit": 2}
+    settings = Settings(data_dir=tmp_path, hard_zero_cost=True, providers=(raw,))
+    pool = ProviderPool.from_settings(settings, Store(tmp_path / "limited.sqlite3"))
+    assert [p.name for p in pool.providers] == ["limited"]
+    assert pool.providers[0].daily_limit == 2
