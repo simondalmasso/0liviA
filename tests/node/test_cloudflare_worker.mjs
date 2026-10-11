@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { authEnvironment, initializeAuthTest } from "./owner_auth_fixture.mjs";
@@ -342,4 +344,71 @@ test("browser owner-status enforces JWT before any cost guard debit",async()=>{
   assert.equal((await worker.fetch(new Request(url,{headers:{Authorization:"Bearer forged"}}),f.env)).status,401);
   assert.equal(f.calls.length,0);
   assert.equal(f.stored.has("count"),false);
+});
+
+test("OAuth browser callback only releases in-memory token after owner-only backend approval", async () => {
+  const source = readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
+  const state = "s".repeat(32), nonce = "n".repeat(32), verifier = "A".repeat(64);
+  const config = {
+    enabled:true, issuer:"https://tenant.us.auth0.com/",
+    audience:"https://0livia.example/api",client_id:"publicClient012345678901"
+  };
+  const payload = Buffer.from(JSON.stringify({nonce})).toString("base64url");
+  const fakeIdToken = "e30."+payload+".c2ln";
+  const originalUrl = "https://olivia.test/?code=one_time_code&state="+state;
+  const seen = [];
+  async function scenario(ownerApproved) {
+    const entries = new Map([["olivia:auth0:pkce:v1",
+      JSON.stringify({state,nonce,verifier,created:Date.now()})]]);
+    const location = {
+      href:originalUrl,origin:"https://olivia.test",pathname:"/",hash:"",
+      assign(){throw Error("no navigation expected in callback");}
+    };
+    const context={
+      window:{},location,history:{replaceState(...args){seen.push(args[2]);}},
+      URL,URLSearchParams,TextEncoder,Date,
+      sessionStorage:{
+        getItem:k=>entries.get(k)||null,
+        setItem:(k,v)=>entries.set(k,v),
+        removeItem:k=>entries.delete(k)
+      },
+      crypto:globalThis.crypto,
+      btoa:s=>Buffer.from(s,"binary").toString("base64"),
+      atob:s=>Buffer.from(s,"base64").toString("binary"),
+      document:{getElementById(){throw Error("DOM not expected");}},
+      fetch:async (url,options)=>{
+        const dest=String(url);
+        if(dest==="/api/auth/public-config")
+          return new Response(JSON.stringify(config),{status:200});
+        if(dest.endsWith("/oauth/token")){
+          assert.equal(options.method,"POST");
+          assert.equal(options.body.get("code_verifier"),verifier);
+          return new Response(JSON.stringify({
+            token_type:"Bearer",access_token:"test_access_token_for_only_backend_0123456789",
+            id_token:fakeIdToken
+          }),{status:200});
+        }
+        if(dest==="/api/auth/owner-status"){
+          assert.ok(options.headers.Authorization.startsWith("Bearer "));
+          return new Response(JSON.stringify({owner:ownerApproved}),{
+            status:ownerApproved?200:403
+          });
+        }
+        throw Error("unexpected fetch destination");
+      }
+    };
+    runInNewContext(source,context,{timeout:2000});
+    await context.window.OliviaOwnerAuth.init(true);
+    assert.equal(entries.has("olivia:auth0:pkce:v1"),false);
+    return context.window.OliviaOwnerAuth;
+  }
+  const denied=await scenario(false);
+  assert.equal(denied.isOwner(),false);
+  assert.equal(denied.authorization(),"");
+  const approved=await scenario(true);
+  assert.equal(approved.isOwner(),true);
+  assert.ok(approved.authorization().startsWith("Bearer "));
+  approved.invalidate();
+  assert.equal(approved.authorization(),"");
+  assert.deepEqual(seen,["/","/"]);
 });
