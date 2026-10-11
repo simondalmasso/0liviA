@@ -4,7 +4,7 @@ Contrato operativo de la PR #114. Esta guía **no autoriza** por sí misma infer
 
 ## ACEPTACIÓN DEL PROPIETARIO: FAIL — producción no funciona
 
-**Estado verificado el 2026-10-11 a partir de una captura del propietario y GET de red:** la URL `https://0livia.simondalmasso44.workers.dev/` muestra «Chat IA no conectado», botón Enviar inhabilitado y ninguna respuesta real; `/healthz` indicó `release_sha=7e33c19d5410f94fa29e5d62a85a132da2ce755b`, `static_only=true`, `demo_provider_ready=false`, `demo_inference_enabled=false`; `/auth0_bridge.js` devolvió 404 y `/api/auth/public-config` devolvió 401. **REAL OWNER CHAT = FAIL, independientemente de Python/seguridad/E2E/móvil en verde.**
+**Estado verificado el 2026-10-11 a partir de una captura del propietario y GET de red:** la URL pública del Worker muestra «Chat IA no conectado», botón Enviar inhabilitado y ninguna respuesta real; `/healthz` indicó `release_sha=7e33c19d5410f94fa29e5d62a85a132da2ce755b`, `static_only=true`, `demo_provider_ready=false`, `demo_inference_enabled=false`; `/auth0_bridge.js` devolvió 404 y `/api/auth/public-config` devolvió 401. **REAL OWNER CHAT = FAIL, independientemente de Python/seguridad/E2E/móvil en verde.**
 
 **Prohibido rotular «funciona», «arreglada» o «production PASS»** porque `/healthz` dé 200, la UI abra, o el navegador responda con un GLM *mock*. Esta sección sólo podrá cambiar a `REAL OWNER CHAT = PASS` una vez cumplidas **todas** las pruebas siguientes en la URL pública, con evidencia sanitizada:
 
