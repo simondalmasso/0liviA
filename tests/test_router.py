@@ -84,7 +84,7 @@ def test_hard_zero_cost_blocks_unverified_and_paid_routes(tmp_path):
                 "model": "m",
                 "api_key_env": "SAFE_KEY",
                 "cost_mode": "free_hard_cap",
-            "daily_limit": 3,
+                "daily_limit": 3,
             },
             {
                 "name": "maybe-free",
@@ -237,7 +237,7 @@ def test_provider_capabilities_default_to_chat_and_reject_unknown(tmp_path):
                 "model": "m",
                 "api_key_env": "SAFE_KEY",
                 "cost_mode": "free_hard_cap",
-            "daily_limit": 3,
+                "daily_limit": 3,
             },
         ),
     )
@@ -307,9 +307,8 @@ def test_provider_catalog_exposes_models_capabilities_without_secrets(tmp_path):
             "name": "frontier",
             "model": "model-x",
             "priority": 3,
-            "daily_limit": 0,
-            "cost_mode": "free_hard_cap",
             "daily_limit": 3,
+            "cost_mode": "free_hard_cap",
             "capabilities": ["chat", "research", "vision"],
             "fallback_policy": "allow",
         }
