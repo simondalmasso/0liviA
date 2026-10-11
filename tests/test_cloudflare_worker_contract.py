@@ -221,6 +221,21 @@ def test_glm_release_forces_qwen_off_even_with_legacy_repository_vars():
     assert workflow.index("python3 scripts/verify_cloudflare_free.py") < workflow.index("Deploy exact public shell")
 
 
+def test_private_billing_read_token_is_scoped_only_to_preflight():
+    flow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    script = Path("scripts/verify_cloudflare_free.py").read_text(encoding="utf-8")
+    assert 'CLOUDFLARE_BILLING_READ_TOKEN: ${{ secrets.CLOUDFLARE_BILLING_READ_TOKEN }}' in flow
+    assert 'token = os.environ.get("CLOUDFLARE_BILLING_READ_TOKEN", "").strip()' in script
+    assert 'os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()' not in script
+    proof = flow.index("python3 scripts/verify_cloudflare_free.py")
+    deploy = flow.index("npm exec --yes wrangler@4.127.1")
+    assert proof < deploy
+    env_start = flow.index("    env:")
+    env_end = flow.index("\n    steps:", env_start)
+    assert "CLOUDFLARE_BILLING_READ_TOKEN" not in flow[env_start:env_end]
+    assert "set -x" not in flow
+
+
 def test_qwen_unverified_auto_canary_is_frozen_no_push():
     qwen = Path(".github/workflows/activate-qwen-once.yml").read_text(encoding="utf-8")
     before_jobs = qwen.split("jobs:", 1)[0]
