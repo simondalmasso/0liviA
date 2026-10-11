@@ -92,15 +92,24 @@ async function claimsFromRequest(request, env) {
   const issuer = issuerOf(env);
   if (!issuer || !claims || typeof claims !== "object" || Array.isArray(claims)) return null;
   const now = Math.floor(Date.now() / 1000);
-  if (claims.iss !== issuer || claims.aud !== env.OLIVIA_AUTH0_AUDIENCE ||
+  // Auth0 may issue API tokens with a second /userinfo audience. Only that
+  // exact optional audience is accepted, never arbitrary extra recipients.
+  const aud = claims.aud;
+  const audienceOK = aud === env.OLIVIA_AUTH0_AUDIENCE ||
+    (Array.isArray(aud) && aud.length === 2 &&
+     aud.includes(env.OLIVIA_AUTH0_AUDIENCE) &&
+     aud.includes(issuer + "userinfo"));
+  if (claims.iss !== issuer || !audienceOK ||
       typeof claims.sub !== "string" || claims.sub.length > 256 ||
       !Number.isSafeInteger(claims.exp) || !Number.isSafeInteger(claims.iat) ||
-      !Number.isSafeInteger(claims.nbf) ||
-      claims.iat > now + 30 || claims.nbf > now ||
+      (claims.nbf !== undefined && (!Number.isSafeInteger(claims.nbf) || claims.nbf > now)) ||
+      claims.iat > now + 30 ||
       claims.exp <= now || claims.exp <= claims.iat ||
       claims.exp - claims.iat > MAX_TOKEN_AGE_S ||
-      typeof claims.jti !== "string" || claims.jti.length < 8 || claims.jti.length > 256 ||
-      !/^[A-Za-z0-9_-]+$/.test(claims.jti)) return null;
+      (claims.jti !== undefined && (
+        typeof claims.jti !== "string" || claims.jti.length < 8 ||
+        claims.jti.length > 256 || !/^[A-Za-z0-9_-]+$/.test(claims.jti)
+      ))) return null;
   const payload = enc.encode(pieces[0] + "." + pieces[1]);
   try {
     const sig = base64urlBytes(pieces[2]);
