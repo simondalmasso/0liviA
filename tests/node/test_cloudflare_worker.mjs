@@ -374,6 +374,7 @@ test("OAuth browser callback only releases in-memory token after owner-only back
   const fakeIdToken = "e30."+payload+".c2ln";
   const originalUrl = "https://olivia.test/?code=one_time_code&state="+state;
   const seen = [];
+  const demoCalls = [];
   async function scenario(ownerApproved) {
     const entries = new Map([["olivia:auth0:pkce:v1",
       JSON.stringify({state,nonce,verifier,created:Date.now()})]]);
@@ -411,6 +412,14 @@ test("OAuth browser callback only releases in-memory token after owner-only back
             status:ownerApproved?200:403
           });
         }
+        if(dest==="/api/demo-chat"){
+          assert.equal(ownerApproved,true);
+          assert.equal(options.method,"POST");
+          assert.ok(options.headers.Authorization.startsWith("Bearer "));
+          assert.equal(JSON.parse(options.body).model,"glm");
+          demoCalls.push(options);
+          return new Response(JSON.stringify({answer:"MOCK_ONLY",provider:"workers-ai-demo",model:"@cf/zai-org/glm-4.7-flash"}),{status:200});
+        }
         throw Error("unexpected fetch destination");
       }
     };
@@ -422,10 +431,18 @@ test("OAuth browser callback only releases in-memory token after owner-only back
   const denied=await scenario(false);
   assert.equal(denied.isOwner(),false);
   assert.equal(denied.authorization(),"");
+  await assert.rejects(denied.postDemo("/api/demo-chat",[{role:"user",content:"Guest"}],"glm"),/Entrá con Google/);
+  assert.equal(demoCalls.length,0);
   const approved=await scenario(true);
   assert.equal(approved.isOwner(),true);
   assert.ok(approved.authorization().startsWith("Bearer "));
+  const response=await approved.postDemo("/api/demo-chat",[{role:"user",content:"OK"}],"glm");
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).answer,"MOCK_ONLY");
+  assert.equal(demoCalls.length,1);
   approved.invalidate();
   assert.equal(approved.authorization(),"");
+  await assert.rejects(approved.postDemo("/api/demo-chat",[],"glm"),/Entrá con Google/);
+  assert.equal(demoCalls.length,1);
   assert.deepEqual(seen,["/","/"]);
 });

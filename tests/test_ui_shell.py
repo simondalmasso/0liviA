@@ -96,6 +96,8 @@ def test_closed_drawer_hidden_at_all_widths_and_model_select_is_gate_driven():
     assert 'coreHealth?.demo_gemma_ready===true' in html
     assert "PUBLIC_DEMO_GEMMA_MODEL='Gemma 4 26B A4B'" in html
     assert "coreHealth?.demo_qwen_ready===true" in html
+    assert "qwenChosenOnce" not in html
+    assert "never auto-select a different model" in html
     assert "PUBLIC_DEMO_ENDPOINT,demoHistory(chat),demoModelSelect.value" in html
     bridge = Path("web/auth0_bridge.js").read_text(encoding="utf-8")
     assert "JSON.stringify({messages,model})" in bridge
