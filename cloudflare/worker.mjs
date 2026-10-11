@@ -1,3 +1,5 @@
+import { requireOwnerInference, ownerAuthConfigured } from "./owner_auth.mjs";
+
 const PUBLIC_SHELL_ONLY = true;
 const TRANSITIONAL_BRIDGE_ENABLED = false;
 const DEMO_MODEL = "@cf/zai-org/glm-4.7-flash";
@@ -54,6 +56,7 @@ function demoEnabled(env) {
   return (
     env?.OLIVIA_STATIC_ONLY !== "1" &&
     env?.OLIVIA_DEMO_ZERO_COST_CONFIRMED === "1" &&
+    ownerAuthConfigured(env) &&
     env?.AI &&
     env?.COST_GUARD
   );
@@ -173,6 +176,10 @@ function extractAnswer(result) {
 }
 
 async function demoChat(request, env) {
+  // Owner check MUST precede Origin/JSON parsing, CostGuard debit and AI.run.
+  // Unauthenticated clients cannot spend a single private AI neuron.
+  const identity = await requireOwnerInference(request, env);
+  if (!identity.ok) return json({ error: identity.error }, { status: identity.status });
   if (request.method !== "POST") {
     return json({ error: "method_not_allowed" }, { status: 405, headers: { allow: "POST" } });
   }
@@ -360,7 +367,8 @@ export default {
       url.pathname === "/api/read-url" ||
       url.pathname.startsWith("/api/")
     ) {
-      result = disabledApi();
+      const identity = await requireOwnerInference(request, env);
+      result = identity.ok ? disabledApi() : json({ error: identity.error }, { status: identity.status });
     } else {
       result = await env.ASSETS.fetch(request);
     }
