@@ -87,6 +87,20 @@ jobs:
           # Never call Workers AI, create resources, upgrade, or enable billing.
           python3 scripts/verify_cloudflare_free.py
 
+      - name: Verify Worker owner identity secret names before deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GET only; Wrangler lists names/types, never secret values.
+          # Errors are redacted and temp files removed even on failure.
+          secret_index="$(mktemp)"
+          trap 'rm -f "${secret_index}"' EXIT
+          if ! npm exec --yes wrangler@4.127.1 -- secret list --name 0livia --format json > "${secret_index}" 2>/dev/null; then
+            echo "BLOCKED: Worker owner secret listing unavailable" >&2
+            exit 2
+          fi
+          python3 scripts/verify_owner_secret_names.py < "${secret_index}"
+
       - name: Verify public-shell source boundaries
         shell: bash
         run: |

@@ -253,3 +253,32 @@ def test_ci_e2e_does_not_claim_mock_guest_turn_is_real_owner_chat():
     assert "unauthorizedInferenceCalls" in tests
     assert "toBeDisabled()" in tests
     assert "provider failure is an alert" not in tests
+
+
+def test_owner_auth_predeploy_requires_seven_private_worker_secret_names():
+    import importlib.util
+    import sys
+
+    module_path = Path("scripts/verify_owner_secret_names.py")
+    spec = importlib.util.spec_from_file_location("olivia_owner_secret_names", module_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    base = [{"name": name, "type": "secret_text"} for name in sorted(module.REQUIRED)]
+    assert len(base) == 7
+    assert module.owner_secrets_present(base)
+    assert not module.owner_secrets_present(base[:-1])
+    assert not module.owner_secrets_present(base + [base[0]])
+    assert not module.owner_secrets_present(None)
+    assert not module.owner_secrets_present([{"name": "OLIVIA_AUTH0_ISSUER", "type": "plain_text"}])
+    assert not module.owner_secrets_present([{"name": "OLIVIA_OWNER_GOOGLE_EMAIL", "value": "unexpected"}])
+    for missing in module.REQUIRED:
+        assert not module.owner_secrets_present([item for item in base if item["name"] != missing])
+
+    workflow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert "wrangler@4.127.1 -- secret list --name 0livia --format json" in workflow
+    assert "python3 scripts/verify_owner_secret_names.py" in workflow
+    assert workflow.index("verify_cloudflare_free.py") < workflow.index("verify_owner_secret_names.py")
+    assert workflow.index("verify_owner_secret_names.py") < workflow.index("Deploy exact public shell")
+    assert "secret put" not in workflow
