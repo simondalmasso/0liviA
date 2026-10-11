@@ -68,7 +68,9 @@ def test_demo_errors_are_not_presented_as_model_answers():
     assert "status:'error',\n        provider:null," in html
 
     e2e = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")
-    assert "provider failure is an alert, never a successful AI answer" in e2e
+    assert "anonymous cannot spend owner inference even if backend reports demo ready" in e2e
+    assert "unauthorizedInferenceCalls" in e2e
+    assert "toBeDisabled()" in e2e
     assert "assistant:not(.error)" in e2e
     assert "toHaveCount(0)" in e2e
 
