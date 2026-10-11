@@ -121,9 +121,20 @@
     document.getElementById("ownerLoginError").textContent=error;
     card.classList.add("open");card.setAttribute("aria-hidden","false");
   }
+  function authorization(){return owner&&token?"Bearer "+token:"";}
+  async function postDemo(path,messages,model,signal){
+    if(path!=="/api/demo-chat")throw Error("Ruta de modelo no autorizada.");
+    const bearer=authorization();
+    if(!bearer)throw Error("Entrá con Google para usar la IA privada.");
+    return fetch(path,{
+      method:"POST",credentials:"same-origin",
+      headers:{"Content-Type":"application/json",Authorization:bearer},
+      body:JSON.stringify({messages,model}),signal
+    });
+  }
   window.OliviaOwnerAuth={
-    init,showLogin,isOwner:()=>owner&&!!token,
-    authorization:()=>owner&&token?"Bearer "+token:"",
+    init,showLogin,postDemo,isOwner:()=>owner&&!!token,
+    authorization,
     invalidate:()=>{token="";owner=false;}
   };
 })();
