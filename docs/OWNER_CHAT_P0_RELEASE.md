@@ -21,7 +21,7 @@ Contrato operativo de la PR #114. Esta guía **no autoriza** por sí misma infer
 
 ## Gate de despliegue y pruebas HTTP (orden estricto)
 
-- La publicación dinámica `deploy-public-shell.yml` es manual y exige aprobación independiente de cuenta/no-overage, variables Auth0 y SHA canónico; configura `OLIVIA_STATIC_ONLY=0` explícitamente, pero **no** efectúa canary con credenciales prestadas.
+- La publicación dinámica `deploy-public-shell.yml` es manual y exige aprobación independiente de cuenta/no-overage, **prueba read-only de suscripción Workers Free mediante token del mismo account ID**, variables Auth0 y SHA canónico; configura `OLIVIA_STATIC_ONLY=0` explícitamente y fuerza Qwen/Gemma a OFF incluso si hay variables históricas, pero **no** efectúa canary con credenciales prestadas.
 - Los smokes de producción sin bearer esperan **401** en `/api/chat` y `/api/demo-chat` sin consumir proveedores. Un 200 anónimo obliga a parar y revertir a estático.
 - El flujo de Qwen queda congelado, sin disparador `push`, despliegue ni canary. No habilitar GPT-OSS/Gemma/Muse ni agentes en esta liberación.
 - Tras validar plan y login **en el navegador del propietario**, ejecutar por aprobación puntual **un único turno GLM auténtico**: respuesta textual no vacía, modelo identificado correctamente, sin error y con costos comprobados. No usar ese canary como prueba de memoria del Core.

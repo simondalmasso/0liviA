@@ -211,6 +211,16 @@ def test_owner_auth0_release_smoke_denies_anonymous_without_inference():
     assert 'https://*.auth0.com' in public_csp
 
 
+def test_glm_release_forces_qwen_off_even_with_legacy_repository_vars():
+    workflow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert '"OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "0"' in workflow
+    assert 'vars.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED' not in workflow
+    assert '"demo_qwen_ready": body.get("demo_qwen_ready") is False' in workflow
+    assert '"demo_gemma_ready": body.get("demo_gemma_ready") is False' in workflow
+    assert "python3 scripts/verify_cloudflare_free.py" in workflow
+    assert workflow.index("python3 scripts/verify_cloudflare_free.py") < workflow.index("Deploy exact public shell")
+
+
 def test_qwen_unverified_auto_canary_is_frozen_no_push():
     qwen = Path(".github/workflows/activate-qwen-once.yml").read_text(encoding="utf-8")
     before_jobs = qwen.split("jobs:", 1)[0]

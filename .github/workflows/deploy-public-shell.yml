@@ -29,7 +29,6 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       OLIVIA_DEMO_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_ZERO_COST_CONFIRMED }}
       OLIVIA_AUTH0_CLIENT_ID: ${{ vars.OLIVIA_AUTH0_CLIENT_ID }}
-      OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED }}
       CONFIRM_ACCOUNT_NO_OVERAGE: ${{ inputs.confirm_account_no_overage && 'true' || 'false' }}
 
     steps:
@@ -77,6 +76,14 @@ jobs:
           # This release cannot be deployed as an anonymous AI endpoint.
           [[ "${OLIVIA_AUTH0_CLIENT_ID:-}" =~ ^[A-Za-z0-9_-]{10,128}$ ]]
 
+      - name: Read-only proof of Workers Free entitlement for deployment account
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fail closed if the Cloudflare token cannot confirm subscriptions.
+          # Never call Workers AI, create resources, upgrade, or enable billing.
+          python3 scripts/verify_cloudflare_free.py
+
       - name: Verify public-shell source boundaries
         shell: bash
         run: |
@@ -123,6 +130,7 @@ jobs:
             "vars": {
               "OLIVIA_STATIC_ONLY": "0",
               "OLIVIA_DEMO_ZERO_COST_CONFIRMED": "1",
+              "OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "0",
               "OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED": "0",
               "OLIVIA_DEMO_GEMMA_LIVE_VERIFIED": "0"
             },
@@ -145,17 +153,16 @@ jobs:
             }
           }
           JSON
-          # Missing account-level Qwen proof always produces a disabled route,
-          # even when Wrangler uses --keep-vars on an existing Worker.
+          # Force Qwen/Gemma OFF regardless of historical GitHub or Worker vars.
           python3 - <<'PY'
           import json
           import os
           from pathlib import Path
           path = Path("wrangler.deploy.runtime.jsonc")
           config = json.loads(path.read_text())
-          config["vars"]["OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED"] = (
-              "1" if os.getenv("OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED") == "1" else "0"
-          )
+          assert config["vars"]["OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED"] == "0"
+          assert config["vars"]["OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED"] == "0"
+          assert config["vars"]["OLIVIA_DEMO_GEMMA_LIVE_VERIFIED"] == "0"
           config["vars"]["OLIVIA_RELEASE_SHA"] = os.environ["RELEASE_SHA"]
           config["vars"]["OLIVIA_AUTH0_CLIENT_ID"] = os.environ["OLIVIA_AUTH0_CLIENT_ID"]
           path.write_text(json.dumps(config, indent=2) + "\n")
@@ -211,7 +218,8 @@ jobs:
               "demo_provider_ready": body.get("demo_provider_ready") is True,
               "demo_provider": body.get("demo_provider") == "workers-ai-demo",
               "demo_model": body.get("demo_model") == "@cf/zai-org/glm-4.7-flash",
-              "demo_qwen_ready": body.get("demo_qwen_ready") is (os.getenv("OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED") == "1"),
+              "demo_qwen_ready": body.get("demo_qwen_ready") is False,
+              "demo_gemma_ready": body.get("demo_gemma_ready") is False,
               "web_read": body.get("web_read") is False,
               "hard_zero_cost": body.get("hard_zero_cost") is False,
               "demo_cost_guaranteed": body.get("demo_cost_guaranteed") is False,

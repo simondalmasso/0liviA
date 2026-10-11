@@ -42,6 +42,34 @@ test('anonymous cannot spend owner inference even if backend reports demo ready'
 });
 
 if (mockDemo) {
+
+  test('Google owner login entry is reachable without enabling anonymous chat', async ({app,browser,screen}) => {
+    await app.clearState();
+    await browser.route('**/healthz*', route => route.fulfill({json:{
+      process_alive:true,api_mode:'public_shell',public_shell:true,
+      demo_provider_ready:true,demo_inference_enabled:true,provider_ready:false,
+      demo_provider:'workers-ai-demo',demo_model:'@cf/zai-org/glm-4.7-flash'
+    }}));
+    await browser.route('**/api/auth/public-config*', route => route.fulfill({json:{
+      enabled:true,issuer:'https://tenant.us.auth0.com/',
+      audience:'https://0livia.example/api',client_id:'publicClient012345678901'
+    }}));
+    let attempted = 0;
+    await browser.route('**/api/demo-chat*', route => {
+      attempted++;
+      return route.fulfill({status:403,json:{error:'unexpected_anonymous_inference'}});
+    });
+    await app.open('/');
+    await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
+    await browser.locator('.rail-btn[data-side="session"]').tap();
+    const entry = screen.getByRole('button',{name:'Entrar con Google'});
+    await expect(entry).toBeEnabled();
+    await entry.tap();
+    await expect(browser.locator('#oliviaGoogleLogin')).toBeVisible();
+    await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
+    if (attempted !== 0) throw new Error('Anonymous login attempted model inference');
+  });
+
   test('guest cannot unlock private demo via visible login placeholder', async ({app,screen,browser}) => {
     await app.clearState();
     await browser.route('**/healthz*', route => route.fulfill({json:{
