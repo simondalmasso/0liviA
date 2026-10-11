@@ -1361,17 +1361,11 @@ async function ensureRemoteSession(chat,excludeMessageId=null){
 }
 
 async function sendPublicDemo(chat,userMessage,speak){
-  const auth=window.OliviaOwnerAuth.authorization();
-  if(!auth)throw new Error('Entrá con Google para usar la IA privada.');
   controller=new AbortController();setSendMode(true);
   try{
-    const r=await fetch(PUBLIC_DEMO_ENDPOINT,{
-      method:'POST',
-      headers:{'Content-Type':'application/json',Authorization:auth},
-      credentials:'same-origin',
-      body:JSON.stringify({messages:demoHistory(chat),model:demoModelSelect.value}),
-      signal:controller.signal
-    });
+    const r=await window.OliviaOwnerAuth.postDemo(
+      PUBLIC_DEMO_ENDPOINT,demoHistory(chat),demoModelSelect.value,controller.signal
+    );
     if(r.status===401||r.status===403){window.OliviaOwnerAuth.invalidate();updateComposerAvailability();throw new Error('Acceso privado denegado. Volvé a entrar.')}
     if(r.status===429)throw new Error('límite demo alcanzado');
     if(!r.ok)throw new Error('ruta demo no disponible');
