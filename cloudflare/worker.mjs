@@ -54,7 +54,8 @@ function hardened(response) {
 
 function demoEnabled(env) {
   return (
-    env?.OLIVIA_STATIC_ONLY !== "1" &&
+    // Explicit enable only: missing/unknown flags can never start billing.
+    env?.OLIVIA_STATIC_ONLY === "0" &&
     env?.OLIVIA_DEMO_ZERO_COST_CONFIRMED === "1" &&
     ownerAuthConfigured(env) &&
     env?.AI &&
@@ -85,7 +86,7 @@ function health(env) {
     release_sha: /^[0-9a-f]{40}$/.test(String(env?.OLIVIA_RELEASE_SHA || "")) ? env.OLIVIA_RELEASE_SHA : null,
     api_mode: "public_shell",
     public_shell: PUBLIC_SHELL_ONLY,
-    static_only: env?.OLIVIA_STATIC_ONLY === "1",
+    static_only: env?.OLIVIA_STATIC_ONLY !== "0",
     bridge_enabled: TRANSITIONAL_BRIDGE_ENABLED,
     provider_ready: false,
     inference_enabled: false,

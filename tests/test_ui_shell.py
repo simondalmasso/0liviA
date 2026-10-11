@@ -23,6 +23,15 @@ def test_monochrome_shell_stays_dependency_free_and_low_weight():
     assert "setInterval(" not in html
 
 
+def test_public_owner_workspace_is_hidden_until_auth_and_on_logout():
+    html = _shell()
+    assert "workspace=blankWorkspace();renderAll();" in html
+    assert "if(ownerCanRead){try{workspace=await readState()}" in html
+    assert "if(ownerCanRead)await saveState()" in html
+    assert "function lockPublicOwnerWorkspace()" in html
+    assert "Iniciá sesión con Google" in html
+
+
 def test_unified_navigation_and_composer_contract():
     html = _shell()
     assert 'id="modeChat"' not in html

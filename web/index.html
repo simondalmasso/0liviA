@@ -574,7 +574,9 @@ function updatePublicHome(){
   publicStatus.hidden=!isPublic;
   if(isPublic){
     publicStatus.textContent=demoReady
-      ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+(gemmaReady?' / Gemma':'')+' · costo no verificado'
+      ?(window.OliviaOwnerAuth.isOwner()
+        ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+(gemmaReady?' / Gemma':'')+' · costo no verificado'
+        :'Entrá con Google para utilizar tu modelo privado.')
       :'Chat IA no conectado. Esta versión muestra la interfaz, pero no tiene un modelo habilitado.';
   }
 }
@@ -582,9 +584,11 @@ function updateComposerAvailability(){
   const available=composerAvailable();
   textInput.disabled=!available&&backendMode!=='public_shell';
   sendBtn.disabled=!available;
-  sendBtn.title=available?'Enviar':'IA no conectada';
+  sendBtn.title=available?'Enviar':backendMode==='public_shell'&&publicDemoActive?'Iniciá sesión con Google':'IA no conectada';
   textInput.setAttribute('aria-disabled',textInput.disabled?'true':'false');
-  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive&&coreHealth?.demo_provider_ready===true?'Preguntale a 0liviA':'';
+  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive&&coreHealth?.demo_provider_ready===true
+    ?(window.OliviaOwnerAuth.isOwner()?'Preguntale a 0liviA':'Iniciá sesión con Google')
+    :'IA no conectada';
   else if(backendMode==='canonical'&&!ownerAuthReady)textInput.placeholder='Iniciá sesión para usar 0liviA';
   else if(coreHealth&&coreHealth.provider_ready!==true)textInput.placeholder='Sin proveedor $0 disponible';
   else textInput.placeholder='Preguntale a 0liviA';
@@ -1011,8 +1015,24 @@ function renderConfig(){
     card.append(strong,small);el.appendChild(card);
   }
 }
+function lockPublicOwnerWorkspace(){
+  window.OliviaOwnerAuth.invalidate();
+  workspace=blankWorkspace();renderAll();
+  updatePublicHome();updateComposerAvailability();
+}
 function renderSession(){
   const el=$('#sessionList');el.textContent='';
+  if(backendMode==='public_shell'){
+    const button=document.createElement('button');
+    button.type='button';button.className='side-card';
+    const authenticated=window.OliviaOwnerAuth.isOwner();
+    button.textContent=authenticated?'Salir de Google':'Entrar con Google';
+    button.onclick=authenticated?lockPublicOwnerWorkspace:showOwnerLogin;
+    el.appendChild(button);
+    const info=document.createElement('div');info.className='side-empty';
+    info.textContent=authenticated?'Propietario verificado.':'Sólo el propietario puede utilizar el modelo.';
+    el.appendChild(info);return;
+  }
   if(backendMode!=='canonical'){
     el.innerHTML='<div class="side-empty">Sesión disponible con el Core durable.</div>';
     return;
@@ -1366,7 +1386,7 @@ async function sendPublicDemo(chat,userMessage,speak){
     const r=await window.OliviaOwnerAuth.postDemo(
       PUBLIC_DEMO_ENDPOINT,demoHistory(chat),demoModelSelect.value,controller.signal
     );
-    if(r.status===401||r.status===403){window.OliviaOwnerAuth.invalidate();updateComposerAvailability();throw new Error('Acceso privado denegado. Volvé a entrar.')}
+    if(r.status===401||r.status===403){lockPublicOwnerWorkspace();throw new Error('Acceso privado denegado. Volvé a entrar.')}
     if(r.status===429)throw new Error('límite demo alcanzado');
     if(!r.ok)throw new Error('ruta demo no disponible');
     const body=await r.json();
@@ -1900,11 +1920,19 @@ $('#voiceMain').onclick=async()=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();if(voiceLive.classList.contains('open'))closeVoice()}});
 
 (async()=>{
-  try{workspace=await readState()}catch(e){workspace=null}
+  // Never expose a persisted owner's workspace before backend identity validation.
+  workspace=blankWorkspace();renderAll();
+  await probeCore({force:true});
+  await window.OliviaOwnerAuth.init(backendMode==='public_shell');
+  const ownerCanRead=(backendMode==='public_shell'&&window.OliviaOwnerAuth.isOwner())
+    ||(backendMode==='canonical'&&ownerAuthReady);
+  if(ownerCanRead){try{workspace=await readState()}catch(e){workspace=null}}
   normalizeWorkspace();
   const p=selectedProject();if(!p.chats.length)p.chats.push({id:uid('c'),title:'Nuevo chat',messages:[]});
   if(!workspace.selectedChatId)workspace.selectedChatId=p.chats[0].id;
-  await saveState();renderAll();await probeCore({force:true});await window.OliviaOwnerAuth.init(backendMode==='public_shell');updateComposerAvailability();if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();
+  if(ownerCanRead)await saveState();
+  renderAll();updatePublicHome();updateComposerAvailability();
+  if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();
 })();
 </script>
 </body>

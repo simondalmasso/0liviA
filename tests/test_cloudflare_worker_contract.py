@@ -156,8 +156,8 @@ def test_cloudflare_deploy_is_manual_only_and_requires_owner_confirmation():
 
 def test_static_public_release_has_no_model_provider_binding_or_ai_calls():
     static = Path(".github/workflows/deploy-public-static.yml").read_text(encoding="utf-8")
-    assert 'env?.OLIVIA_STATIC_ONLY !== "1"' in WORKER
-    assert 'static_only: env?.OLIVIA_STATIC_ONLY === "1"' in WORKER
+    assert 'env?.OLIVIA_STATIC_ONLY === "0"' in WORKER
+    assert 'static_only: env?.OLIVIA_STATIC_ONLY !== "0"' in WORKER
     assert '"OLIVIA_STATIC_ONLY": "1"' in static
     assert '"OLIVIA_DEMO_ZERO_COST_CONFIRMED": "0"' in static
     assert '"OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "0"' in static

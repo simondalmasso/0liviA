@@ -46,6 +46,7 @@ function fixture({
   const guard = new CostGuard({ storage });
   const env = {
     ...authEnvironment,
+    OLIVIA_STATIC_ONLY: "0",
     OLIVIA_DEMO_ZERO_COST_CONFIRMED: enabled ? "1" : "0",
     OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED: qwenEnabled ? "1" : "0",
     OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED: gemmaZeroCost ? "1" : "0",
@@ -104,6 +105,22 @@ test("disabled demo has no inference and canonical API always fails closed", asy
     assert.equal((await worker.fetch(new Request(BASE + path), f.env)).status, 401);
   }
   assert.equal((await worker.fetch(new Request(BASE + "/"), f.env)).status, 200);
+});
+
+test("static-only flag must be explicitly 0 before any AI or quota debit", async () => {
+  const f = fixture();
+  delete f.env.OLIVIA_STATIC_ONLY;
+  const h = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
+  assert.equal(h.static_only, true);
+  assert.equal(h.demo_provider_ready, false);
+  const denied = await worker.fetch(post([{role:"user",content:"hola"}]),f.env);
+  assert.equal(denied.status,503);
+  assert.equal(f.calls.length,0);
+  assert.equal(f.stored.has("count"),false);
+  f.env.OLIVIA_STATIC_ONLY = "invalid";
+  const again = await worker.fetch(post([{role:"user",content:"hola"}]),f.env);
+  assert.equal(again.status,503);
+  assert.equal(f.calls.length,0);
 });
 
 test("public routes include security headers and immutable release metadata", async () => {

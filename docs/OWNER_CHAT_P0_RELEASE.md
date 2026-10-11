@@ -30,7 +30,7 @@ Contrato operativo de la PR #114. Esta guía **no autoriza** por sí misma infer
 
 ## Bloqueos que la PR no resuelve
 
-- No se ha acreditado todavía el plan real de Cloudflare ni completado el login Auth0 productivo.
+- **Workers Free (0 US$/mes) comprobado el 2026-10-11:** el panel autenticado mostró `Gratuito → 0 US$ → Plan actual`; documentación Cloudflare: 10.000 neurons gratuitas diarias, exceso bloqueado en Workers Free, GLM 4.7 Flash admitido. No se han verificado aún el login Auth0 productivo, la cuenta vinculada a los secretos de despliegue ni una respuesta real. Volver a verificar el plan antes de un release externo.
 - El Core Python de OCI (#43) sigue sin despliegue SSH certificado; la memoria duradera y los backups **no se acreditan** con el demo.
 - El almacenamiento local legacy de la UI no está aislado por identidades Google en un navegador compartido; antes de invitar a usuarios debe deshabilitarse o aislarse por cuenta. No declarar privacidad multiusuario completa sólo por proteger la API.
 - La prueba offline y un Worker publicado sin inferencia no prueban funcionamiento end-to-end. Reportar por separado F0 seguridad, F1 respuesta real, F2 costo, F3 evidencia.
