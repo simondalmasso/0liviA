@@ -288,3 +288,25 @@ def test_owner_auth_predeploy_requires_seven_private_worker_secret_names():
     assert workflow.index("verify_cloudflare_free.py") < workflow.index("verify_owner_secret_names.py")
     assert workflow.index("verify_owner_secret_names.py") < workflow.index("Deploy exact public shell")
     assert "secret put" not in workflow
+
+
+def test_real_owner_chat_release_acceptance_is_separate_from_mock_ci():
+    """Production must not be described as functional based on offline checks."""
+    release = Path("docs/OWNER_CHAT_P0_RELEASE.md").read_text(encoding="utf-8")
+    assert "ACEPTACIÓN DEL PROPIETARIO: FAIL" in release
+    assert "REAL OWNER CHAT = FAIL" in release
+    assert "REAL OWNER CHAT = PASS" in release
+    assert "6/6" not in release  # never use the offline mock total as production evidence
+    for criterion in (
+        "release_sha=7e33c19d5410f94fa29e5d62a85a132da2ce755b",
+        "demo_provider_ready=false",
+        "/auth0_bridge.js",
+        "/api/auth/public-config",
+        "Billing Read",
+        "un único `POST /api/demo-chat`",
+        "no simulado",
+        "0 AI.run",
+        "Core OCI",
+    ):
+        assert criterion in release
+    assert "Esta guía **no autoriza**" in release

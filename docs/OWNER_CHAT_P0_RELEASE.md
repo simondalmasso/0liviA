@@ -2,6 +2,22 @@
 
 Contrato operativo de la PR #114. Esta guía **no autoriza** por sí misma inferencia, despliegue ni gastos. El Core Python con memoria y SQLite sigue siendo un producto separado del demo Worker.
 
+## ACEPTACIÓN DEL PROPIETARIO: FAIL — producción no funciona
+
+**Estado verificado el 2026-10-11 a partir de una captura del propietario y GET de red:** la URL `https://0livia.simondalmasso44.workers.dev/` muestra «Chat IA no conectado», botón Enviar inhabilitado y ninguna respuesta real; `/healthz` indicó `release_sha=7e33c19d5410f94fa29e5d62a85a132da2ce755b`, `static_only=true`, `demo_provider_ready=false`, `demo_inference_enabled=false`; `/auth0_bridge.js` devolvió 404 y `/api/auth/public-config` devolvió 401. **REAL OWNER CHAT = FAIL, independientemente de Python/seguridad/E2E/móvil en verde.**
+
+**Prohibido rotular «funciona», «arreglada» o «production PASS»** porque `/healthz` dé 200, la UI abra, o el navegador responda con un GLM *mock*. Esta sección sólo podrá cambiar a `REAL OWNER CHAT = PASS` una vez cumplidas **todas** las pruebas siguientes en la URL pública, con evidencia sanitizada:
+
+1. El SHA exacto publicado en `/healthz` corresponde al commit fusionado en `main` y el release **dinámico** está habilitado sólo para GLM 4.7 Flash, con Qwen/Gemma OFF y sin fallback facturable.
+2. La cuenta efectiva del Worker está acreditada Workers Free con **USD 0 / no overage**; no AI Gateway Unified Billing ni Paid; preflight Billing Read separado PASS, sin publicar tokens ni datos contables privados.
+3. Auth0 está configurado realmente como tenant/Google SPA/API/Action, `/auth0_bridge.js` existe, `/api/auth/public-config` tiene `enabled=true`, y el propietario inscrito inicia sesión con Google de verdad; no se admite el primer visitante como owner.
+4. **Sólo con aprobación explícita del propietario para el turno real**, este pulsa Enviar, se registra un único `POST /api/demo-chat` autenticado a GLM y recibe **texto no vacío y no simulado**. No reintentar un POST cuyo resultado sea incierto. Registrar sólo SHA, estados, nombre de modelo y ausencia de errores, no mensajes ni credenciales.
+5. Usuario sin sesión: 401; Google distinto: 403; ambos con **0 AI.run y 0 CostGuard**. Cierre de sesión y recarga no devuelven acceso a datos del propietario.
+
+**Si cualquiera falla, la aceptación permanece FAIL**; no anunciar DONE, no pagar ni reducir restricciones para aparentar un 200. La reversión estática es manual y requiere su propia autorización. Core OCI y memoria persistente del issue #43 tienen estado independiente, incluso después de un posible PASS del demo.
+
+
+
 ## Qué se integró offline
 
 - Frontend: Auth0 Google SPA con Authorization Code + PKCE S256, state y nonce. El access token se conserva sólo en memoria de la pestaña.
