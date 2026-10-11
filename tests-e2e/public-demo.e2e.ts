@@ -1,5 +1,6 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
+import { createHash } from 'node:crypto';
 
 // This is a browser contract test, NEVER a model inference or cost attestation.
 // Real owner E2E requires a separately approved Auth0 session and Free account check.
@@ -103,4 +104,117 @@ if (mockDemo) {
     await expect(browser.locator('.app.is-landing')).toHaveCount(1);
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
   });
+
+  test('owner Google PKCE callback enables one mocked GLM reply without paid or external AI', async ({app,screen,browser}) => {
+    // Deterministic browser integration: NO Auth0 credentials, AI.run, or model providers.
+    await app.clearState();
+    const base = (process.env.OLIVIA_E2E_URL || 'http://127.0.0.1:8767').replace(/\/$/, '');
+    const fakeAccessToken = 'offline_owner_access_token_no_live_credentials_123456789';
+    const expectedAnswer = 'Respuesta GLM simulada y autorizada.';
+    let state = '', nonce = '', pkceChallenge = '', tokenExchanges = 0, ownerChecks = 0, demoPosts = 0;
+
+    await browser.route('**/healthz*', route => route.fulfill({json:{
+      process_alive:true,api_mode:'public_shell',public_shell:true,
+      demo_provider_ready:true,demo_inference_enabled:true,provider_ready:false,
+      demo_provider:'workers-ai-demo',demo_model:'@cf/zai-org/glm-4.7-flash',
+      demo_qwen_ready:false,demo_gemma_ready:false
+    }}));
+    await browser.route('**/api/auth/public-config*', route => route.fulfill({json:{
+      enabled:true,issuer:'https://tenant.us.auth0.com/',
+      audience:'https://0livia.example/api',client_id:'publicClient012345678901'
+    }}));
+    await browser.route('**/api/auth/owner-status*', route => {
+      ownerChecks++;
+      if (route.request.headers.authorization !== 'Bearer ' + fakeAccessToken)
+        throw Error('Owner-status did not receive the exact OAuth access token');
+      return route.fulfill({json:{owner:true,demo_ready:true}});
+    });
+    await browser.route('**/api/demo-chat*', route => {
+      demoPosts++;
+      if (route.request.method !== 'POST' ||
+          route.request.headers.authorization !== 'Bearer ' + fakeAccessToken)
+        throw Error('Demo POST missing owner bearer authorization');
+      const payload = JSON.parse(route.request.postData || '{}');
+      if (payload.model !== 'glm' ||
+          !Array.isArray(payload.messages) ||
+          payload.messages.at(-1)?.content !== 'Probá el chat privado')
+        throw Error('Demo POST did not use GLM with the owner prompt');
+      return route.fulfill({json:{
+        answer:expectedAnswer,model:'@cf/zai-org/glm-4.7-flash',
+        provider:'workers-ai-demo',canonical:false
+      }});
+    });
+
+    // Fail closed for unexpected tenant requests. More specific handlers take precedence.
+    await browser.route('https://tenant.us.auth0.com/**', route => route.abort());
+    await browser.route('**/oauth/token', route => {
+      tokenExchanges++;
+      if (route.request.method !== 'POST') throw Error('OAuth code exchange must POST');
+      const form = new URLSearchParams(route.request.postData || '');
+      const verifier = form.get('code_verifier') || '';
+      if (form.get('grant_type') !== 'authorization_code' ||
+          form.get('code') !== 'offline_single_use_code' ||
+          form.get('client_id') !== 'publicClient012345678901' ||
+          form.get('redirect_uri') !== base + '/' ||
+          !/^[A-Za-z0-9_-]{64}$/.test(verifier))
+        throw Error('OAuth token exchange did not preserve PKCE state');
+      const challenge = createHash('sha256').update(verifier).digest('base64url');
+      if (challenge !== pkceChallenge) throw Error('PKCE S256 challenge does not match verifier');
+      const idToken = 'e30.' + Buffer.from(JSON.stringify({nonce})).toString('base64url') + '.c2ln';
+      return route.fulfill({
+        headers:{'Access-Control-Allow-Origin':'*'},
+        json:{token_type:'Bearer',access_token:fakeAccessToken,id_token:idToken}
+      });
+    });
+    await browser.route('**/authorize*', route => {
+      const url = new URL(route.request.url);
+      if (url.origin !== 'https://tenant.us.auth0.com' ||
+          url.searchParams.get('response_type') !== 'code' ||
+          url.searchParams.get('client_id') !== 'publicClient012345678901' ||
+          url.searchParams.get('audience') !== 'https://0livia.example/api' ||
+          url.searchParams.get('redirect_uri') !== base + '/' ||
+          url.searchParams.get('code_challenge_method') !== 'S256')
+        throw Error('Invalid OAuth authorization request');
+      state = url.searchParams.get('state') || '';
+      nonce = url.searchParams.get('nonce') || '';
+      pkceChallenge = url.searchParams.get('code_challenge') || '';
+      if (!/^[A-Za-z0-9_-]{32}$/.test(state) ||
+          !/^[A-Za-z0-9_-]{32}$/.test(nonce) ||
+          !/^[A-Za-z0-9_-]{43}$/.test(pkceChallenge))
+        throw Error('OAuth state, nonce or code challenge missing');
+      return route.fulfill({
+        status:302,
+        headers:{Location:base + '/?code=offline_single_use_code&state=' + state},
+        body:''
+      });
+    });
+
+    await app.open('/');
+    await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
+    await browser.locator('.rail-btn[data-side="session"]').tap();
+    await screen.getByRole('button',{name:'Entrar con Google'}).tap();
+    await expect(browser.locator('#oliviaGoogleLogin')).toBeVisible();
+    await browser.locator('#oliviaGoogleLogin').tap();
+
+    // This is the actual app document after an intercepted OAuth redirect.
+    await expect(screen.getByRole('button',{name:'Enviar'})).toBeEnabled();
+    const prompt = screen.getByRole('textbox',{name:'Mensaje'});
+    await prompt.fill('Probá el chat privado');
+    await screen.getByRole('button',{name:'Enviar'}).tap();
+    await expect(browser.locator('#messages .msg.assistant:not(.error)')).toContainText(expectedAnswer);
+    if (tokenExchanges !== 1 || ownerChecks !== 1 || demoPosts !== 1)
+      throw Error('Expected one OAuth token exchange, owner gate, and GLM mock POST');
+
+    const leaked = await browser.evaluate((value: string) =>
+      JSON.stringify(Object.entries(localStorage)).includes(value) ||
+      JSON.stringify(Object.entries(sessionStorage)).includes(value),
+      fakeAccessToken
+    );
+    if (leaked) throw Error('OAuth access token leaked into browser storage');
+    await browser.locator('.rail-btn[data-side="session"]').tap();
+    await screen.getByRole('button',{name:'Salir de Google'}).tap();
+    await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
+    if (demoPosts !== 1) throw Error('Logout unexpectedly repeated inference');
+  });
+
 }
