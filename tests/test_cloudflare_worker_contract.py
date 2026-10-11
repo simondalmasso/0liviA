@@ -202,6 +202,12 @@ def test_owner_auth0_release_smoke_denies_anonymous_without_inference():
     assert '"OLIVIA_STATIC_ONLY": "0"' in deploy
     assert 'config["vars"]["OLIVIA_AUTH0_CLIENT_ID"]' in deploy
     assert 'test "${demo_status}" = "401"' in deploy
+    assert '/api/auth/public-config?cb=' in deploy
+    assert '"enabled") is not True' in deploy
+    assert '/auth0_bridge.js?cb=' in deploy
+    assert "window.OliviaOwnerAuth" in deploy
+    assert '/api/auth/owner-status?cb=' in deploy
+    assert 'test "${owner_status}" = "401"' in deploy
     assert 'test "${chat_status}" = "401"' in deploy
     assert 'test "${demo_status}" = "200"' not in deploy
     assert 'await requireOwnerInference(request, env)' in worker

@@ -246,6 +246,33 @@ jobs:
               raise SystemExit("public-shell smoke failed: " + ", ".join(failed))
           PY
 
+          # Exact Google OAuth browser contract must exist before reporting success.
+          # Public data only: never send a bearer token or initiate model inference.
+          bridge_script="$(curl -fsS --max-time 20 "${base}/auth0_bridge.js?cb=${cb}")"
+          grep -Fq 'window.OliviaOwnerAuth' <<<"${bridge_script}"
+
+          auth_config="$(curl -fsS --max-time 20 "${base}/api/auth/public-config?cb=${cb}")"
+          AUTH_CONFIG_JSON="${auth_config}" python3 - <<'PY'
+          import json
+          import os
+          from urllib.parse import urlsplit
+
+          data = json.loads(os.environ["AUTH_CONFIG_JSON"])
+          issuer = data.get("issuer")
+          client_id = data.get("client_id")
+          audience = data.get("audience")
+          if data.get("enabled") is not True:
+              raise SystemExit("Auth0 SPA public config is not enabled")
+          if not all(isinstance(v, str) and v for v in (issuer, client_id, audience)):
+              raise SystemExit("Auth0 SPA public metadata is incomplete")
+          parsed = urlsplit(issuer)
+          if parsed.scheme != "https" or not (parsed.hostname or "").endswith(".auth0.com"):
+              raise SystemExit("Auth0 SPA issuer is invalid")
+          PY
+
+          owner_status="$(curl -sS --max-time 20 -o /tmp/olivia-owner-status-response -w '%{http_code}' "${base}/api/auth/owner-status?cb=${cb}")"
+          test "${owner_status}" = "401"
+
           # Read-only permission contract: neither endpoint may trigger a
           # provider request or CostGuard debit for an anonymous caller.
           chat_status="$(curl -sS --max-time 20 -o /tmp/olivia-chat-response -w '%{http_code}' -X POST "${base}/api/chat?cb=${cb}")"
