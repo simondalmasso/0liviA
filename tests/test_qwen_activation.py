@@ -70,7 +70,7 @@ def test_qwen_workflow_is_frozen_without_automatic_provider_deploy():
     assert "acknowledge_frozen:" in raw
     assert "No Cloudflare API, no Wrangler deployment" in raw
     assert "CLOUDFLARE_API_TOKEN" not in raw
-    assert "wrangler" not in raw.casefold()
+    assert "npm exec --yes wrangler" not in raw
     assert "npm exec" not in raw
     assert "/api/demo-chat" not in raw
     assert 'OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED' not in raw
