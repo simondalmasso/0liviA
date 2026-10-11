@@ -192,3 +192,39 @@ def test_static_deploy_retries_eventual_consistency_but_never_removes_sha_proof(
     assert 'body.get("release_sha") == os.environ["RELEASE_SHA"]' in flow
     assert 'body.get("demo_inference_enabled") is False' in flow
     assert "/api/demo-chat" not in flow
+
+
+def test_owner_auth0_release_smoke_denies_anonymous_without_inference():
+    deploy = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    worker = Path("cloudflare/worker.mjs").read_text(encoding="utf-8")
+    bridge = Path("web/auth0_bridge.js").read_text(encoding="utf-8")
+    public_csp = Path("web/_headers").read_text(encoding="utf-8")
+    assert '"OLIVIA_STATIC_ONLY": "0"' in deploy
+    assert 'config["vars"]["OLIVIA_AUTH0_CLIENT_ID"]' in deploy
+    assert 'test "${demo_status}" = "401"' in deploy
+    assert 'test "${chat_status}" = "401"' in deploy
+    assert 'test "${demo_status}" = "200"' not in deploy
+    assert 'await requireOwnerInference(request, env)' in worker
+    assert 'url.pathname === "/api/auth/owner-status"' in worker
+    assert 'url.pathname === "/api/auth/public-config"' in worker
+    assert "code_challenge_method:\"S256\"" in bridge
+    assert 'https://*.auth0.com' in public_csp
+
+
+def test_qwen_unverified_auto_canary_is_frozen_no_push():
+    qwen = Path(".github/workflows/activate-qwen-once.yml").read_text(encoding="utf-8")
+    before_jobs = qwen.split("jobs:", 1)[0]
+    assert "  push:" not in before_jobs
+    assert "  workflow_dispatch:" in before_jobs
+    assert "npm exec" not in qwen
+    assert "/api/demo-chat" not in qwen
+    assert "CLOUDFLARE_API_TOKEN" not in qwen
+
+
+def test_ci_e2e_does_not_claim_mock_guest_turn_is_real_owner_chat():
+    flow = Path(".github/workflows/e2e.yml").read_text(encoding="utf-8")
+    tests = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")
+    assert 'test "${status}" = "401"' in flow
+    assert "unauthorizedInferenceCalls" in tests
+    assert "toBeDisabled()" in tests
+    assert "provider failure is an alert" not in tests
