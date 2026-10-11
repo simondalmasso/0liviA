@@ -125,7 +125,7 @@ def test_home_initial_view_is_independent_of_saved_chat_and_strict_bw():
     assert "renderMessagesInto(messagesEl,landing?null:chat)" in html
     assert "homeView=false;" in html
     assert "$('.rail-logo').onclick=()=>{homeView=true;renderMessages();closeDrawer()}" in html
-    assert "greeting.textContent='Qué gusto verte, Simon.'" in html
+    assert "greeting.textContent='Hola, ¿en qué puedo ayudarte?'" in html
     assert ".messages.landing .empty{position:absolute" in html
     assert ".composer-wrap.landing{top:calc(50% + 40px)" in html
     assert "  .composer-wrap.landing{top:calc(50% + 20px)}" in html
@@ -139,6 +139,15 @@ def test_home_initial_view_is_independent_of_saved_chat_and_strict_bw():
     assert ".composer input,.composer-icon{color:#000}" in html
     assert ".user .bubble{background:#fff;color:#000}" in html
     assert "textInput.disabled=!available&&backendMode!=='public_shell'" in html
+
+
+def test_public_home_must_not_leak_owner_name_or_require_model():
+    html = _shell()
+    assert "Qué gusto verte, Simon." not in html
+    assert "greeting.textContent='Hola, ¿en qué puedo ayudarte?'" in html
+    assert "Chat IA no conectado." in html
+    assert "sendBtn.disabled=!available;" in html
+    assert ".app.is-landing .composer-status{color:#fff}" in html
 
 
 def test_chat_list_reopens_saved_history_instead_of_leaving_home_active():
