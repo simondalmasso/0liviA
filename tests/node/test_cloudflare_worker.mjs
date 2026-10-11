@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, test } from "node:test";
+import { authEnvironment, initializeAuthTest } from "./owner_auth_fixture.mjs";
 import worker, { CostGuard } from "../../cloudflare/worker.mjs";
 
 const BASE = "https://olivia.test";
+let OWNER_TOKEN = "";
+before(async () => { OWNER_TOKEN = (await initializeAuthTest()).token; });
 
 function fixture({
   enabled = true,
@@ -40,6 +43,7 @@ function fixture({
   };
   const guard = new CostGuard({ storage });
   const env = {
+    ...authEnvironment,
     OLIVIA_DEMO_ZERO_COST_CONFIRMED: enabled ? "1" : "0",
     OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED: qwenEnabled ? "1" : "0",
     OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED: gemmaZeroCost ? "1" : "0",
@@ -74,6 +78,7 @@ function post(messages, { origin = BASE, contentType = "application/json", model
     headers: {
       "content-type": contentType,
       ...(origin ? { origin } : {}),
+      authorization: "Bearer " + OWNER_TOKEN,
     },
     body: JSON.stringify({ messages, ...(model === undefined ? {} : { model }) }),
   });
@@ -94,7 +99,7 @@ test("disabled demo has no inference and canonical API always fails closed", asy
   assert.equal(denied.status, 503);
   assert.equal(f.calls.length, 0);
   for (const path of ["/api/chat", "/api/read-url", "/api/unknown"]) {
-    assert.equal((await worker.fetch(new Request(BASE + path), f.env)).status, 503);
+    assert.equal((await worker.fetch(new Request(BASE + path), f.env)).status, 401);
   }
   assert.equal((await worker.fetch(new Request(BASE + "/"), f.env)).status, 200);
 });
@@ -270,7 +275,7 @@ test("body is capped by actual bytes even without Content-Length", async () => {
   const payload = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(17000) }] });
   const request = new Request(BASE + "/api/demo-chat", {
     method: "POST",
-    headers: { origin: BASE, "content-type": "application/json" },
+    headers: { origin: BASE, "content-type": "application/json", authorization: "Bearer " + OWNER_TOKEN },
     body: payload,
   });
   assert.equal(request.headers.get("content-length"), null);
