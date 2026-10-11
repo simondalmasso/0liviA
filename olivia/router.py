@@ -11,8 +11,10 @@ import uuid
 from collections import Counter, deque
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Protocol
+from urllib.parse import urlsplit
 
 import aiohttp
 
@@ -37,6 +39,22 @@ def _forbidden_model_route(*values: object) -> bool:
         if "nemotron" in compact:
             return True
     return False
+
+
+def _strict_loopback_url(value: str) -> bool:
+    try:
+        url = urlsplit(value)
+        hostname = url.hostname
+        if (url.scheme not in {"http", "https"} or not hostname
+                or url.username is not None or url.password is not None
+                or url.query or url.fragment):
+            return False
+        _ = url.port  # Reject malformed/out-of-range ports.
+        if hostname.casefold() == "localhost":
+            return True
+        return ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
 
 def is_visible_segment(text: str | None) -> bool:
@@ -133,6 +151,7 @@ class ProviderSpec:
     api_key_env: str
     priority: int = 100
     daily_limit: int = 0
+    max_output_tokens: int = 512
     cost_mode: str = "free_unverified"
     kind: str = "openai_compatible"
     profile_path: str = ""
@@ -145,6 +164,12 @@ class ProviderSpec:
         # Applies to direct dataclass construction as well as JSON specs.
         if _forbidden_model_route(self.name, self.model):
             raise ProviderConfigError("forbidden model: Nemotron is disabled by owner policy")
+        if type(self.no_credit_overage_verified) is not bool:
+            raise ProviderConfigError("no_credit_overage_verified must be a JSON boolean")
+        if type(self.max_output_tokens) is not int or not 1 <= self.max_output_tokens <= 4096:
+            raise ProviderConfigError("max_output_tokens must be an integer in 1..4096")
+        if self.cost_mode == "local" and not _strict_loopback_url(self.base_url):
+            raise ProviderConfigError("cost_mode=local requires loopback HTTP endpoint")
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ProviderSpec":
@@ -216,12 +241,11 @@ class ProviderSpec:
             api_key_env=str(raw.get("api_key_env", "")),
             priority=int(raw.get("priority", 100)),
             daily_limit=int(raw.get("daily_limit", 0)),
+            max_output_tokens=raw.get("max_output_tokens", 512),
             cost_mode=cost_mode,
             kind=kind,
             profile_path=str(raw.get("profile_path", "")),
-            no_credit_overage_verified=bool(
-                raw.get("no_credit_overage_verified", False)
-            ),
+            no_credit_overage_verified=raw.get("no_credit_overage_verified", False),
             capabilities=capabilities,
             fallback_policy=fallback_policy,
             auth_mode=auth_mode,
@@ -254,7 +278,10 @@ class OpenAICompatibleProvider:
             raise ProviderConfigError(f"{self.name}: missing {self.spec.api_key_env}")
 
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=90)
-        payload = {"model": self.spec.model, "messages": messages, "stream": True}
+        # Bounded output is mandatory on canonical OpenAI-compatible transports;
+        # the configured model/provider must independently support this parameter.
+        payload = {"model": self.spec.model, "messages": messages, "stream": True,
+                   "max_tokens": self.spec.max_output_tokens}
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

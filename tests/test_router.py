@@ -498,3 +498,51 @@ async def test_router_caps_model_attempts_at_two_even_for_legacy_higher_settings
     attempts = [item["provider"] for item in pool.telemetry if item.get("kind") == "attempt"]
     assert attempts == ["first", "second"]
     assert any(item.get("kind") == "attempts.capped" for item in pool.telemetry)
+
+
+@pytest.mark.parametrize("value", ["false", "true", 1, 0, None, [], {}])
+def test_provider_no_credit_overage_requires_strict_json_boolean(value):
+    raw = {"name": "plan", "kind": "chatgpt_plan",
+           "cost_mode": "plan_included",
+           "no_credit_overage_verified": value}
+    with pytest.raises(ProviderConfigError, match="JSON boolean"):
+        ProviderSpec.from_dict(raw)
+    with pytest.raises(ProviderConfigError, match="JSON boolean"):
+        ProviderSpec(name="plan", model="m", base_url="https://api.openai.com/v1",
+                     api_key_env="TOKEN", no_credit_overage_verified=value)
+
+
+@pytest.mark.parametrize("host", [
+    "https://evil.example/v1", "http://localhost.example/v1",
+    "http://10.0.0.5:9000/v1", "http://169.254.169.254/latest",
+    "file:///etc/passwd", "http://user:pass@127.0.0.1/v1",
+    "http://127.0.0.1:999999/v1", "http://127.0.0.1:9000/v1?token=x",
+])
+def test_local_cost_mode_cannot_relabel_external_or_unsafe_endpoint(host):
+    with pytest.raises(ProviderConfigError, match="loopback"):
+        ProviderSpec(name="local", model="small", base_url=host,
+                     api_key_env="", cost_mode="local")
+
+
+@pytest.mark.parametrize("host", [
+    "http://127.0.0.1:11434/v1", "http://localhost:11434/v1",
+    "http://[::1]:11434/v1",
+])
+def test_local_cost_mode_accepts_actual_loopback_only(host):
+    assert ProviderSpec(name="local", model="small", base_url=host,
+                        api_key_env="", cost_mode="local").cost_mode == "local"
+
+
+@pytest.mark.parametrize("value", [0, -1, 4097, 1.5, True, "256", None])
+def test_provider_output_tokens_must_be_explicit_positive_bound(value):
+    with pytest.raises(ProviderConfigError, match="max_output_tokens"):
+        ProviderSpec(name="remote", model="m", base_url="https://api.example/v1",
+                     api_key_env="R", max_output_tokens=value)
+
+
+def test_openai_compatible_provider_defines_bounded_default_generation():
+    spec = ProviderSpec.from_dict({"name":"bounded", "base_url":"https://api.example/v1",
+       "model":"m", "cost_mode":"free_unverified"})
+    assert spec.max_output_tokens == 512
+    assert ProviderSpec.from_dict({"name":"bounded", "base_url":"https://api.example/v1",
+       "model":"m", "max_output_tokens":128}).max_output_tokens == 128
