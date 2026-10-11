@@ -10,6 +10,27 @@ This public repository publishes source code and architecture for review. **No r
 
 The public site is a **static-only interface** until a separate verified-free demo is explicitly activated. The authenticated Python Core, persistent memory and tools are not running behind the current public Worker. Deployment and provider readiness are tracked independently; successful frontend CI or deployment does not certify the Core.
 
+
+## Public release acceptance — production is not yet a working chat
+
+The owner's last verified public-browser acceptance on **2026-10-11** was **FAIL**: the interface loaded, but Send was disabled and no AI response was possible. The published Worker was static-only; green CI and simulated browser replies do not overturn that result. This is a **dated observation**, not a claim that today's deployment has been retested.
+
+The source-of-truth release order is [issue #115](https://github.com/simondalmasso/0liviA/issues/115), with the Auth0/Google implementation under [draft PR #114](https://github.com/simondalmasso/0liviA/pull/114). The durable Python Core's separate deployment gate is [issue #43](https://github.com/simondalmasso/0liviA/issues/43).
+
+For **read-only** inspection of an installation, set `PUBLIC_BASE` to its own verified HTTPS origin, then use:
+
+```sh
+: "${PUBLIC_BASE:?Set PUBLIC_BASE to this installation\'s HTTPS origin}"
+curl -fsS "$PUBLIC_BASE/healthz"
+curl -sS -o /dev/null -w '%{http_code}\n' "$PUBLIC_BASE/auth0_bridge.js"
+curl -sS -o /dev/null -w '%{http_code}\n' "$PUBLIC_BASE/api/auth/public-config"
+```
+
+The health payload must identify the **exact approved release SHA**, `static_only:false` and `demo_provider_ready:true` for the isolated GLM demo; `provider_ready:false` and `inference_enabled:false` can still be correct for the **separate canonical Core**. The bridge script should be served and the public Auth0 configuration should report `enabled:true`. These GET results alone **do not prove login or model inference**. A 401 from `/api/auth/owner-status` **without a bearer** is an expected security result.
+
+**REAL OWNER CHAT = PASS** only after an independently approved real Google-owner login, exactly one expressly authorized non-mocked GLM reply visible in the owner's browser, denial of anonymous/non-owner calls before any model/CostGuard effect, and confirmed Workers Free/no paid overage. A mock `6/6 PASS`, a static page, or `/healthz` HTTP 200 must never be reported as a functional release. Do not trigger AI requests, upgrade plans, or merge/deploy from this read-only check.
+
+
 ## Product invariants
 
 - normal operation does not depend on the owner's PC;
@@ -78,7 +99,7 @@ Cloudflare may host a thin public shell, but it is not the canonical chat/memory
 - production STT/VAD/TTS selection and es-AR voice acceptance;
 - a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
-- exact-SHA **canonical Core** deployment and production smoke; a historical GLM-4.7-Flash demo response was observed on 2026-10-08, but the current public release is **static-only with no model inference** (2026-10-10); the account-level no-overage, owner login and canonical Core deployment remain uncertified; the public Worker continues to reject canonical `/api/chat`;
+- exact-SHA **canonical Core** deployment and production smoke; a historical GLM-4.7-Flash demo response was observed on 2026-10-08, but the current public release is **static-only with no model inference** (last owner acceptance check: 2026-10-11, FAIL); the account-level no-overage, owner login and canonical Core deployment remain uncertified; the public Worker continues to reject canonical `/api/chat`;
 - the public Workers AI demo is deployment-gated by explicit zero-cost confirmation; without it `/api/demo-chat` returns 503 rather than consuming unverified capacity.
 - the optional Qwen3.8 27B public-demo lane remains disabled unless `OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED=1` is independently justified by a verified account-level no-overage boundary; enabling GLM is not sufficient. The demo returns the real model ID and answers direct model-identity questions locally.
 
