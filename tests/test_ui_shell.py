@@ -15,7 +15,10 @@ def test_monochrome_shell_stays_dependency_free_and_low_weight():
     assert "linear-gradient(" not in html
     assert "radial-gradient(" not in html
     assert "backdrop-filter" not in html
-    assert "<script src=" not in html
+    # One locally hosted, dependency-free OAuth bridge is explicitly permitted.
+    assert html.count('<script src="/auth0_bridge.js"></script>') == 1
+    assert html.count("<script src=") == 1
+    assert '<script src="http' not in html
     assert 'rel="stylesheet"' not in html
     assert "setInterval(" not in html
 
