@@ -61,51 +61,16 @@ def test_paid_zone_subscription_not_misread_as_workers_subscription():
     }))
 
 
-def test_workflow_only_once_and_secret_safety():
+def test_qwen_workflow_is_frozen_without_automatic_provider_deploy():
     raw = WORKFLOW.read_text(encoding="utf-8")
-    assert "branches: [main]" in raw
-    assert "- .github/workflows/activate-qwen-once.yml" in raw
-    assert "on:" in raw
-    assert "WORKERS_FREE_BILLING_PROOF" not in raw
-    assert "OWNER_ATTESTED_NOT_API_VERIFIED" in raw
-    assert 'test "${OLIVIA_DEMO_ZERO_COST_CONFIRMED}" = "1"' in raw
-    assert "python3 scripts/verify_cloudflare_free.py" not in raw
-    assert "OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED" in raw
-    assert '"@cf/qwen/qwen3.8-27b"' in raw
-    assert "QWEN_ROLLED_BACK=YES" in raw
-    assert "if: failure() && steps.deploy.outcome == 'success'" in raw
-    assert "npm exec --yes wrangler@4.127.1" in raw
-    assert "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}" in raw
-
-
-def test_live_qwen_canary_waits_for_exact_sha_without_spending_quota():
-    raw = WORKFLOW.read_text(encoding="utf-8")
-    assert "Wait for exact immutable release at the public edge" in raw
-    assert "for attempt in $(seq 1 24)" in raw
-    assert 'h.get("release_sha") == os.environ["RELEASE_SHA"]' in raw
-    assert raw.index("EXACT_SHA_EDGE_READY=TRUE") < raw.index(
-        "Live Qwen3.8 model canary (one inference request)"
-    )
-    assert raw.count('--data \'{"model":"qwen"') == 1
-    assert "QWEN_ROLLED_BACK=YES" in raw
-
-
-def test_qwen_canary_diagnoses_http_failures_without_echoing_provider_body():
-    yaml = WORKFLOW.read_text(encoding="utf-8")
-    assert "QWEN_CANARY_HTTP_STATUS=" in yaml
-    assert "QWEN_CANARY_ERROR=" in yaml
-    assert "re.fullmatch" in yaml
-    assert '"unclassified"' in yaml
-    assert 'if [[ "${status}" != "200" ]]; then' in yaml
-    assert "QWEN_ROLLED_BACK=YES" in yaml
-
-
-def test_qwen_edge_retries_only_before_inference():
-    raw = WORKFLOW.read_text(encoding="utf-8")
-    assert '"${status}" == "503" && "${canary_error}" == "qwen_unavailable"' in raw
-    assert "for attempt in $(seq 1 18)" in raw
-    assert "WAIT_QWEN_ROUTE_PROPAGATION" in raw
-    assert "Any other status immediately fails; at most one AI.run occurs." in raw
-    assert raw.count('--data \'{"model":"qwen"') == 1
-    assert 'if [[ "${status}" != "200" ]]; then' in raw
-    assert "QWEN_ROLLED_BACK=YES" in raw
+    before_jobs = raw.split("jobs:", 1)[0]
+    assert "  workflow_dispatch:" in before_jobs
+    assert "  push:" not in before_jobs
+    assert "branches: [main]" not in before_jobs
+    assert "acknowledge_frozen:" in raw
+    assert "No Cloudflare API, no Wrangler deployment" in raw
+    assert "CLOUDFLARE_API_TOKEN" not in raw
+    assert "wrangler" not in raw.casefold()
+    assert "npm exec" not in raw
+    assert "/api/demo-chat" not in raw
+    assert 'OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED' not in raw
