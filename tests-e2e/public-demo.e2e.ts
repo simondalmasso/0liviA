@@ -217,4 +217,57 @@ if (mockDemo) {
     if (demoPosts !== 1) throw Error('Logout unexpectedly repeated inference');
   });
 
+
+  test('signed-in Google guest remains blocked after offline OAuth callback and spends zero AI calls', async ({app,screen,browser}) => {
+    await app.clearState();
+    const state='g'.repeat(32), nonce='n'.repeat(32), verifier='A'.repeat(64);
+    const guestToken='offline_guest_token_never_owner_012345678901234567890';
+    let ownerChecks=0, demoPosts=0, exchanges=0;
+
+    // Seed only a temporary PKCE transaction, not an access token or login session.
+    await browser.addInitScript((seed: {state:string;nonce:string;verifier:string}) => {
+      sessionStorage.setItem('olivia:auth0:pkce:v1',JSON.stringify({...seed,created:Date.now()}));
+    },{state,nonce,verifier});
+    await browser.route('**/healthz*', route => route.fulfill({json:{
+      process_alive:true,api_mode:'public_shell',public_shell:true,
+      demo_provider_ready:true,demo_inference_enabled:true,provider_ready:false
+    }}));
+    await browser.route('**/api/auth/public-config*', route => route.fulfill({json:{
+      enabled:true,issuer:'https://tenant.us.auth0.com/',
+      audience:'https://0livia.example/api',client_id:'publicClient012345678901'
+    }}));
+    await browser.route('**/api/demo-chat*', route => {
+      demoPosts++;
+      return route.fulfill({status:403,json:{error:'guest_inference_forbidden'}});
+    });
+    await browser.route('**/api/auth/owner-status*', route => {
+      ownerChecks++;
+      if (route.request.headers.authorization !== 'Bearer ' + guestToken)
+        throw Error('Guest must present the same token to the owner-only gate');
+      return route.fulfill({status:403,json:{error:'owner_only'}});
+    });
+    await browser.route('https://tenant.us.auth0.com/**', route => route.abort());
+    await browser.route('**/oauth/token', route => {
+      exchanges++;
+      const form=new URLSearchParams(route.request.postData || '');
+      if (form.get('code') !== 'guest_code' ||
+          form.get('code_verifier') !== verifier ||
+          form.get('grant_type') !== 'authorization_code')
+        throw Error('Guest OAuth callback lacked the matching PKCE verifier');
+      const idToken='e30.'+Buffer.from(JSON.stringify({nonce})).toString('base64url')+'.c2ln';
+      return route.fulfill({
+        headers:{'Access-Control-Allow-Origin':'*'},
+        json:{token_type:'Bearer',access_token:guestToken,id_token:idToken}
+      });
+    });
+
+    await app.open('/?code=guest_code&state='+state);
+    await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
+    await browser.locator('.rail-btn[data-side="session"]').tap();
+    await expect(screen.getByRole('button',{name:'Entrar con Google'})).toBeVisible();
+    const becameOwner=await browser.evaluate(() => window.OliviaOwnerAuth.isOwner());
+    if (becameOwner || exchanges!==1 || ownerChecks!==1 || demoPosts!==0)
+      throw Error('Google guest bypassed the owner gate or initiated inference');
+  });
+
 }
