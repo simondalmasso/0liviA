@@ -28,6 +28,7 @@ def test_public_owner_workspace_is_hidden_until_auth_and_on_logout():
     assert "workspace=blankWorkspace();renderAll();" in html
     assert "if(ownerCanRead){try{workspace=await readState()}" in html
     assert "if(ownerCanRead)await saveState()" in html
+    assert "if(backendMode==='public_shell'&&!window.OliviaOwnerAuth.isOwner())return;" in html
     assert "function lockPublicOwnerWorkspace()" in html
     assert "Iniciá sesión con Google" in html
 

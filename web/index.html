@@ -515,6 +515,8 @@ async function readState(){
   });
 }
 async function saveState(){
+  // Guests must not overwrite a previously authenticated owner's local data.
+  if(backendMode==='public_shell'&&!window.OliviaOwnerAuth.isOwner())return;
   const db=await openDb();
   await new Promise((resolve,reject)=>{
     const tx=db.transaction(STORE,'readwrite');
