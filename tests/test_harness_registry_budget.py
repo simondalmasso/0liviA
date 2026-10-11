@@ -15,7 +15,7 @@ from olivia.harness.execution import BoundedRequest, DeniedModelInvocation, guar
 from olivia.harness.model_registry import (
     ModelAdmission, ModelAttestation, ModelRegistry, ParentBudget,
 )
-from olivia.router import ProviderSpec
+from olivia.router import ProviderConfigError, ProviderSpec
 
 
 TODAY = date(2026, 10, 10)
@@ -96,8 +96,9 @@ def test_local_attestation_requires_real_loopback():
     ev = evidence(provider="local", model="small", cost_mode="local", account_id="localhost")
     registry = ModelRegistry([local], [ev], today=TODAY)
     assert registry.admit("local", "chat", 1, 1).allowed
-    malicious = replace(local, base_url="http://local.internal:9000/v1")
-    assert ModelRegistry([malicious], [ev], today=TODAY).admit("local", "chat", 1, 1).reason == "local_model_not_loopback"
+    # Reject at ProviderSpec construction, before the ModelRegistry receives it.
+    with pytest.raises(ProviderConfigError, match="loopback"):
+        replace(local, base_url="http://local.internal:9000/v1")
 
 
 def test_alias_nemotron_rejected_before_any_admission():
