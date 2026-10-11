@@ -124,7 +124,7 @@ if (mockDemo) {
     await expect(browser.locator('#messages .msg.assistant .bubble')).toContainText('HISTORY_RETAINED');
     await app.open('/');
     await expect(browser.locator('.landing-mark')).toHaveCount(1);
-    await expect(browser.locator('.landing-greeting')).toContainText('Qué gusto verte, Simon.');
+    await expect(browser.locator('.landing-greeting')).toContainText('Hola, ¿en qué puedo ayudarte?');
     await expect(browser.locator('.app.is-landing')).toHaveCount(1);
     await browser.locator('.rail-btn[data-side="chats"]').tap();
     await screen.getByRole('button',{name:/Mi primer mensaje/}).tap();
