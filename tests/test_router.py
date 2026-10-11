@@ -546,3 +546,45 @@ def test_openai_compatible_provider_defines_bounded_default_generation():
     assert spec.max_output_tokens == 512
     assert ProviderSpec.from_dict({"name":"bounded", "base_url":"https://api.example/v1",
        "model":"m", "max_output_tokens":128}).max_output_tokens == 128
+
+
+@pytest.mark.asyncio
+async def test_canonical_openai_request_actually_sends_bounded_output(monkeypatch):
+    import olivia.router as router
+
+    sent = []
+    class MockResponse:
+        status = 200
+        headers = {}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        @property
+        def content(self):
+            async def lines():
+                yield b'data: {"choices":[{"delta":{"content":"OK"}}]}\n'
+                yield b'data: [DONE]\n'
+            return lines()
+    class MockSession:
+        def __init__(self, **_kw):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        def post(self, url, *, json, headers):
+            sent.append({"url":url, "json":json, "headers":headers})
+            return MockResponse()
+    monkeypatch.setattr(router.aiohttp, "ClientSession", MockSession)
+    spec = ProviderSpec(name="local", base_url="http://127.0.0.1:11434/v1",
+                        model="local-tested", api_key_env="", cost_mode="local",
+                        max_output_tokens=123)
+    chunks = [part async for part in OpenAICompatibleProvider(spec).stream([
+        {"role": "user", "content": "test"}
+    ])]
+    assert chunks == ["OK"]
+    assert len(sent) == 1
+    assert sent[0]["json"]["max_tokens"] == 123
+    assert sent[0]["json"]["model"] == "local-tested"
+    assert sent[0]["url"] == "http://127.0.0.1:11434/v1/chat/completions"
