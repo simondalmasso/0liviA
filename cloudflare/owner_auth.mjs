@@ -5,6 +5,7 @@ const CLAIM = "https://0livia.app/claims/";
 const JWKS_CACHE_MS = 120_000;
 const MAX_TOKEN_AGE_S = 900;
 const keyCache = new Map();
+const missingKidRefresh = new Map();
 const enc = new TextEncoder();
 const dec = new TextDecoder("utf-8", { fatal: true });
 
@@ -116,8 +117,14 @@ async function claimsFromRequest(request, env) {
     let keys = await trustedKeys(issuer);
     let jwk = keys.find((key) => key.kid === header.kid);
     if (!jwk) {
-      keys = await trustedKeys(issuer, true);
-      jwk = keys.find((key) => key.kid === header.kid);
+      // Throttle unknown-kid refreshes: attacker-chosen kid must not force
+      // one paid/repeated external JWKS fetch per unauthenticated request.
+      const last = missingKidRefresh.get(issuer) || 0;
+      if (Date.now() - last >= JWKS_CACHE_MS) {
+        missingKidRefresh.set(issuer, Date.now());
+        keys = await trustedKeys(issuer, true);
+        jwk = keys.find((key) => key.kid === header.kid);
+      }
     }
     if (!jwk) return null;
     const key = await crypto.subtle.importKey("jwk", jwk,
