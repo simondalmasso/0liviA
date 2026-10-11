@@ -47,6 +47,8 @@ jobs:
           node --check /tmp/olivia-ui.js
       - name: Check Cloudflare Worker syntax
         run: node --check cloudflare/worker.mjs
+      - name: Check public Auth0 browser bridge syntax
+        run: node --check web/auth0_bridge.js
       - name: Test Cloudflare Worker behavior without external inference
         run: node --test tests/node/test_cloudflare_worker.mjs
       - name: Test
