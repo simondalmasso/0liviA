@@ -35,7 +35,7 @@ function issuerOf(env) {
   return u.origin + "/";
 }
 
-function configured(env) {
+export function ownerAuthConfigured(env) {
   return Boolean(issuerOf(env) &&
     typeof env?.OLIVIA_AUTH0_AUDIENCE === "string" &&
     /^https:\/\/[A-Za-z0-9.-]+\/[A-Za-z0-9._/-]+$/.test(env.OLIVIA_AUTH0_AUDIENCE) &&
@@ -102,8 +102,8 @@ async function claimsFromRequest(request, env) {
       typeof claims.jti !== "string" || claims.jti.length < 8 || claims.jti.length > 256 ||
       !/^[A-Za-z0-9_-]+$/.test(claims.jti)) return null;
   const payload = enc.encode(pieces[0] + "." + pieces[1]);
-  const sig = base64urlBytes(pieces[2]);
   try {
+    const sig = base64urlBytes(pieces[2]);
     let keys = await trustedKeys(issuer);
     let jwk = keys.find((key) => key.kid === header.kid);
     if (!jwk) {
@@ -119,7 +119,10 @@ async function claimsFromRequest(request, env) {
 }
 
 export async function requireOwnerInference(request, env) {
-  if (!configured(env)) {
+  if (!/^Bearer [A-Za-z0-9._-]{1,8192}$/.test(request.headers.get("Authorization") || "")) {
+    return { ok: false, status: 401, error: "invalid_access_token" };
+  }
+  if (!ownerAuthConfigured(env)) {
     // Never fall back to a legacy token or guessed user identity.
     return { ok: false, status: 503, error: "owner_identity_unconfigured" };
   }
