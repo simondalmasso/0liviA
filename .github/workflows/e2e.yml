@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       live:
-        description: "Test the permanent production URL and send one real demo prompt"
+        description: "Read-only anonymous-denial check; never run model inference"
         required: false
         type: boolean
         default: false
@@ -80,19 +80,18 @@ jobs:
                   raise SystemExit(f"Production is not demo-ready: {key}={state.get(key)!r}, expected {value!r}")
           PY
 
-          # A healthy shell alone is not proof of a functional AI response.
-          demo="$(curl -fsS --max-time 45 --retry 0 -X POST "${base}/api/demo-chat" \\
-            -H "Origin: ${base}" \\
-            -H "Content-Type: application/json" \\
-            --data '{"messages":[{"role":"user","content":"Respondé brevemente en español."}]}')"
-          DEMO_JSON="${demo}" python3 - <<'PY'
+          # Anonymous requests must be rejected before model/cost admission.
+          # The complete owner Google flow is tested independently with no mock.
+          status="$(curl -sS --max-time 20 --retry 0 -o /tmp/olivia-deny-body -w '%{http_code}' \
+            -X POST "${base}/api/demo-chat" \
+            -H "Origin: ${base}" \
+            -H "Content-Type: application/json" \
+            --data '{"messages":[{"role":"user","content":"NO_INFERENCE"}]}')"
+          test "${status}" = "401"
+          python3 - <<'PY'
           import json
-          import os
-          body = json.loads(os.environ["DEMO_JSON"])
-          if body.get("provider") != "workers-ai-demo" or body.get("canonical") is not False:
-              raise SystemExit("Production returned the wrong provider contract")
-          if not isinstance(body.get("answer"), str) or not body["answer"].strip():
-              raise SystemExit("Production AI did not return a real answer")
+          with open("/tmp/olivia-deny-body") as fp:
+              assert json.load(fp).get("error") == "invalid_access_token"
           PY
 
       - name: Install pinned e2e runner
@@ -127,7 +126,7 @@ jobs:
           OLIVIA_E2E_MOCK_DEMO: "1"
         run: npx e2e run tests-e2e/public-demo.e2e.ts --reporter list
 
-      - name: Live E2E against permanent 0liviA
+      - name: Anonymous read-only E2E against permanent 0liviA
         if: inputs.live == true
         env:
           E2E_TELEMETRY_DISABLED: "1"
