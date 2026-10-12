@@ -62,11 +62,10 @@ if (mockDemo) {
     });
     await app.open('/');
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
-    await browser.locator('.rail-btn[data-side="session"]').tap();
-    const entry = screen.getByRole('button',{name:'Entrar con Google'});
-    await expect(entry).toBeEnabled();
-    await entry.tap();
+    // Owner-only Google gate is shown automatically on unauthenticated load.
+    await expect(browser.locator('#ownerLogin.open')).toBeVisible();
     await expect(browser.locator('#oliviaGoogleLogin')).toBeVisible();
+    await expect(browser.locator('#oliviaGoogleLogin')).toBeEnabled();
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
     if (attempted !== 0) throw new Error('Anonymous login attempted model inference');
   });
@@ -81,7 +80,8 @@ if (mockDemo) {
       json:{enabled:false}
     }));
     await app.open('/');
-    await browser.locator('.rail-btn[data-side="session"]').tap();
+    await expect(browser.locator('#ownerLogin.open')).toBeVisible();
+    await expect(browser.locator('#oliviaGoogleLogin')).not.toBeVisible();
     await expect(browser.locator('#messages .msg.assistant:not(.error)')).toHaveCount(0);
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
     await expect(browser.locator('.app')).toHaveCount(1);
@@ -191,8 +191,7 @@ if (mockDemo) {
 
     await app.open('/');
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
-    await browser.locator('.rail-btn[data-side="session"]').tap();
-    await screen.getByRole('button',{name:'Entrar con Google'}).tap();
+    await expect(browser.locator('#ownerLogin.open')).toBeVisible();
     await expect(browser.locator('#oliviaGoogleLogin')).toBeVisible();
     await browser.locator('#oliviaGoogleLogin').tap();
 
@@ -263,8 +262,8 @@ if (mockDemo) {
 
     await app.open('/?code=guest_code&state='+state);
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
-    await browser.locator('.rail-btn[data-side="session"]').tap();
-    await expect(screen.getByRole('button',{name:'Entrar con Google'})).toBeVisible();
+    await expect(browser.locator('#ownerLogin.open')).toBeVisible();
+    await expect(browser.locator('#oliviaGoogleLogin')).toBeVisible();
     const becameOwner=await browser.evaluate(() => window.OliviaOwnerAuth.isOwner());
     if (becameOwner || exchanges!==1 || ownerChecks!==1 || demoPosts!==0)
       throw Error('Google guest bypassed the owner gate or initiated inference');
