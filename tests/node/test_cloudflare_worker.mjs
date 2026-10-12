@@ -523,3 +523,13 @@ test("OAuth gate reports invalid access token separately from wrong Google owner
   assert.match(source,/configuración privada del propietario no está completa/);
   assert.ok(source.includes("if (!gate.ok) throw Error("));
 });
+
+test("OAuth browser maps only fixed auth stage codes to safe visible messages", () => {
+  const source=readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
+  for(const stage of ["token_shape","jwt_header","jwt_claims","jwks_key","jwt_signature","jwks_validation"])
+    assert.ok(source.includes(stage+":"), "missing server-defined " + stage);
+  assert.ok(source.includes("Object.prototype.hasOwnProperty.call(messages, details.auth_stage)"));
+  assert.ok(source.includes("await gate.json()"));
+  assert.ok(!source.includes("JSON.stringify(details)"));
+  assert.ok(!source.includes("data.access_token.slice("));
+});

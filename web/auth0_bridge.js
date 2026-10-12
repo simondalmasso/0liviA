@@ -80,13 +80,33 @@
     const gate = await fetch("/api/auth/owner-status",{
       headers:{Authorization:"Bearer "+data.access_token},credentials:"same-origin",cache:"no-store"
     });
-    if (!gate.ok) throw Error(gate.status===403
-      ? "Esta cuenta Google no es propietaria de 0liviA."
-      : gate.status===401
-        ? "Auth0 devolvió un token API que 0liviA no pudo validar. Revisá la configuración de la API (audience, RS256 y duración)."
-        : gate.status===503
-          ? "La configuración privada del propietario no está completa."
-          : "No se pudo comprobar la sesión Google. Volvé a intentarlo.");
+    if (!gate.ok) {
+      // Only server-defined stage codes, never JWT or private claim contents.
+      const messages = {
+        token_shape:"Formato de token API inválido.",
+        jwt_header:"Cabecera JWT no compatible: revisar tipo y algoritmo.",
+        jwt_claims:"Claims JWT rechazadas: revisar issuer, audiencia o fechas.",
+        jwks_key:"La firma usa una clave que no aparece en JWKS.",
+        jwt_signature:"La firma del JWT no pudo verificarse.",
+        jwks_validation:"Fallo consultando o validando las claves públicas JWKS."
+      };
+      let reason = "";
+      if (gate.status === 401) {
+        try {
+          const details = await gate.json();
+          if (typeof details?.auth_stage === "string" &&
+              Object.prototype.hasOwnProperty.call(messages, details.auth_stage))
+            reason = messages[details.auth_stage];
+        } catch {}
+      }
+      throw Error(gate.status===403
+        ? "Esta cuenta Google no es propietaria de 0liviA."
+        : gate.status===401
+          ? (reason || "No se pudo verificar la firma o las claims del token API.")
+          : gate.status===503
+            ? "La configuración privada del propietario no está completa."
+            : "No se pudo comprobar la sesión Google. Volvé a intentarlo.");
+    }
     token = data.access_token; owner = true;
   }
   async function init(publicShell) {
