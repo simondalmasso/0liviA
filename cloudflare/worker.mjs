@@ -127,7 +127,11 @@ async function ownerStatus(request, env) {
   const identity = await requireOwnerInference(request, env);
   return identity.ok
     ? json({ owner: true, demo_ready: Boolean(demoEnabled(env)) })
-    : json({ error: identity.error }, { status: identity.status });
+    : json({
+      error: identity.error,
+      // Only fixed, non-sensitive failure categories; never reflect claims or JWT.
+      ...(identity.status === 401 && identity.auth_stage ? { auth_stage:identity.auth_stage } : {}),
+    }, { status: identity.status });
 }
 function disabledApi() {
   return json(

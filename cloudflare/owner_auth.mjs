@@ -77,14 +77,14 @@ async function trustedKeys(issuer, force = false) {
 
 async function claimsFromRequest(request, env) {
   const match = /^Bearer ([A-Za-z0-9._-]{1,8192})$/.exec(request.headers.get("Authorization") || "");
-  if (!match) return null;
+  if (!match) return { claims:null, stage:"token_shape" };
   const raw = match[1], pieces = raw.split(".");
-  if (pieces.length !== 3 || pieces.some((p) => !p)) return null;
+  if (pieces.length !== 3 || pieces.some((p) => !p)) return { claims:null, stage:"token_shape" };
   let header, claims;
   try {
     header = decodePart(pieces[0]);
     claims = decodePart(pieces[1]);
-  } catch { return null; }
+  } catch { return { claims:null, stage:"token_shape" }; }
   // Auth0 can issue legacy "JWT" or RFC 9068 access-token "at+jwt" types.
   // This only identifies the token kind: RS256/JWKS, API audience and owner
   // claims still MUST pass; an ID token cannot be substituted for API access.
@@ -95,9 +95,9 @@ async function claimsFromRequest(request, env) {
       header.alg !== "RS256" || !accessTokenType ||
       typeof header.kid !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(header.kid) ||
       header.jku !== undefined || header.jwk !== undefined ||
-      header.x5u !== undefined || header.crit !== undefined) return null;
+      header.x5u !== undefined || header.crit !== undefined) return { claims:null, stage:"jwt_header" };
   const issuer = issuerOf(env);
-  if (!issuer || !claims || typeof claims !== "object" || Array.isArray(claims)) return null;
+  if (!issuer || !claims || typeof claims !== "object" || Array.isArray(claims)) return { claims:null, stage:"jwt_claims" };
   const now = Math.floor(Date.now() / 1000);
   // Auth0 may issue API tokens with a second /userinfo audience. Only that
   // exact optional audience is accepted, never arbitrary extra recipients.
@@ -116,7 +116,7 @@ async function claimsFromRequest(request, env) {
       (claims.jti !== undefined && (
         typeof claims.jti !== "string" || claims.jti.length < 8 ||
         claims.jti.length > 256 || !/^[A-Za-z0-9_-]+$/.test(claims.jti)
-      ))) return null;
+      ))) return { claims:null, stage:"jwt_claims" };
   const payload = enc.encode(pieces[0] + "." + pieces[1]);
   try {
     const sig = base64urlBytes(pieces[2]);
@@ -132,12 +132,12 @@ async function claimsFromRequest(request, env) {
         jwk = keys.find((key) => key.kid === header.kid);
       }
     }
-    if (!jwk) return null;
+    if (!jwk) return { claims:null, stage:"jwks_key" };
     const key = await crypto.subtle.importKey("jwk", jwk,
       { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
     const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, sig, payload);
-    return valid ? claims : null;
-  } catch { return null; }
+    return valid ? { claims, stage:null } : { claims:null, stage:"jwt_signature" };
+  } catch { return { claims:null, stage:"jwks_validation" }; }
 }
 
 export async function requireOwnerInference(request, env) {
@@ -148,8 +148,13 @@ export async function requireOwnerInference(request, env) {
     // Never fall back to a legacy token or guessed user identity.
     return { ok: false, status: 503, error: "owner_identity_unconfigured" };
   }
-  const claims = await claimsFromRequest(request, env);
-  if (!claims) return { ok: false, status: 401, error: "invalid_access_token" };
+  const parsed = await claimsFromRequest(request, env);
+  if (!parsed.claims) return {
+    ok: false, status: 401, error: "invalid_access_token",
+    // Stage identifiers never contain JWT data or private owner details.
+    auth_stage: parsed.stage,
+  };
+  const claims = parsed.claims;
   const owner = (
     claims.sub === env.OLIVIA_OWNER_AUTH0_SUB &&
     claims[CLAIM + "provider"] === "google-oauth2" &&

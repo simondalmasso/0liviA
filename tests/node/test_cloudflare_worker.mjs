@@ -393,6 +393,34 @@ test("RFC 9068 Auth0 access token types still require RS256 and exact API audien
   }), env)).status, 401);
 });
 
+
+test("owner JWT failures report fixed, non-sensitive validation stages", async () => {
+  const env = fixture().env;
+  const url = BASE + "/api/auth/owner-status";
+  const get = async (jwt) => worker.fetch(new Request(url,{
+    headers:{Authorization:"Bearer "+jwt},
+  }),env);
+  const badStructure = await get("abc.def.ghi");
+  assert.equal(badStructure.status,401);
+  assert.deepEqual(await body(badStructure),{
+    error:"invalid_access_token",auth_stage:"token_shape",
+  });
+  const wrongAlg = await signAuthToken({}, { alg:"none" });
+  const badHeader = await get(wrongAlg);
+  assert.equal(badHeader.status,401);
+  assert.equal((await body(badHeader)).auth_stage,"jwt_header");
+  const wrongAudience = await signAuthToken({ aud:"https://wrong.example/api" });
+  const badClaims = await get(wrongAudience);
+  assert.equal(badClaims.status,401);
+  assert.equal((await body(badClaims)).auth_stage,"jwt_claims");
+  const expired = await signAuthToken({ exp: Math.floor(Date.now()/1000)-5 });
+  const badExpiration = await get(expired);
+  assert.equal(badExpiration.status,401);
+  assert.equal((await body(badExpiration)).auth_stage,"jwt_claims");
+  const valid=await get(OWNER_TOKEN);
+  assert.equal(valid.status,200);
+  assert.deepEqual(await body(valid),{owner:true,demo_ready:true});
+});
 test("OAuth browser callback only releases in-memory token after owner-only backend approval", async () => {
   const source = readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
   const state = "s".repeat(32), nonce = "n".repeat(32), verifier = "A".repeat(64);
