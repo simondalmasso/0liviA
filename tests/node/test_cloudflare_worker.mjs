@@ -6,8 +6,12 @@ import { authEnvironment, initializeAuthTest } from "./owner_auth_fixture.mjs";
 import worker, { CostGuard } from "../../cloudflare/worker.mjs";
 
 const BASE = "https://olivia.test";
-let OWNER_TOKEN = "";
-before(async () => { OWNER_TOKEN = (await initializeAuthTest()).token; });
+let OWNER_TOKEN = "", signAuthToken;
+before(async () => {
+  const auth = await initializeAuthTest();
+  OWNER_TOKEN = auth.token;
+  signAuthToken = auth.sign;
+});
 
 function fixture({
   enabled = true,
@@ -361,6 +365,32 @@ test("browser owner-status enforces JWT before any cost guard debit",async()=>{
   assert.equal((await worker.fetch(new Request(url,{headers:{Authorization:"Bearer forged"}}),f.env)).status,401);
   assert.equal(f.calls.length,0);
   assert.equal(f.stored.has("count"),false);
+});
+
+
+test("RFC 9068 Auth0 access token types still require RS256 and exact API audience", async () => {
+  const env = fixture().env;
+  const url = BASE + "/api/auth/owner-status";
+  for (const typ of ["JWT", "at+jwt", "at+JWT", "application/at+jwt"]) {
+    const token = await signAuthToken({}, { typ });
+    assert.equal((await worker.fetch(new Request(url, {
+      headers: { authorization: "Bearer " + token },
+    }), env)).status, 200, "valid signed API access token typ " + typ);
+    const wrongAudience = await signAuthToken({ aud: "different_client_id" }, { typ });
+    assert.equal((await worker.fetch(new Request(url, {
+      headers: { authorization: "Bearer " + wrongAudience },
+    }), env)).status, 401, "wrong audience must reject " + typ);
+  }
+  for (const badType of ["id+jwt", "none", ""]) {
+    const token = await signAuthToken({}, { typ: badType });
+    assert.equal((await worker.fetch(new Request(url, {
+      headers: { authorization: "Bearer " + token },
+    }), env)).status, 401, "unexpected type must reject");
+  }
+  const badAlg = await signAuthToken({}, { alg: "none", typ: "at+jwt" });
+  assert.equal((await worker.fetch(new Request(url, {
+    headers: { authorization: "Bearer " + badAlg },
+  }), env)).status, 401);
 });
 
 test("OAuth browser callback only releases in-memory token after owner-only backend approval", async () => {

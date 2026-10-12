@@ -85,8 +85,14 @@ async function claimsFromRequest(request, env) {
     header = decodePart(pieces[0]);
     claims = decodePart(pieces[1]);
   } catch { return null; }
+  // Auth0 can issue legacy "JWT" or RFC 9068 access-token "at+jwt" types.
+  // This only identifies the token kind: RS256/JWKS, API audience and owner
+  // claims still MUST pass; an ID token cannot be substituted for API access.
+  const accessTokenType = header && typeof header.typ === "string" &&
+    (header.typ === "JWT" || header.typ.toLowerCase() === "at+jwt" ||
+      header.typ.toLowerCase() === "application/at+jwt");
   if (!header || typeof header !== "object" || Array.isArray(header) ||
-      header.alg !== "RS256" || header.typ !== "JWT" ||
+      header.alg !== "RS256" || !accessTokenType ||
       typeof header.kid !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(header.kid) ||
       header.jku !== undefined || header.jwk !== undefined ||
       header.x5u !== undefined || header.crit !== undefined) return null;
