@@ -27,7 +27,10 @@ export async function initializeAuthTest() {
   Object.assign(jwk, { kid: "test-key-1", alg: "RS256", use: "sig" });
   const fetchOriginal = globalThis.fetch;
   globalThis.fetch = (url, options) => {
-    if (url === ISSUER + ".well-known/jwks.json" && options?.redirect === "error") {
+    if (url === ISSUER + ".well-known/jwks.json") {
+      // Match workerd: it only supports "manual" and "follow" for redirect.
+      if (options?.redirect !== "manual")
+        return Promise.reject(new TypeError('Invalid redirect value; workerd accepts only manual/follow'));
       return Promise.resolve(new Response(JSON.stringify({ keys: [jwk] }),
         { headers: { "content-type": "application/json" } }));
     }

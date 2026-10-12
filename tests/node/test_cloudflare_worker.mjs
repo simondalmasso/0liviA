@@ -541,3 +541,35 @@ test("owner JWKS error categories do not reflect private error contents", () => 
   assert.ok(!source.includes('auth_stage: String(e)'));
   assert.ok(!source.includes('auth_stage: e.message'));
 });
+
+test("Cloudflare JWKS fetch uses supported manual redirect mode and blocks HTTP redirects", async () => {
+  const source=readFileSync(new URL("../../cloudflare/owner_auth.mjs",import.meta.url),"utf8");
+  assert.ok(source.includes('redirect: "manual"'));
+  assert.ok(!source.includes('redirect: "error"'));
+  assert.match(source,/response\.status >= 300 && response\.status < 400/);
+
+  // Use a separate synthetic tenant to avoid the module-level JWKS cache.
+  const env={...fixture().env,OLIVIA_AUTH0_ISSUER:"https://redirect-test.auth0.com/"};
+  const token=await signAuthToken({iss:env.OLIVIA_AUTH0_ISSUER});
+  const savedFetch=globalThis.fetch;
+  const observed=[];
+  try {
+    globalThis.fetch=async (url, opts) => {
+      if(url===env.OLIVIA_AUTH0_ISSUER+".well-known/jwks.json") {
+        observed.push({redirect:opts?.redirect,method:opts?.method});
+        return new Response(null,{status:302,headers:{location:"https://redirect-target.example/jwks.json"}});
+      }
+      return savedFetch(url,opts);
+    };
+    const response=await worker.fetch(new Request(BASE+"/api/auth/owner-status",{
+      headers:{authorization:"Bearer "+token},
+    }),env);
+    assert.equal(response.status,401);
+    assert.deepEqual(await body(response),{
+      error:"invalid_access_token",auth_stage:"jwks_response",
+    });
+    assert.deepEqual(observed,[{redirect:"manual",method:"GET"}]);
+  }finally{
+    globalThis.fetch=savedFetch;
+  }
+});

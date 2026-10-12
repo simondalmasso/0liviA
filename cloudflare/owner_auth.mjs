@@ -59,15 +59,14 @@ async function trustedKeys(issuer, force = false) {
   // One shared cache entry for concurrent requests. Failed fetches are never
   // cached as trust, and an unknown kid triggers one fresh JWKS request.
   const pending = (async () => {
-    const response = await fetch(url, { method: "GET", redirect: "error",
+    // workerd rejects redirect:"error" synchronously. Enforce no redirects
+    // with supported manual mode and explicitly reject every 3xx status.
+    const response = await fetch(url, { method: "GET", redirect: "manual",
       signal: AbortSignal.timeout(5000), headers: { accept: "application/json" } })
-      .catch((e) => {
-        // Log only a scrubbed transport error. Never log bearer, JWT or owner identity.
-        const kind = typeof e?.name === "string" ? e.name.slice(0,32) : "unknown";
-        const safeMessage = String(e?.message || "").replace(/https?:\/\/\S+/g,"[PUBLIC_URL]").slice(0,130);
-        console.warn("olivia_jwks_transport",kind,safeMessage);
-        throw new Error("jwks_fetch_failed");
-      });
+      .catch(() => { throw new Error("jwks_fetch_failed"); });
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error("jwks_bad_response");
+    }
     if (!response.ok) throw new Error("jwks_bad_response");
     const text = await response.text()
       .catch(() => { throw new Error("jwks_bad_response"); });
