@@ -322,3 +322,18 @@ def test_legacy_auth0_gate_uses_canonical_reviewed_action_only():
     assert "event.resource_server?.identifier !== API_AUDIENCE" in action
     assert "event.client?.client_id !== expectedSpa" in action
     assert "user.user_id !== `google-oauth2|${googleIdentity.user_id}`" in action
+
+
+def test_dynamic_release_requires_current_main_head_and_separate_model_approval():
+    """Release dispatch must not authorize a GLM call or publish an old main ancestor."""
+    flow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert 'test "${release_sha}" = "$(git rev-parse origin/main)"' in flow
+    assert 'git merge-base --is-ancestor "${release_sha}" origin/main' not in flow
+    approval = flow.split("confirm_account_no_overage:", 1)[1].split("permissions:", 1)[0]
+    assert "Cloudflare deployment only" in approval
+    assert "No live model test is authorized here." in approval
+    assert "and live inference smoke" not in approval
+    assert "workflow_dispatch:" in flow.split("permissions:", 1)[0]
+    assert 'test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"' in flow
+    assert 'test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"' in flow
+    assert 'test "${demo_status}" = "401"' in flow
