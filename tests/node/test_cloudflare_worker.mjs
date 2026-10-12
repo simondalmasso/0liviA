@@ -519,9 +519,9 @@ test("OAuth gate reports invalid access token separately from wrong Google owner
   assert.match(source,/gate\.status===403/);
   assert.match(source,/gate\.status===401/);
   assert.match(source,/gate\.status===503/);
-  assert.match(source,/token API que 0liviA no pudo validar/);
+  assert.match(source,/No se pudo verificar la firma o las claims del token API/);
   assert.match(source,/configuración privada del propietario no está completa/);
-  assert.ok(source.includes("if (!gate.ok) throw Error("));
+  assert.ok(source.includes("if (!gate.ok) {"));
 });
 
 test("OAuth browser maps only fixed auth stage codes to safe visible messages", () => {
