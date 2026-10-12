@@ -12,6 +12,11 @@ on:
         required: true
         default: false
         type: boolean
+      confirm_auth0_free_quota:
+        description: "I verified Auth0 Free and the account-wide active Actions + Forms quota is within its free entitlement; no paid upgrade or trial-only feature."
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -30,6 +35,7 @@ jobs:
       OLIVIA_DEMO_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_ZERO_COST_CONFIRMED }}
       OLIVIA_AUTH0_CLIENT_ID: ${{ vars.OLIVIA_AUTH0_CLIENT_ID }}
       CONFIRM_ACCOUNT_NO_OVERAGE: ${{ inputs.confirm_account_no_overage && 'true' || 'false' }}
+      CONFIRM_AUTH0_FREE_QUOTA: ${{ inputs.confirm_auth0_free_quota && 'true' || 'false' }}
 
     steps:
       - name: Require explicit deployment approval before any external action
@@ -38,6 +44,9 @@ jobs:
           set -euo pipefail
           test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
           test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"
+          # Separate acknowledgement: Auth0 trial features and shared Actions/Forms
+          # quotas are not implied by Cloudflare's Workers Free billing proof.
+          test "${CONFIRM_AUTH0_FREE_QUOTA:-}" = "true"
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

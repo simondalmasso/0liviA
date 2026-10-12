@@ -337,3 +337,17 @@ def test_dynamic_release_requires_current_main_head_and_separate_model_approval(
     assert 'test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"' in flow
     assert 'test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"' in flow
     assert 'test "${demo_status}" = "401"' in flow
+
+
+def test_dynamic_deploy_requires_auth0_free_quota_confirmation():
+    """One Auth0 Action can still exceed account-wide Free entitlement."""
+    flow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    header = flow.split("permissions:", 1)[0]
+    assert "confirm_auth0_free_quota:" in header
+    assert "the account-wide active Actions + Forms quota" in header
+    assert header.count("default: false") >= 2
+    assert "CONFIRM_AUTH0_FREE_QUOTA: ${{ inputs.confirm_auth0_free_quota && 'true' || 'false' }}" in flow
+    assert 'test "${CONFIRM_AUTH0_FREE_QUOTA:-}" = "true"' in flow
+    assert flow.index('test "${CONFIRM_AUTH0_FREE_QUOTA:-}" = "true"') < flow.index("Checkout repository")
+    # No false claim that this acknowledgement is an Auth0 API proof.
+    assert "AUTH0_BILLING_READ_TOKEN" not in flow
