@@ -88,7 +88,10 @@
         jwt_claims:"Claims JWT rechazadas: revisar issuer, audiencia o fechas.",
         jwks_key:"La firma usa una clave que no aparece en JWKS.",
         jwt_signature:"La firma del JWT no pudo verificarse.",
-        jwks_validation:"Fallo consultando o validando las claves públicas JWKS."
+        jwks_validation:"Fallo consultando o validando las claves públicas JWKS.",
+        jwks_fetch:"El Worker no puede consultar JWKS de Auth0.",
+        jwks_response:"La respuesta JWKS de Auth0 no es válida.",
+        jwks_crypto:"Falló la importación o validación criptográfica JWKS."
       };
       let reason = "";
       if (gate.status === 401) {

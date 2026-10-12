@@ -526,10 +526,18 @@ test("OAuth gate reports invalid access token separately from wrong Google owner
 
 test("OAuth browser maps only fixed auth stage codes to safe visible messages", () => {
   const source=readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
-  for(const stage of ["token_shape","jwt_header","jwt_claims","jwks_key","jwt_signature","jwks_validation"])
+  for(const stage of ["token_shape","jwt_header","jwt_claims","jwks_key","jwt_signature","jwks_validation","jwks_fetch","jwks_response","jwks_crypto"])
     assert.ok(source.includes(stage+":"), "missing server-defined " + stage);
   assert.ok(source.includes("Object.prototype.hasOwnProperty.call(messages, details.auth_stage)"));
   assert.ok(source.includes("await gate.json()"));
   assert.ok(!source.includes("JSON.stringify(details)"));
   assert.ok(!source.includes("data.access_token.slice("));
+});
+
+test("owner JWKS error categories do not reflect private error contents", () => {
+  const source=readFileSync(new URL("../../cloudflare/owner_auth.mjs", import.meta.url),"utf8");
+  for(const stage of ["jwks_fetch","jwks_response","jwks_crypto"])
+    assert.ok(source.includes('"'+stage+'"'), "unknown static stage: "+stage);
+  assert.ok(!source.includes('auth_stage: String(e)'));
+  assert.ok(!source.includes('auth_stage: e.message'));
 });

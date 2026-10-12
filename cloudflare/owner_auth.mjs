@@ -60,12 +60,15 @@ async function trustedKeys(issuer, force = false) {
   // cached as trust, and an unknown kid triggers one fresh JWKS request.
   const pending = (async () => {
     const response = await fetch(url, { method: "GET", redirect: "error",
-      signal: AbortSignal.timeout(5000), headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error("jwks_unavailable");
-    const text = await response.text();
-    if (text.length > 32_768) throw new Error("jwks_oversize");
-    const result = JSON.parse(text);
-    if (!Array.isArray(result?.keys) || result.keys.length > 16) throw new Error("bad_jwks");
+      signal: AbortSignal.timeout(5000), headers: { accept: "application/json" } })
+      .catch(() => { throw new Error("jwks_fetch_failed"); });
+    if (!response.ok) throw new Error("jwks_bad_response");
+    const text = await response.text()
+      .catch(() => { throw new Error("jwks_bad_response"); });
+    if (text.length > 32_768) throw new Error("jwks_bad_response");
+    let result;
+    try { result = JSON.parse(text); } catch { throw new Error("jwks_bad_response"); }
+    if (!Array.isArray(result?.keys) || result.keys.length > 16) throw new Error("jwks_bad_response");
     return result.keys.filter((key) =>
       key?.kty === "RSA" && key?.use === "sig" &&
       key?.alg === "RS256" && /^[A-Za-z0-9_-]{1,128}$/.test(key?.kid || "") &&
@@ -137,7 +140,12 @@ async function claimsFromRequest(request, env) {
       { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
     const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, sig, payload);
     return valid ? { claims, stage:null } : { claims:null, stage:"jwt_signature" };
-  } catch { return { claims:null, stage:"jwks_validation" }; }
+  } catch (e) {
+    // Only fixed, non-sensitive stages are returned. No JWT or JWKS contents.
+    const stage = e?.message === "jwks_fetch_failed" ? "jwks_fetch" :
+      e?.message === "jwks_bad_response" ? "jwks_response" : "jwks_crypto";
+    return { claims:null, stage };
+  }
 }
 
 export async function requireOwnerInference(request, env) {
