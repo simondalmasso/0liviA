@@ -1933,6 +1933,9 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();if(vo
   if(!workspace.selectedChatId)workspace.selectedChatId=p.chats[0].id;
   if(ownerCanRead)await saveState();
   renderAll();updatePublicHome();updateComposerAvailability();
+  // Open the owner-only Google gate immediately on an unauthenticated visit.
+  // Never start OAuth or leave this origin without an explicit click.
+  if(backendMode==='public_shell'&&!window.OliviaOwnerAuth.isOwner())showOwnerLogin();
   if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();
 })();
 </script>

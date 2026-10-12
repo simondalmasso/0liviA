@@ -82,7 +82,11 @@
     });
     if (!gate.ok) throw Error(gate.status===403
       ? "Esta cuenta Google no es propietaria de 0liviA."
-      : "La identidad del propietario no está habilitada.");
+      : gate.status===401
+        ? "Auth0 devolvió un token API que 0liviA no pudo validar. Revisá la configuración de la API (audience, RS256 y duración)."
+        : gate.status===503
+          ? "La configuración privada del propietario no está completa."
+          : "No se pudo comprobar la sesión Google. Volvé a intentarlo.");
     token = data.access_token; owner = true;
   }
   async function init(publicShell) {

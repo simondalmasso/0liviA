@@ -446,3 +446,22 @@ test("OAuth browser callback only releases in-memory token after owner-only back
   assert.equal(demoCalls.length,1);
   assert.deepEqual(seen,["/","/"]);
 });
+
+test("public shell opens Google owner login after auth initialization without automatic OAuth navigation",()=>{
+  const source=readFileSync(new URL("../../web/index.html",import.meta.url),"utf8");
+  const boot=source.slice(source.lastIndexOf("(async()=>{"));
+  assert.match(boot,/await window\.OliviaOwnerAuth\.init\(backendMode==='public_shell'\)/);
+  assert.match(boot,/if\(backendMode==='public_shell'&&!window\.OliviaOwnerAuth\.isOwner\(\)\)showOwnerLogin\(\)/);
+  assert.ok(boot.indexOf("await window.OliviaOwnerAuth.init") < boot.indexOf("showOwnerLogin();"));
+  assert.doesNotMatch(boot,/window\.OliviaOwnerAuth\.start\(/);
+});
+
+test("OAuth gate reports invalid access token separately from wrong Google owner",()=>{
+  const source=readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
+  assert.match(source,/gate\.status===403/);
+  assert.match(source,/gate\.status===401/);
+  assert.match(source,/gate\.status===503/);
+  assert.match(source,/token API que 0liviA no pudo validar/);
+  assert.match(source,/configuración privada del propietario no está completa/);
+  assert.ok(source.includes("if (!gate.ok) throw Error("));
+});
