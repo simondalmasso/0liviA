@@ -1,4 +1,3 @@
-"""Owner-only Cloudflare Worker auth tests with real RS256 crypto and fake AI."""
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import worker from "../../cloudflare/worker.mjs";
