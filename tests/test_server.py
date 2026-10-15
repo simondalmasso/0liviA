@@ -157,6 +157,15 @@ async def test_static_ui_is_served_without_local_capabilities(client):
 
 
 @pytest.mark.asyncio
+async def test_canonical_core_serves_auth0_browser_bridge_as_same_origin_static_asset(client):
+    response = await client.get("/auth0_bridge.js")
+    assert response.status == 200
+    assert "javascript" in response.headers.get("Content-Type", "")
+    assert response.headers.get("Cache-Control") == "no-store"
+    assert "window.OliviaOwnerAuth" in await response.text()
+
+
+@pytest.mark.asyncio
 async def test_auth_and_session_persistence(client):
     assert (await client.post("/api/sessions", json={})).status == 401
     response = await client.post("/api/sessions", json={"title": "Prueba"}, headers=auth())

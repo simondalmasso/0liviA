@@ -105,6 +105,7 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .auth-card input+input{margin-top:8px}
 .auth-remember{display:flex;align-items:center;gap:8px;margin:12px 2px 2px;color:#aaa;font-size:12px;cursor:pointer}
 .auth-remember input{width:16px;height:16px;accent-color:#fff}
+.auth-card [hidden]{display:none!important}
 .auth-submit{width:100%;margin-top:10px;padding:12px 14px;border-radius:12px;background:#fff;color:#000;font-weight:650}
 .auth-error{min-height:18px;margin-top:9px;color:#ff7b7b;font-size:12px}
 .auth-mark.brand-auth{background:#0f0f0f var(--brand-logo) center/30px 30px no-repeat;border:1px solid #303030}
@@ -427,6 +428,7 @@ button.side-card{text-align:left}
 </div>
 </section>
 
+<script src="/auth0_bridge.js"></script>
 <script>
 const DB_NAME='olivia-ui-v3';
 const STORE='state';
@@ -442,7 +444,6 @@ const PUBLIC_DEMO_QWEN_MODEL='Qwen3.8 27B';
 const PUBLIC_DEMO_GEMMA_MODEL='Gemma 4 26B A4B';
 const PUBLIC_DEMO_PROVIDER='workers-ai-demo';
 let publicDemoActive=false;
-let qwenChosenOnce=false;
 const CORE_PROBE_MIN_INTERVAL_MS=5*60*1000;
 let lastCoreProbeAt=0;
 // Runtime states: canonical | public_shell | bridge. Health probing selects the active state.
@@ -513,6 +514,8 @@ async function readState(){
   });
 }
 async function saveState(){
+  // Guests must not overwrite a previously authenticated owner's local data.
+  if(backendMode==='public_shell'&&!window.OliviaOwnerAuth.isOwner())return;
   const db=await openDb();
   await new Promise((resolve,reject)=>{
     const tx=db.transaction(STORE,'readwrite');
@@ -552,7 +555,7 @@ function selectedChat(){
 }
 
 function composerAvailable(){
-  if(backendMode==='public_shell')return publicDemoActive&&coreHealth?.demo_provider_ready===true;
+  if(backendMode==='public_shell')return publicDemoActive&&coreHealth?.demo_provider_ready===true&&window.OliviaOwnerAuth.isOwner();
   if(backendMode==='canonical')return ownerAuthReady&&coreHealth?.provider_ready===true;
   return true;
 }
@@ -567,12 +570,14 @@ function updatePublicHome(){
   demoModelSelect.options[1].textContent=qwenReady?PUBLIC_DEMO_QWEN_MODEL:PUBLIC_DEMO_QWEN_MODEL+' · inactivo';
   demoModelSelect.options[2].disabled=!gemmaReady;
   demoModelSelect.options[2].textContent=gemmaReady?PUBLIC_DEMO_GEMMA_MODEL:PUBLIC_DEMO_GEMMA_MODEL+' · inactivo';
-  if(qwenReady&&!qwenChosenOnce){demoModelSelect.value='qwen';qwenChosenOnce=true}
+  // P0 starts with GLM only; never auto-select a different model from inherited readiness.
   if(demoModelSelect.selectedOptions[0]?.disabled)demoModelSelect.value='glm';
   publicStatus.hidden=!isPublic;
   if(isPublic){
     publicStatus.textContent=demoReady
-      ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+(gemmaReady?' / Gemma':'')+' · costo no verificado'
+      ?(window.OliviaOwnerAuth.isOwner()
+        ?'Modo prueba IA · '+(qwenReady?'GLM / Qwen3.8':'GLM 4.7 Flash')+(gemmaReady?' / Gemma':'')+' · costo no verificado'
+        :'Entrá con tu enlace privado sin contraseña para utilizar tu modelo.')
       :'Chat IA no conectado. Esta versión muestra la interfaz, pero no tiene un modelo habilitado.';
   }
 }
@@ -580,9 +585,11 @@ function updateComposerAvailability(){
   const available=composerAvailable();
   textInput.disabled=!available&&backendMode!=='public_shell';
   sendBtn.disabled=!available;
-  sendBtn.title=available?'Enviar':'IA no conectada';
+  sendBtn.title=available?'Enviar':backendMode==='public_shell'&&publicDemoActive?'Accedé con tu enlace de email':'IA no conectada';
   textInput.setAttribute('aria-disabled',textInput.disabled?'true':'false');
-  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive&&coreHealth?.demo_provider_ready===true?'Preguntale a 0liviA':'';
+  if(backendMode==='public_shell')textInput.placeholder=publicDemoActive&&coreHealth?.demo_provider_ready===true
+    ?(window.OliviaOwnerAuth.isOwner()?'Preguntale a 0liviA':'Accedé con tu enlace de email')
+    :'IA no conectada';
   else if(backendMode==='canonical'&&!ownerAuthReady)textInput.placeholder='Iniciá sesión para usar 0liviA';
   else if(coreHealth&&coreHealth.provider_ready!==true)textInput.placeholder='Sin proveedor $0 disponible';
   else textInput.placeholder='Preguntale a 0liviA';
@@ -612,16 +619,7 @@ async function canonicalAuthCheck(){
 }
 function showOwnerLogin(){
   const registering=coreHealth?.registration_open===true;
-  if(backendMode==='public_shell'){
-    ownerAuthTitle.textContent='Entrar a 0liviA';
-    ownerAuthCopy.textContent='Tu cuenta vive en el Core privado. El acceso se habilita apenas el backend canónico esté conectado.';
-    ownerAuthSubmit.textContent='Entrar';
-    ownerPassword.autocomplete='current-password';
-    ownerLogin.classList.add('open');
-    ownerLogin.setAttribute('aria-hidden','false');
-    setTimeout(()=>ownerEmail.focus(),0);
-    return;
-  }
+  if(backendMode==='public_shell'){window.OliviaOwnerAuth.showLogin();return}
   ownerAuthTitle.textContent=registering?'Registrate':'Entrar a 0liviA';
   ownerAuthCopy.textContent=registering
     ?(coreHealth?.registration_protected&&!setupToken
@@ -1018,8 +1016,24 @@ function renderConfig(){
     card.append(strong,small);el.appendChild(card);
   }
 }
+function lockPublicOwnerWorkspace(){
+  window.OliviaOwnerAuth.invalidate();
+  workspace=blankWorkspace();renderAll();
+  updatePublicHome();updateComposerAvailability();
+}
 function renderSession(){
   const el=$('#sessionList');el.textContent='';
+  if(backendMode==='public_shell'){
+    const button=document.createElement('button');
+    button.type='button';button.className='side-card';
+    const authenticated=window.OliviaOwnerAuth.isOwner();
+    button.textContent=authenticated?'Cerrar sesión privada':'Acceder con email';
+    button.onclick=authenticated?lockPublicOwnerWorkspace:showOwnerLogin;
+    el.appendChild(button);
+    const info=document.createElement('div');info.className='side-empty';
+    info.textContent=authenticated?'Propietario verificado.':'Sólo el propietario puede utilizar el modelo.';
+    el.appendChild(info);return;
+  }
   if(backendMode!=='canonical'){
     el.innerHTML='<div class="side-empty">Sesión disponible con el Core durable.</div>';
     return;
@@ -1370,13 +1384,10 @@ async function ensureRemoteSession(chat,excludeMessageId=null){
 async function sendPublicDemo(chat,userMessage,speak){
   controller=new AbortController();setSendMode(true);
   try{
-    const r=await fetch(PUBLIC_DEMO_ENDPOINT,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      credentials:'same-origin',
-      body:JSON.stringify({messages:demoHistory(chat),model:demoModelSelect.value}),
-      signal:controller.signal
-    });
+    const r=await window.OliviaOwnerAuth.postDemo(
+      PUBLIC_DEMO_ENDPOINT,demoHistory(chat),demoModelSelect.value,controller.signal
+    );
+    if(r.status===401||r.status===403){lockPublicOwnerWorkspace();throw new Error('Acceso privado denegado. Volvé a entrar.')}
     if(r.status===429)throw new Error('límite demo alcanzado');
     if(!r.ok)throw new Error('ruta demo no disponible');
     const body=await r.json();
@@ -1910,11 +1921,22 @@ $('#voiceMain').onclick=async()=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();if(voiceLive.classList.contains('open'))closeVoice()}});
 
 (async()=>{
-  try{workspace=await readState()}catch(e){workspace=null}
+  // Never expose a persisted owner's workspace before backend identity validation.
+  workspace=blankWorkspace();renderAll();
+  await probeCore({force:true});
+  await window.OliviaOwnerAuth.init(backendMode==='public_shell');
+  const ownerCanRead=(backendMode==='public_shell'&&window.OliviaOwnerAuth.isOwner())
+    ||(backendMode==='canonical'&&ownerAuthReady);
+  if(ownerCanRead){try{workspace=await readState()}catch(e){workspace=null}}
   normalizeWorkspace();
   const p=selectedProject();if(!p.chats.length)p.chats.push({id:uid('c'),title:'Nuevo chat',messages:[]});
   if(!workspace.selectedChatId)workspace.selectedChatId=p.chats[0].id;
-  await saveState();renderAll();await probeCore({force:true});if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();
+  if(ownerCanRead)await saveState();
+  renderAll();updatePublicHome();updateComposerAvailability();
+  // Open the owner-only passwordless-email gate immediately on an unauthenticated visit.
+  // Never start OAuth or leave this origin without an explicit click.
+  if(backendMode==='public_shell'&&!window.OliviaOwnerAuth.isOwner())showOwnerLogin();
+  if(backendMode==='canonical'&&ownerAuthReady)await syncCanonicalWorkspace();
 })();
 </script>
 </body>

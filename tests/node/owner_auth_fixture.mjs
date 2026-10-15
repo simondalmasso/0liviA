@@ -3,8 +3,7 @@
 import { webcrypto } from "node:crypto";
 export const ISSUER = "https://tenant.us.auth0.com/";
 export const AUDIENCE = "https://0livia.example/api";
-export const GOOGLE_SUB = "123456789012345678901";
-export const OWNER_SUB = "google-oauth2|" + GOOGLE_SUB;
+export const OWNER_SUB = "email|owner@example.com";
 export const OWNER_EMAIL = "owner@example.com";
 export const SESSION_VERSION = "0123456789abcdefghijklmnopqrstuv";
 const enc = new TextEncoder();
@@ -13,8 +12,7 @@ export const authEnvironment = Object.freeze({
   OLIVIA_AUTH0_ISSUER: ISSUER,
   OLIVIA_AUTH0_AUDIENCE: AUDIENCE,
   OLIVIA_OWNER_AUTH0_SUB: OWNER_SUB,
-  OLIVIA_OWNER_GOOGLE_SUB: GOOGLE_SUB,
-  OLIVIA_OWNER_GOOGLE_EMAIL: OWNER_EMAIL,
+  OLIVIA_OWNER_EMAIL: OWNER_EMAIL,
   OLIVIA_OWNER_SESSION_VERSION: SESSION_VERSION,
   OLIVIA_OWNER_REVOKED_BEFORE: "0",
 });
@@ -27,7 +25,10 @@ export async function initializeAuthTest() {
   Object.assign(jwk, { kid: "test-key-1", alg: "RS256", use: "sig" });
   const fetchOriginal = globalThis.fetch;
   globalThis.fetch = (url, options) => {
-    if (url === ISSUER + ".well-known/jwks.json" && options?.redirect === "error") {
+    if (url === ISSUER + ".well-known/jwks.json") {
+      // Match workerd: it only supports "manual" and "follow" for redirect.
+      if (options?.redirect !== "manual")
+        return Promise.reject(new TypeError('Invalid redirect value; workerd accepts only manual/follow'));
       return Promise.resolve(new Response(JSON.stringify({ keys: [jwk] }),
         { headers: { "content-type": "application/json" } }));
     }
@@ -41,8 +42,7 @@ export async function initializeAuthTest() {
     const p = b64(JSON.stringify({
       iss: ISSUER, aud: AUDIENCE, sub: OWNER_SUB, iat: now, nbf: now-1,
       exp: now + 600, jti: "test-jti-01234567",
-      "https://0livia.app/claims/provider": "google-oauth2",
-      "https://0livia.app/claims/google_sub": GOOGLE_SUB,
+      "https://0livia.app/claims/provider": "email",
       "https://0livia.app/claims/email": OWNER_EMAIL,
       "https://0livia.app/claims/email_verified": true,
       "https://0livia.app/claims/session_version": SESSION_VERSION,

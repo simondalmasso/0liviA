@@ -8,7 +8,12 @@ on:
         required: false
         type: string
       confirm_account_no_overage:
-        description: "I explicitly authorize one Cloudflare deployment and live inference smoke; I verified no paid overage is possible"
+        description: "I explicitly authorize one Cloudflare deployment only; I verified Workers Free/no overage. No live model test is authorized here."
+        required: true
+        default: false
+        type: boolean
+      confirm_auth0_free_quota:
+        description: "I verified Auth0 Free and the account-wide active Actions + Forms quota is within its free entitlement; no paid upgrade or trial-only feature."
         required: true
         default: false
         type: boolean
@@ -28,8 +33,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       OLIVIA_DEMO_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_ZERO_COST_CONFIRMED }}
-      OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED }}
+      OLIVIA_AUTH0_CLIENT_ID: ${{ vars.OLIVIA_AUTH0_CLIENT_ID }}
       CONFIRM_ACCOUNT_NO_OVERAGE: ${{ inputs.confirm_account_no_overage && 'true' || 'false' }}
+      CONFIRM_AUTH0_FREE_QUOTA: ${{ inputs.confirm_auth0_free_quota && 'true' || 'false' }}
 
     steps:
       - name: Require explicit deployment approval before any external action
@@ -38,6 +44,9 @@ jobs:
           set -euo pipefail
           test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
           test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"
+          # Separate acknowledgement: Auth0 trial features and shared Actions/Forms
+          # quotas are not implied by Cloudflare's Workers Free billing proof.
+          test "${CONFIRM_AUTH0_FREE_QUOTA:-}" = "true"
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -60,7 +69,7 @@ jobs:
           fi
           [[ "${release_sha}" =~ ^[0-9a-fA-F]{40}$ ]]
           git cat-file -e "${release_sha}^{commit}"
-          git merge-base --is-ancestor "${release_sha}" origin/main
+          test "${release_sha}" = "$(git rev-parse origin/main)"  # only current canonical main HEAD, never a stale ancestor
           git checkout --detach "${release_sha}"
           test "$(git rev-parse HEAD)" = "${release_sha}"
           echo "release_sha=${release_sha}" >> "${GITHUB_OUTPUT}"
@@ -73,6 +82,33 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
           test "${OLIVIA_DEMO_ZERO_COST_CONFIRMED:-}" = "1"
+          # This release cannot be deployed as an anonymous AI endpoint.
+          [[ "${OLIVIA_AUTH0_CLIENT_ID:-}" =~ ^[A-Za-z0-9_-]{10,128}$ ]]
+
+      - name: Read-only proof of Workers Free entitlement for deployment account
+        shell: bash
+        env:
+          # Scoped only to this preflight step; Wrangler never receives this token.
+          CLOUDFLARE_BILLING_READ_TOKEN: ${{ secrets.CLOUDFLARE_BILLING_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Fail closed if Billing Read or the Cloudflare account match is unverified.
+          # Never call Workers AI, create resources, upgrade, or enable billing.
+          python3 scripts/verify_cloudflare_free.py
+
+      - name: Verify Worker owner identity secret names before deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GET only; Wrangler lists names/types, never secret values.
+          # Errors are redacted and temp files removed even on failure.
+          secret_index="$(mktemp)"
+          trap 'rm -f "${secret_index}"' EXIT
+          if ! npm exec --yes wrangler@4.127.1 -- secret list --name 0livia --format json > "${secret_index}" 2>/dev/null; then
+            echo "BLOCKED: Worker owner secret listing unavailable" >&2
+            exit 2
+          fi
+          python3 scripts/verify_owner_secret_names.py < "${secret_index}"
 
       - name: Verify public-shell source boundaries
         shell: bash
@@ -93,6 +129,15 @@ jobs:
           ! grep -Fq 'id="modeChat"' web/index.html
           ! grep -Fq 'id="modeWork"' web/index.html
 
+      - name: Run offline JWT and Worker smoke before deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check cloudflare/worker.mjs
+          node --check web/auth0_bridge.js
+          node --test tests/node/test_cloudflare_worker.mjs
+          # No external model invocation or account-mutating call occurs here.
+
       - name: Build exact Wrangler deployment config
         shell: bash
         run: |
@@ -109,7 +154,11 @@ jobs:
               "binding": "ASSETS"
             },
             "vars": {
-              "OLIVIA_DEMO_ZERO_COST_CONFIRMED": "1"
+              "OLIVIA_STATIC_ONLY": "0",
+              "OLIVIA_DEMO_ZERO_COST_CONFIRMED": "1",
+              "OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "0",
+              "OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED": "0",
+              "OLIVIA_DEMO_GEMMA_LIVE_VERIFIED": "0"
             },
             "ai": {
               "binding": "AI"
@@ -130,18 +179,18 @@ jobs:
             }
           }
           JSON
-          # Missing account-level Qwen proof always produces a disabled route,
-          # even when Wrangler uses --keep-vars on an existing Worker.
+          # Force Qwen/Gemma OFF regardless of historical GitHub or Worker vars.
           python3 - <<'PY'
           import json
           import os
           from pathlib import Path
           path = Path("wrangler.deploy.runtime.jsonc")
           config = json.loads(path.read_text())
-          config["vars"]["OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED"] = (
-              "1" if os.getenv("OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED") == "1" else "0"
-          )
+          assert config["vars"]["OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED"] == "0"
+          assert config["vars"]["OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED"] == "0"
+          assert config["vars"]["OLIVIA_DEMO_GEMMA_LIVE_VERIFIED"] == "0"
           config["vars"]["OLIVIA_RELEASE_SHA"] = os.environ["RELEASE_SHA"]
+          config["vars"]["OLIVIA_AUTH0_CLIENT_ID"] = os.environ["OLIVIA_AUTH0_CLIENT_ID"]
           path.write_text(json.dumps(config, indent=2) + "\n")
           PY
 
@@ -195,7 +244,8 @@ jobs:
               "demo_provider_ready": body.get("demo_provider_ready") is True,
               "demo_provider": body.get("demo_provider") == "workers-ai-demo",
               "demo_model": body.get("demo_model") == "@cf/zai-org/glm-4.7-flash",
-              "demo_qwen_ready": body.get("demo_qwen_ready") is (os.getenv("OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED") == "1"),
+              "demo_qwen_ready": body.get("demo_qwen_ready") is False,
+              "demo_gemma_ready": body.get("demo_gemma_ready") is False,
               "web_read": body.get("web_read") is False,
               "hard_zero_cost": body.get("hard_zero_cost") is False,
               "demo_cost_guaranteed": body.get("demo_cost_guaranteed") is False,
@@ -205,28 +255,49 @@ jobs:
               raise SystemExit("public-shell smoke failed: " + ", ".join(failed))
           PY
 
-          chat_status="$(curl -sS --max-time 20 -o /tmp/olivia-chat-response -w '%{http_code}' -X POST "${base}/api/chat?cb=${cb}")"
-          test "${chat_status}" = "503"
+          # Exact Auth0 passwordless-email browser contract must exist before reporting success.
+          # Public data only: never send a bearer token or initiate model inference.
+          bridge_script="$(curl -fsS --max-time 20 "${base}/auth0_bridge.js?cb=${cb}")"
+          grep -Fq 'window.OliviaOwnerAuth' <<<"${bridge_script}"
 
-          demo_status="$(curl -sS --max-time 45 -o /tmp/olivia-demo-response -w '%{http_code}' \
+          auth_config="$(curl -fsS --max-time 20 "${base}/api/auth/public-config?cb=${cb}")"
+          AUTH_CONFIG_JSON="${auth_config}" python3 - <<'PY'
+          import json
+          import os
+          from urllib.parse import urlsplit
+
+          data = json.loads(os.environ["AUTH_CONFIG_JSON"])
+          issuer = data.get("issuer")
+          client_id = data.get("client_id")
+          audience = data.get("audience")
+          if data.get("enabled") is not True:
+              raise SystemExit("Auth0 SPA public config is not enabled")
+          if not all(isinstance(v, str) and v for v in (issuer, client_id, audience)):
+              raise SystemExit("Auth0 SPA public metadata is incomplete")
+          parsed = urlsplit(issuer)
+          if parsed.scheme != "https" or not (parsed.hostname or "").endswith(".auth0.com"):
+              raise SystemExit("Auth0 SPA issuer is invalid")
+          PY
+
+          owner_status="$(curl -sS --max-time 20 -o /tmp/olivia-owner-status-response -w '%{http_code}' "${base}/api/auth/owner-status?cb=${cb}")"
+          test "${owner_status}" = "401"
+
+          # Read-only permission contract: neither endpoint may trigger a
+          # provider request or CostGuard debit for an anonymous caller.
+          chat_status="$(curl -sS --max-time 20 -o /tmp/olivia-chat-response -w '%{http_code}' -X POST "${base}/api/chat?cb=${cb}")"
+          test "${chat_status}" = "401"
+
+          demo_status="$(curl -sS --max-time 20 -o /tmp/olivia-demo-response -w '%{http_code}' \
             -X POST "${base}/api/demo-chat?cb=${cb}" \
             -H "Origin: ${base}" \
             -H 'Content-Type: application/json' \
-            --data '{"messages":[{"role":"user","content":"Respondé con una frase breve."}]}')"
-          test "${demo_status}" = "200"
-          DEMO_JSON="$(cat /tmp/olivia-demo-response)" python3 - <<'PY'
+            --data '{"messages":[{"role":"user","content":"UNAUTHENTICATED_NO_INFERENCE"}]}')"
+          test "${demo_status}" = "401"
+          python3 - <<'PY'
           import json
-          import os
-
-          body = json.loads(os.environ["DEMO_JSON"])
-          if not str(body.get("answer", "")).strip():
-              raise SystemExit("demo answer empty")
-          if body.get("provider") != "workers-ai-demo":
-              raise SystemExit("unexpected demo provider")
-          if body.get("model") != "@cf/zai-org/glm-4.7-flash":
-              raise SystemExit("unexpected demo model")
-          if body.get("canonical") is not False:
-              raise SystemExit("demo incorrectly marked canonical")
+          for path in ("/tmp/olivia-chat-response", "/tmp/olivia-demo-response"):
+              with open(path) as handle:
+                  assert json.load(handle).get("error") == "invalid_access_token"
           PY
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -241,7 +312,7 @@ jobs:
             playwright-core@1.63.0
           npx e2e-web install chromium --with-deps
 
-      - name: Live production e2e
+      - name: Live production e2e (anonymous denied, no inference)
         env:
           E2E_TELEMETRY_DISABLED: "1"
           OLIVIA_E2E_URL: ${{ steps.deploy.outputs.public_url }}
@@ -267,8 +338,9 @@ jobs:
             echo "### 0liviA public shell"
             echo "- source: \`main@${RELEASE_SHA}\`"
             echo "- root: HTTP 200, Spanish single-surface UI"
-            echo "- canonical /api/chat: HTTP 503"
-            echo "- demo: Workers AI GLM 4.7 Flash, server-side guard, live E2E PASS"
+            echo "- canonical /api/chat: anonymous HTTP 401"
+            echo "- demo: anonymous HTTP 401, no AI canary executed"
+            echo "- authenticated owner model response: NOT TESTED; separate approved browser canary required"
             echo "- URL: ${PUBLIC_SHELL_URL}"
           } >> "${GITHUB_STEP_SUMMARY}"
 

@@ -1,238 +1,27 @@
-name: Qwen3.8 One-Time Free Activation
+name: Qwen Activation (FROZEN pending P0 owner auth and cost certification)
 
-# Runs only when this file is changed by a deliberately named main commit.
-# Owner attested Workers Free; the API token lacks Billing Read. This is a
-# best-effort cost gate, NOT independent live billing verification.
+# No push trigger, no inference, no deploy. The previous one-shot
+# implementation remains recoverable through Git history.
+# Frozen per owner P0 directive: do not expand providers before the first
+# authenticated GLM turn and verified Cloudflare no-overage entitlement.
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/activate-qwen-once.yml
+  workflow_dispatch:
+    inputs:
+      acknowledge_frozen:
+        description: "Read-only diagnostic; does not activate or deploy Qwen"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: olivia-public-shell-deploy
-  cancel-in-progress: false
-
 jobs:
-  activate-qwen:
+  frozen:
+    if: ${{ inputs.acknowledge_frozen == true }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      OLIVIA_DEMO_ZERO_COST_CONFIRMED: ${{ vars.OLIVIA_DEMO_ZERO_COST_CONFIRMED }}
-      RELEASE_SHA: ${{ github.sha }}
     steps:
-      - name: Require exact owner-authorized one-time activation event
-        shell: bash
+      - name: Confirm Qwen remains disabled
         run: |
-          set -euo pipefail
-          test "${GITHUB_EVENT_NAME}" = "push"
-          test "${GITHUB_REF}" = "refs/heads/main"
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
-          message = (event.get("head_commit") or {}).get("message", "")
-          if not message.startswith("feat(qwen): edge-safe Free activation (#"):
-              raise SystemExit("BLOCKED: this is not the approved one-shot release")
-          PY
-          test "${OLIVIA_DEMO_ZERO_COST_CONFIRMED:-}" = "1"
-          test -n "${CLOUDFLARE_API_TOKEN:-}"
-          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-
-      - name: Checkout exact main commit, no saved GitHub token
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-
-      - name: Record owner-attested Free plan admission
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Owner has already asserted Workers Free, and the existing repo
-          # variable affirms zero-cost admission. Subscription API access
-          # requires Billing Read, absent on this narrow deploy token.
-          # This is owner attestation, not independently verified billing.
-          test "${OLIVIA_DEMO_ZERO_COST_CONFIRMED}" = "1"
-          echo "ACCOUNT_FREE_PROOF=OWNER_ATTESTED_NOT_API_VERIFIED"
-          echo "No paid account upgrade or billing configuration is performed."
-          echo "Cloudflare Workers Free hard-stops at 10000 neurons/day."
-
-      - name: Regress Qwen route and lightweight public shell before external write
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --check cloudflare/worker.mjs
-          node --test tests/node/test_cloudflare_worker.mjs
-          python3 - <<'PY'
-          from pathlib import Path
-          web = Path("web/index.html").read_bytes()
-          assert len(web) < 96000
-          assert b'id="demoModelSelect"' in web
-          worker = Path("cloudflare/worker.mjs").read_text()
-          assert 'const DEMO_QWEN_MODEL = "@cf/qwen/qwen3.8-27b"' in worker
-          assert 'DEMO_DAILY_REQUEST_LIMIT = 25' in worker
-          assert 'qwenEnabled(env)' in worker
-          PY
-
-      - name: Generate exact Qwen-enabled Wrangler config
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          release = os.environ["RELEASE_SHA"]
-          assert len(release) == 40 and all(c in "0123456789abcdef" for c in release)
-          config = {
-              "name": "0livia",
-              "main": "./cloudflare/worker.mjs",
-              "compatibility_date": "2026-10-04",
-              "compatibility_flags": ["global_fetch_strictly_public"],
-              "workers_dev": True,
-              "preview_urls": False,
-              "assets": {"directory": "./web", "binding": "ASSETS"},
-              "ai": {"binding": "AI"},
-              "durable_objects": {"bindings": [{"name": "COST_GUARD", "class_name": "CostGuard"}]},
-              "exports": {"CostGuard": {"type": "durable-object", "storage": "sqlite"}},
-              "vars": {
-                  "OLIVIA_DEMO_ZERO_COST_CONFIRMED": "1",
-                  "OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "1",
-                  "OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED": "0",
-                  "OLIVIA_DEMO_GEMMA_LIVE_VERIFIED": "0",
-                  "OLIVIA_RELEASE_SHA": release,
-              },
-          }
-          Path("wrangler.qwen.once.jsonc").write_text(json.dumps(config, indent=2) + "\n")
-          PY
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24.14.0"
-
-      - name: Publish Qwen-enabled public Worker
-        id: deploy
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.qwen.once.jsonc --keep-vars --message "Qwen Free activation @${RELEASE_SHA}" 2>&1 | tee /tmp/qwen-deploy.log
-          public_url="$(grep -Eo 'https://[^[:space:]]+\.workers\.dev' /tmp/qwen-deploy.log | tail -n1 || true)"
-          test -n "${public_url}"
-          echo "PUBLIC_SHELL_URL=${public_url}" >> "${GITHUB_ENV}"
-
-      - name: Wait for exact immutable release at the public edge
-        shell: bash
-        run: |
-          set -euo pipefail
-          # A successful Wrangler upload does not guarantee this edge serves
-          # the new version immediately. Poll HEALTH only; no model tokens.
-          for attempt in $(seq 1 24); do
-            health="$(curl -fsS --max-time 20 "${PUBLIC_SHELL_URL}/healthz?cb=${RELEASE_SHA}-${attempt}" || true)"
-            if HEALTH_JSON="${health}" python3 - <<'PY'
-          import json
-          import os
-          try:
-              h = json.loads(os.environ["HEALTH_JSON"])
-              ok = (
-                  h.get("release_sha") == os.environ["RELEASE_SHA"]
-                  and h.get("api_mode") == "public_shell"
-                  and h.get("demo_qwen_ready") is True
-                  and h.get("demo_gemma_ready") is False
-                  and h.get("demo_daily_request_limit") == 25
-                  and any(
-                      m.get("id") == "qwen" and m.get("available") is True
-                      and m.get("model") == "@cf/qwen/qwen3.8-27b"
-                      for m in h.get("demo_models", [])
-                  )
-              )
-          except (ValueError, AttributeError, TypeError):
-              ok = False
-          raise SystemExit(0 if ok else 1)
-          PY
-            then
-              echo "EXACT_SHA_EDGE_READY=TRUE"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "BLOCKED: exact release did not propagate after polling" >&2
-          exit 1
-
-      - name: Live Qwen3.8 model canary (one inference request)
-        shell: bash
-        run: |
-          set -euo pipefail
-          cb="${RELEASE_SHA}"
-          # A POST can reach a stale edge where Qwen is still disabled even
-          # after /healthz resolved at a different POP. Retry ONLY pre-inference
-          # qwen_unavailable: this path returns before COST_GUARD and AI.run.
-          # Any other status immediately fails; at most one AI.run occurs.
-          status=""
-          canary_error=""
-          for attempt in $(seq 1 18); do
-            status="$(curl -sS --max-time 60 -o /tmp/qwen-canary.json -w '%{http_code}' -X POST "${PUBLIC_SHELL_URL}/api/demo-chat?cb=${cb}-post-${attempt}" \
-              -H "Origin: ${PUBLIC_SHELL_URL}" -H "Content-Type: application/json" \
-              --data '{"model":"qwen","messages":[{"role":"user","content":"Respondé brevemente: OK."}]}')"
-            canary_error="$(CANARY_BODY="$(cat /tmp/qwen-canary.json)" python3 - <<'PY'
-          import json, os, re
-          try:
-              error = json.loads(os.environ["CANARY_BODY"]).get("error", "")
-          except (ValueError, AttributeError, TypeError):
-              error = ""
-          print(error if re.fullmatch(r"[a-z_]{1,64}", str(error)) else "unclassified")
-          PY
-          )"
-            if [[ "${status}" == "503" && "${canary_error}" == "qwen_unavailable" ]]; then
-              echo "WAIT_QWEN_ROUTE_PROPAGATION=${attempt}"
-              sleep 5
-              continue
-            fi
-            break
-          done
-          if [[ "${status}" != "200" ]]; then
-            echo "QWEN_CANARY_HTTP_STATUS=${status}"
-            echo "QWEN_CANARY_ERROR=${canary_error}"
-            exit 1
-          fi
-          DEMO_JSON="$(cat /tmp/qwen-canary.json)" python3 - <<'PY'
-          import json, os
-          j = json.loads(os.environ["DEMO_JSON"])
-          assert j.get("provider") == "workers-ai-demo"
-          assert j.get("model") == "@cf/qwen/qwen3.8-27b"
-          assert str(j.get("answer") or "").strip()
-          assert j.get("canonical") is False
-          print("LIVE_QWEN_CANARY=PASS; actual provider/model response, not fake readiness")
-          PY
-
-      - name: Disable Qwen automatically if live release cannot pass
-        if: failure() && steps.deploy.outcome == 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path("wrangler.qwen.once.jsonc")
-          obj = json.loads(p.read_text())
-          obj["vars"]["OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED"] = "0"
-          p.write_text(json.dumps(obj) + "\n")
-          PY
-          npm exec --yes wrangler@4.127.1 -- deploy --config wrangler.qwen.once.jsonc --keep-vars --message "Qwen canary failed: disabled safe rollback"
-          echo "QWEN_ROLLED_BACK=YES"
-
-      - name: Clean ephemeral config and canary output
-        if: always()
-        run: rm -f wrangler.qwen.once.jsonc /tmp/qwen-canary.json
-
-      - name: Report activation
-        if: success()
-        run: |
-          echo "QWEN_3_8_LIVE=TRUE; RELEASE_SHA=${RELEASE_SHA}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "ACCOUNT_PLAN=OWNER_ATTESTED_WORKERS_FREE_NOT_API_VERIFIED" >> "${GITHUB_STEP_SUMMARY}"
-          echo "URL=${PUBLIC_SHELL_URL}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "BLOCKED: Qwen activation is frozen until owner Auth0, Free/no-overage, and GLM acceptance gates are verified." >> "$GITHUB_STEP_SUMMARY"
+          echo "No Cloudflare API, no Wrangler deployment, no Workers AI, no canary."

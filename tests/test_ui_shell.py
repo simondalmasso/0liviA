@@ -15,9 +15,22 @@ def test_monochrome_shell_stays_dependency_free_and_low_weight():
     assert "linear-gradient(" not in html
     assert "radial-gradient(" not in html
     assert "backdrop-filter" not in html
-    assert "<script src=" not in html
+    # One locally hosted, dependency-free OAuth bridge is explicitly permitted.
+    assert html.count('<script src="/auth0_bridge.js"></script>') == 1
+    assert html.count("<script src=") == 1
+    assert '<script src="http' not in html
     assert 'rel="stylesheet"' not in html
     assert "setInterval(" not in html
+
+
+def test_public_owner_workspace_is_hidden_until_auth_and_on_logout():
+    html = _shell()
+    assert "workspace=blankWorkspace();renderAll();" in html
+    assert "if(ownerCanRead){try{workspace=await readState()}" in html
+    assert "if(ownerCanRead)await saveState()" in html
+    assert "if(backendMode==='public_shell'&&!window.OliviaOwnerAuth.isOwner())return;" in html
+    assert "function lockPublicOwnerWorkspace()" in html
+    assert "Acceder con email" in html
 
 
 def test_unified_navigation_and_composer_contract():
@@ -65,7 +78,9 @@ def test_demo_errors_are_not_presented_as_model_answers():
     assert "status:'error',\n        provider:null," in html
 
     e2e = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")
-    assert "provider failure is an alert, never a successful AI answer" in e2e
+    assert "anonymous cannot spend owner inference even if backend reports demo ready" in e2e
+    assert "unauthorizedInferenceCalls" in e2e
+    assert "toBeDisabled()" in e2e
     assert "assistant:not(.error)" in e2e
     assert "toHaveCount(0)" in e2e
 
@@ -81,7 +96,11 @@ def test_closed_drawer_hidden_at_all_widths_and_model_select_is_gate_driven():
     assert 'coreHealth?.demo_gemma_ready===true' in html
     assert "PUBLIC_DEMO_GEMMA_MODEL='Gemma 4 26B A4B'" in html
     assert "coreHealth?.demo_qwen_ready===true" in html
-    assert "model:demoModelSelect.value" in html
+    assert "qwenChosenOnce" not in html
+    assert "never auto-select a different model" in html
+    assert "PUBLIC_DEMO_ENDPOINT,demoHistory(chat),demoModelSelect.value" in html
+    bridge = Path("web/auth0_bridge.js").read_text(encoding="utf-8")
+    assert "JSON.stringify({messages,model})" in bridge
     assert "function providerPresentation(name,model)" in html
     assert "{command:'/intel',label:" in html
 
@@ -165,7 +184,12 @@ def test_ui_never_replays_queued_model_requests_on_load_login_or_network_recover
     assert "syncQueued(" not in html
     assert "window.addEventListener('online',()=>syncQueued" not in html
     assert "await syncCanonicalWorkspace();syncQueued();" not in html
-    assert "renderAll();await probeCore({force:true})" in html
+    # Render an empty workspace before network/auth checks; never replay a model turn.
+    boot = html[html.rindex("(async()=>{"):]
+    assert "workspace=blankWorkspace();renderAll();" in boot
+    assert "await probeCore({force:true});" in boot
+    assert boot.index("workspace=blankWorkspace();renderAll();") < boot.index("await probeCore({force:true});")
+    assert "syncQueued(" not in boot
     assert "async function sendChat(raw" in html
     assert "chat.messages.push(msg)" in html
     assert "window.addEventListener('online',()=>syncQueued({force:true}))" not in html
