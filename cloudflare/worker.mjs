@@ -35,7 +35,7 @@ const PUBLIC_CSP = [
   "img-src 'self' data: blob:",
   "media-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self' wss:",
+  "connect-src 'self' https://*.auth0.com wss:",
   "upgrade-insecure-requests",
 ].join("; ");
 
@@ -54,7 +54,8 @@ function hardened(response) {
 
 function demoEnabled(env) {
   return (
-    env?.OLIVIA_STATIC_ONLY !== "1" &&
+    // Explicit enable only: missing/unknown flags can never start billing.
+    env?.OLIVIA_STATIC_ONLY === "0" &&
     env?.OLIVIA_DEMO_ZERO_COST_CONFIRMED === "1" &&
     ownerAuthConfigured(env) &&
     env?.AI &&
@@ -85,7 +86,7 @@ function health(env) {
     release_sha: /^[0-9a-f]{40}$/.test(String(env?.OLIVIA_RELEASE_SHA || "")) ? env.OLIVIA_RELEASE_SHA : null,
     api_mode: "public_shell",
     public_shell: PUBLIC_SHELL_ONLY,
-    static_only: env?.OLIVIA_STATIC_ONLY === "1",
+    static_only: env?.OLIVIA_STATIC_ONLY !== "0",
     bridge_enabled: TRANSITIONAL_BRIDGE_ENABLED,
     provider_ready: false,
     inference_enabled: false,
@@ -111,6 +112,27 @@ function health(env) {
   });
 }
 
+
+function publicAuthConfig(env) {
+  // OAuth SPA client metadata is public; owner identifiers and secrets are never returned.
+  const clientId = env?.OLIVIA_AUTH0_CLIENT_ID;
+  const ok = ownerAuthConfigured(env) && typeof clientId === "string" &&
+    /^[A-Za-z0-9_-]{10,128}$/.test(clientId);
+  return json(ok ? {
+    enabled: true, issuer: env.OLIVIA_AUTH0_ISSUER,
+    audience: env.OLIVIA_AUTH0_AUDIENCE, client_id: clientId
+  } : { enabled: false });
+}
+async function ownerStatus(request, env) {
+  const identity = await requireOwnerInference(request, env);
+  return identity.ok
+    ? json({ owner: true, demo_ready: Boolean(demoEnabled(env)) })
+    : json({
+      error: identity.error,
+      // Only fixed, non-sensitive failure categories; never reflect claims or JWT.
+      ...(identity.status === 401 && identity.auth_stage ? { auth_stage:identity.auth_stage } : {}),
+    }, { status: identity.status });
+}
 function disabledApi() {
   return json(
     {
@@ -360,6 +382,11 @@ export default {
     let result;
     if (url.pathname === "/healthz") {
       result = health(env);
+    } else if (url.pathname === "/api/auth/public-config") {
+      result = request.method === "GET" ? publicAuthConfig(env)
+        : json({ error: "method_not_allowed" }, { status: 405, headers: { allow: "GET" } });
+    } else if (url.pathname === "/api/auth/owner-status") {
+      result = await ownerStatus(request, env);
     } else if (url.pathname === "/api/demo-chat") {
       result = await demoChat(request, env);
     } else if (

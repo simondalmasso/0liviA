@@ -1,4 +1,3 @@
-"""Owner-only Cloudflare Worker auth tests with real RS256 crypto and fake AI."""
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import worker from "../../cloudflare/worker.mjs";
@@ -55,15 +54,14 @@ test("anonymous, spoofed headers, legacy bearer, forged Origin: no quota/model c
   assert.equal(f.calls.quota, 0);
 });
 
-test("signed non-owner Google user and incorrect stable owner identity return 403", async () => {
+test("signed non-owner email identity and incorrect stable owner identity return 403", async () => {
   const f = backend();
   const ns = "https://0livia.app/claims/";
   const signedGuests = [
-    { sub: "google-oauth2|999999999999999999999" },
-    { [ns + "google_sub"]: "999999999999999999999" },
+    { sub: "email|guest@example.com" },
     { [ns + "email"]: "guest@example.com" },
     { [ns + "email_verified"]: false },
-    { [ns + "provider"]: "auth0" },
+    { [ns + "provider"]: "google-oauth2" },
     { [ns + "session_version"]: "replayed-version" },
   ];
   for (const changes of signedGuests) {
@@ -111,7 +109,7 @@ test("revoked issuance epoch denies previously signed JWT and makes no side effe
 
 test("anonymous is 401, signed guest 403, owner gets 503 on private inactive APIs", async () => {
   const f = backend();
-  const guest = await signer.sign({ sub: "google-oauth2|999999999999999999999" });
+  const guest = await signer.sign({ sub: "email|guest@example.com" });
   for (const path of [
     "/api/chat", "/api/read-url", "/api/jobs/code",
     "/api/sessions", "/api/auth/session", "/api/unknown",
@@ -129,7 +127,7 @@ test("anonymous is 401, signed guest 403, owner gets 503 on private inactive API
 });
 
 test("missing owner configuration prevents any inference, even with signed owner token", async () => {
-  const f = backend({ OLIVIA_OWNER_GOOGLE_SUB: "" });
+  const f = backend({ OLIVIA_OWNER_AUTH0_SUB: "" });
   const response = await worker.fetch(prompt(signer.token), f.env);
   assert.equal(response.status, 503);
   assert.equal(f.calls.ai, 0);
@@ -142,7 +140,7 @@ test("missing owner configuration prevents any inference, even with signed owner
 
 test("50 concurrent authenticated guests cannot consume private quota", async () => {
   const f = backend();
-  const guest = await signer.sign({ sub: "google-oauth2|999999999999999999999" });
+  const guest = await signer.sign({ sub: "email|guest@example.com" });
   const responses = await Promise.all(Array.from({ length: 50 },
     () => worker.fetch(prompt(guest), f.env)));
   assert.ok(responses.every((response) => response.status === 403));

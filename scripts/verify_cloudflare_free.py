@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only Cloudflare subscription proof for an authorized one-time Qwen release.
+"""Read-only Cloudflare subscription proof for an owner-only GLM release.
 
 Never deploy or call Workers AI here. Fail closed if account-plan evidence
 cannot be fetched. Credentials are read from environment; no response bodies,
@@ -18,12 +18,12 @@ def free_plan_confirmed(payload: object) -> bool:
     if not isinstance(payload, dict) or payload.get("success") is not True:
         return False
     rows = payload.get("result")
-    info = payload.get("result_info", {})
+    info = payload.get("result_info")
     if not isinstance(rows, list) or not isinstance(info, dict):
         return False
     count = info.get("total_count")
-    if count is not None and (not isinstance(count, int) or count > len(rows)):
-        return False  # refuse a partial page
+    if type(count) is not int or count != len(rows):
+        return False  # refuse missing counts, partial pages and malformed pagination
     for entry in rows:
         if not isinstance(entry, dict):
             return False
@@ -39,6 +39,9 @@ def free_plan_confirmed(payload: object) -> bool:
         if ("WORKER" in plan_id or "WORKER" in scope or "WORKER" in public_name):
             if plan_id not in {"WORKERS_FREE", "WORKERS_FREE_PLAN"}:
                 return False  # Workers Paid, enterprise or unknown entitlement
+            price = entry.get("price", 0)
+            if type(price) not in {int, float} or not 0 <= price <= 0:
+                return False  # no paid Workers subscription masquerading as Free
         if "AI GATEWAY" in public_name and "UNIFIED" in public_name:
             return False
     # Cloudflare defaults to Workers Free where no active Workers Paid
@@ -48,7 +51,8 @@ def free_plan_confirmed(payload: object) -> bool:
 
 def main() -> int:
     account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
-    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+    # Independent account-scoped Billing Read token; never fall back to Wrangler token.
+    token = os.environ.get("CLOUDFLARE_BILLING_READ_TOKEN", "").strip()
     if not re.fullmatch(r"[a-f0-9]{32}", account) or not token:
         print("BLOCKED: Cloudflare billing read-only proof unavailable", file=sys.stderr)
         return 2

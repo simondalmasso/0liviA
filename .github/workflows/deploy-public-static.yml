@@ -50,7 +50,7 @@ jobs:
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-          grep -Fq 'env?.OLIVIA_STATIC_ONLY !== "1"' cloudflare/worker.mjs
+          grep -Fq 'env?.OLIVIA_STATIC_ONLY === "0"' cloudflare/worker.mjs
           grep -Fq 'id="entryIntro"' web/index.html
           grep -Fq 'id="text"' web/index.html
           grep -Fq 'Content-Security-Policy:' web/_headers

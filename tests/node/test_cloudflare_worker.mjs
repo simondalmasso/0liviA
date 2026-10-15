@@ -1,11 +1,17 @@
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { authEnvironment, initializeAuthTest } from "./owner_auth_fixture.mjs";
 import worker, { CostGuard } from "../../cloudflare/worker.mjs";
 
 const BASE = "https://olivia.test";
-let OWNER_TOKEN = "";
-before(async () => { OWNER_TOKEN = (await initializeAuthTest()).token; });
+let OWNER_TOKEN = "", signAuthToken;
+before(async () => {
+  const auth = await initializeAuthTest();
+  OWNER_TOKEN = auth.token;
+  signAuthToken = auth.sign;
+});
 
 function fixture({
   enabled = true,
@@ -44,6 +50,7 @@ function fixture({
   const guard = new CostGuard({ storage });
   const env = {
     ...authEnvironment,
+    OLIVIA_STATIC_ONLY: "0",
     OLIVIA_DEMO_ZERO_COST_CONFIRMED: enabled ? "1" : "0",
     OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED: qwenEnabled ? "1" : "0",
     OLIVIA_DEMO_GEMMA_ZERO_COST_CONFIRMED: gemmaZeroCost ? "1" : "0",
@@ -102,6 +109,22 @@ test("disabled demo has no inference and canonical API always fails closed", asy
     assert.equal((await worker.fetch(new Request(BASE + path), f.env)).status, 401);
   }
   assert.equal((await worker.fetch(new Request(BASE + "/"), f.env)).status, 200);
+});
+
+test("static-only flag must be explicitly 0 before any AI or quota debit", async () => {
+  const f = fixture();
+  delete f.env.OLIVIA_STATIC_ONLY;
+  const h = await body(await worker.fetch(new Request(BASE + "/healthz"), f.env));
+  assert.equal(h.static_only, true);
+  assert.equal(h.demo_provider_ready, false);
+  const denied = await worker.fetch(post([{role:"user",content:"hola"}]),f.env);
+  assert.equal(denied.status,503);
+  assert.equal(f.calls.length,0);
+  assert.equal(f.stored.has("count"),false);
+  f.env.OLIVIA_STATIC_ONLY = "invalid";
+  const again = await worker.fetch(post([{role:"user",content:"hola"}]),f.env);
+  assert.equal(again.status,503);
+  assert.equal(f.calls.length,0);
 });
 
 test("public routes include security headers and immutable release metadata", async () => {
@@ -316,4 +339,237 @@ test("50 simultaneous requests spend at most 25 daily permits", async () => {
   assert.equal(limited, 25);
   assert.equal(f.stored.get("count"), 25);
   assert.equal(f.calls.length, 25);
+});
+
+test("browser public Auth0 configuration reveals no owner secrets and never invokes AI", async () => {
+  const f=fixture({enabled:false});
+  const url=BASE+"/api/auth/public-config";
+  assert.deepEqual(await body(await worker.fetch(new Request(url),f.env)),{enabled:false});
+  f.env.OLIVIA_AUTH0_CLIENT_ID="clientPublic0123456789";
+  const conf=await body(await worker.fetch(new Request(url),f.env));
+  assert.equal(conf.enabled,true);
+  assert.equal(conf.client_id,f.env.OLIVIA_AUTH0_CLIENT_ID);
+  assert.equal(conf.issuer,f.env.OLIVIA_AUTH0_ISSUER);
+  assert.equal(conf.audience,f.env.OLIVIA_AUTH0_AUDIENCE);
+  assert.ok(!JSON.stringify(conf).includes(f.env.OLIVIA_OWNER_EMAIL));
+  assert.ok(!JSON.stringify(conf).includes(f.env.OLIVIA_OWNER_AUTH0_SUB));
+  assert.equal((await worker.fetch(new Request(url,{method:"POST"}),f.env)).status,405);
+  assert.equal(f.calls.length,0);
+  assert.equal(f.stored.has("count"),false);
+});
+test("browser owner-status enforces JWT before any cost guard debit",async()=>{
+  const f=fixture();
+  const url=BASE+"/api/auth/owner-status";
+  assert.equal((await worker.fetch(new Request(url),f.env)).status,401);
+  assert.equal((await worker.fetch(new Request(url,{headers:{Authorization:"Bearer "+OWNER_TOKEN}}),f.env)).status,200);
+  assert.equal((await worker.fetch(new Request(url,{headers:{Authorization:"Bearer forged"}}),f.env)).status,401);
+  assert.equal(f.calls.length,0);
+  assert.equal(f.stored.has("count"),false);
+});
+
+
+test("RFC 9068 Auth0 access token types still require RS256 and exact API audience", async () => {
+  const env = fixture().env;
+  const url = BASE + "/api/auth/owner-status";
+  for (const typ of ["JWT", "at+jwt", "at+JWT", "application/at+jwt"]) {
+    const token = await signAuthToken({}, { typ });
+    assert.equal((await worker.fetch(new Request(url, {
+      headers: { authorization: "Bearer " + token },
+    }), env)).status, 200, "valid signed API access token typ " + typ);
+    const wrongAudience = await signAuthToken({ aud: "different_client_id" }, { typ });
+    assert.equal((await worker.fetch(new Request(url, {
+      headers: { authorization: "Bearer " + wrongAudience },
+    }), env)).status, 401, "wrong audience must reject " + typ);
+  }
+  for (const badType of ["id+jwt", "none", ""]) {
+    const token = await signAuthToken({}, { typ: badType });
+    assert.equal((await worker.fetch(new Request(url, {
+      headers: { authorization: "Bearer " + token },
+    }), env)).status, 401, "unexpected type must reject");
+  }
+  const badAlg = await signAuthToken({}, { alg: "none", typ: "at+jwt" });
+  assert.equal((await worker.fetch(new Request(url, {
+    headers: { authorization: "Bearer " + badAlg },
+  }), env)).status, 401);
+});
+
+
+test("owner JWT failures report fixed, non-sensitive validation stages", async () => {
+  const env = fixture().env;
+  const url = BASE + "/api/auth/owner-status";
+  const get = async (jwt) => worker.fetch(new Request(url,{
+    headers:{Authorization:"Bearer "+jwt},
+  }),env);
+  const badStructure = await get("abc.def.ghi");
+  assert.equal(badStructure.status,401);
+  assert.deepEqual(await body(badStructure),{
+    error:"invalid_access_token",auth_stage:"token_shape",
+  });
+  const wrongAlg = await signAuthToken({}, { alg:"none" });
+  const badHeader = await get(wrongAlg);
+  assert.equal(badHeader.status,401);
+  assert.equal((await body(badHeader)).auth_stage,"jwt_header");
+  const wrongAudience = await signAuthToken({ aud:"https://wrong.example/api" });
+  const badClaims = await get(wrongAudience);
+  assert.equal(badClaims.status,401);
+  assert.equal((await body(badClaims)).auth_stage,"jwt_claims");
+  const expired = await signAuthToken({ exp: Math.floor(Date.now()/1000)-5 });
+  const badExpiration = await get(expired);
+  assert.equal(badExpiration.status,401);
+  assert.equal((await body(badExpiration)).auth_stage,"jwt_claims");
+  const valid=await get(OWNER_TOKEN);
+  assert.equal(valid.status,200);
+  assert.deepEqual(await body(valid),{owner:true,demo_ready:true});
+});
+test("OAuth browser callback only releases in-memory token after owner-only backend approval", async () => {
+  const source = readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
+  const state = "s".repeat(32), nonce = "n".repeat(32), verifier = "A".repeat(64);
+  const config = {
+    enabled:true, issuer:"https://tenant.us.auth0.com/",
+    audience:"https://0livia.example/api",client_id:"publicClient012345678901"
+  };
+  const payload = Buffer.from(JSON.stringify({nonce})).toString("base64url");
+  const fakeIdToken = "e30."+payload+".c2ln";
+  const originalUrl = "https://olivia.test/?code=one_time_code&state="+state;
+  const seen = [];
+  const demoCalls = [];
+  async function scenario(ownerApproved) {
+    const entries = new Map([["olivia:auth0:pkce:v1",
+      JSON.stringify({state,nonce,verifier,created:Date.now()})]]);
+    const location = {
+      href:originalUrl,origin:"https://olivia.test",pathname:"/",hash:"",
+      assign(){throw Error("no navigation expected in callback");}
+    };
+    const context={
+      window:{},location,history:{replaceState(...args){seen.push(args[2]);}},
+      URL,URLSearchParams,TextEncoder,Date,
+      sessionStorage:{
+        getItem:k=>entries.get(k)||null,
+        setItem:(k,v)=>entries.set(k,v),
+        removeItem:k=>entries.delete(k)
+      },
+      crypto:globalThis.crypto,
+      btoa:s=>Buffer.from(s,"binary").toString("base64"),
+      atob:s=>Buffer.from(s,"base64").toString("binary"),
+      document:{getElementById(){throw Error("DOM not expected");}},
+      fetch:async (url,options)=>{
+        const dest=String(url);
+        if(dest==="/api/auth/public-config")
+          return new Response(JSON.stringify(config),{status:200});
+        if(dest.endsWith("/oauth/token")){
+          assert.equal(options.method,"POST");
+          assert.equal(options.body.get("code_verifier"),verifier);
+          return new Response(JSON.stringify({
+            token_type:"Bearer",access_token:"test_access_token_for_only_backend_0123456789",
+            id_token:fakeIdToken
+          }),{status:200});
+        }
+        if(dest==="/api/auth/owner-status"){
+          assert.ok(options.headers.Authorization.startsWith("Bearer "));
+          return new Response(JSON.stringify({owner:ownerApproved}),{
+            status:ownerApproved?200:403
+          });
+        }
+        if(dest==="/api/demo-chat"){
+          assert.equal(ownerApproved,true);
+          assert.equal(options.method,"POST");
+          assert.ok(options.headers.Authorization.startsWith("Bearer "));
+          assert.equal(JSON.parse(options.body).model,"glm");
+          demoCalls.push(options);
+          return new Response(JSON.stringify({answer:"MOCK_ONLY",provider:"workers-ai-demo",model:"@cf/zai-org/glm-4.7-flash"}),{status:200});
+        }
+        throw Error("unexpected fetch destination");
+      }
+    };
+    runInNewContext(source,context,{timeout:2000});
+    await context.window.OliviaOwnerAuth.init(true);
+    assert.equal(entries.has("olivia:auth0:pkce:v1"),false);
+    return context.window.OliviaOwnerAuth;
+  }
+  const denied=await scenario(false);
+  assert.equal(denied.isOwner(),false);
+  assert.equal(denied.authorization(),"");
+  await assert.rejects(denied.postDemo("/api/demo-chat",[{role:"user",content:"Guest"}],"glm"),/enlace de email autorizado/);
+  assert.equal(demoCalls.length,0);
+  const approved=await scenario(true);
+  assert.equal(approved.isOwner(),true);
+  assert.ok(approved.authorization().startsWith("Bearer "));
+  const response=await approved.postDemo("/api/demo-chat",[{role:"user",content:"OK"}],"glm");
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).answer,"MOCK_ONLY");
+  assert.equal(demoCalls.length,1);
+  approved.invalidate();
+  assert.equal(approved.authorization(),"");
+  await assert.rejects(approved.postDemo("/api/demo-chat",[],"glm"),/enlace de email autorizado/);
+  assert.equal(demoCalls.length,1);
+  assert.deepEqual(seen,["/","/"]);
+});
+
+test("public shell opens passwordless email owner login after auth initialization without automatic OAuth navigation",()=>{
+  const source=readFileSync(new URL("../../web/index.html",import.meta.url),"utf8");
+  const boot=source.slice(source.lastIndexOf("(async()=>{"));
+  assert.match(boot,/await window\.OliviaOwnerAuth\.init\(backendMode==='public_shell'\)/);
+  assert.match(boot,/if\(backendMode==='public_shell'&&!window\.OliviaOwnerAuth\.isOwner\(\)\)showOwnerLogin\(\)/);
+  assert.ok(boot.indexOf("await window.OliviaOwnerAuth.init") < boot.indexOf("showOwnerLogin();"));
+  assert.doesNotMatch(boot,/window\.OliviaOwnerAuth\.start\(/);
+});
+
+test("OAuth gate reports invalid access token separately from wrong passwordless email owner",()=>{
+  const source=readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
+  assert.match(source,/gate\.status===403/);
+  assert.match(source,/gate\.status===401/);
+  assert.match(source,/gate\.status===503/);
+  assert.match(source,/No se pudo verificar la firma o las claims del token API/);
+  assert.match(source,/configuración privada del propietario no está completa/);
+  assert.ok(source.includes("if (!gate.ok) {"));
+});
+
+test("OAuth browser maps only fixed auth stage codes to safe visible messages", () => {
+  const source=readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
+  for(const stage of ["token_shape","jwt_header","jwt_claims","jwks_key","jwt_signature","jwks_validation","jwks_fetch","jwks_response","jwks_crypto"])
+    assert.ok(source.includes(stage+":"), "missing server-defined " + stage);
+  assert.ok(source.includes("Object.prototype.hasOwnProperty.call(messages, details.auth_stage)"));
+  assert.ok(source.includes("await gate.json()"));
+  assert.ok(!source.includes("JSON.stringify(details)"));
+  assert.ok(!source.includes("data.access_token.slice("));
+});
+
+test("owner JWKS error categories do not reflect private error contents", () => {
+  const source=readFileSync(new URL("../../cloudflare/owner_auth.mjs", import.meta.url),"utf8");
+  for(const stage of ["jwks_fetch","jwks_response","jwks_crypto"])
+    assert.ok(source.includes('"'+stage+'"'), "unknown static stage: "+stage);
+  assert.ok(!source.includes('auth_stage: String(e)'));
+  assert.ok(!source.includes('auth_stage: e.message'));
+});
+
+test("Cloudflare JWKS fetch uses supported manual redirect mode and blocks HTTP redirects", async () => {
+  const source=readFileSync(new URL("../../cloudflare/owner_auth.mjs",import.meta.url),"utf8");
+  assert.ok(source.includes('redirect: "manual"'));
+  assert.ok(!source.includes('redirect: "error"'));
+  assert.match(source,/response\.status >= 300 && response\.status < 400/);
+
+  // Use a separate synthetic tenant to avoid the module-level JWKS cache.
+  const env={...fixture().env,OLIVIA_AUTH0_ISSUER:"https://redirect-test.auth0.com/"};
+  const token=await signAuthToken({iss:env.OLIVIA_AUTH0_ISSUER});
+  const savedFetch=globalThis.fetch;
+  const observed=[];
+  try {
+    globalThis.fetch=async (url, opts) => {
+      if(url===env.OLIVIA_AUTH0_ISSUER+".well-known/jwks.json") {
+        observed.push({redirect:opts?.redirect,method:opts?.method});
+        return new Response(null,{status:302,headers:{location:"https://redirect-target.example/jwks.json"}});
+      }
+      return savedFetch(url,opts);
+    };
+    const response=await worker.fetch(new Request(BASE+"/api/auth/owner-status",{
+      headers:{authorization:"Bearer "+token},
+    }),env);
+    assert.equal(response.status,401);
+    assert.deepEqual(await body(response),{
+      error:"invalid_access_token",auth_stage:"jwks_response",
+    });
+    assert.deepEqual(observed,[{redirect:"manual",method:"GET"}]);
+  }finally{
+    globalThis.fetch=savedFetch;
+  }
 });

@@ -502,6 +502,13 @@ class Gateway:
             raise web.HTTPNotFound()
         return web.FileResponse(index_path, headers={"Cache-Control": "no-cache"})
 
+    async def auth0_bridge(self, request: web.Request) -> web.StreamResponse:
+        # The public-shell OAuth helper is inert for the canonical cookie-auth Core.
+        path = (self.static_root / "auth0_bridge.js").resolve()
+        if self.static_root not in path.parents or not path.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(path, headers={"Cache-Control": "no-store"})
+
     async def healthz(self, request: web.Request) -> web.Response:
         providers = list(self.agent.router.providers)
         configured = len(providers)
@@ -1921,6 +1928,7 @@ def create_app(
     app["gateway"] = gateway
     app.router.add_get("/", gateway.index)
     app.router.add_get("/index.html", gateway.index)
+    app.router.add_get("/auth0_bridge.js", gateway.auth0_bridge)
     app.router.add_get("/healthz", gateway.healthz)
     app.router.add_post("/api/auth/register", gateway.register)
     app.router.add_post("/api/auth/login", gateway.login)

@@ -156,8 +156,8 @@ def test_cloudflare_deploy_is_manual_only_and_requires_owner_confirmation():
 
 def test_static_public_release_has_no_model_provider_binding_or_ai_calls():
     static = Path(".github/workflows/deploy-public-static.yml").read_text(encoding="utf-8")
-    assert 'env?.OLIVIA_STATIC_ONLY !== "1"' in WORKER
-    assert 'static_only: env?.OLIVIA_STATIC_ONLY === "1"' in WORKER
+    assert 'env?.OLIVIA_STATIC_ONLY === "0"' in WORKER
+    assert 'static_only: env?.OLIVIA_STATIC_ONLY !== "0"' in WORKER
     assert '"OLIVIA_STATIC_ONLY": "1"' in static
     assert '"OLIVIA_DEMO_ZERO_COST_CONFIRMED": "0"' in static
     assert '"OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "0"' in static
@@ -192,3 +192,169 @@ def test_static_deploy_retries_eventual_consistency_but_never_removes_sha_proof(
     assert 'body.get("release_sha") == os.environ["RELEASE_SHA"]' in flow
     assert 'body.get("demo_inference_enabled") is False' in flow
     assert "/api/demo-chat" not in flow
+
+
+def test_owner_auth0_release_smoke_denies_anonymous_without_inference():
+    deploy = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    worker = Path("cloudflare/worker.mjs").read_text(encoding="utf-8")
+    bridge = Path("web/auth0_bridge.js").read_text(encoding="utf-8")
+    public_csp = Path("web/_headers").read_text(encoding="utf-8")
+    assert '"OLIVIA_STATIC_ONLY": "0"' in deploy
+    assert 'config["vars"]["OLIVIA_AUTH0_CLIENT_ID"]' in deploy
+    assert 'test "${demo_status}" = "401"' in deploy
+    assert '/api/auth/public-config?cb=' in deploy
+    assert '"enabled") is not True' in deploy
+    assert '/auth0_bridge.js?cb=' in deploy
+    assert "window.OliviaOwnerAuth" in deploy
+    assert '/api/auth/owner-status?cb=' in deploy
+    assert 'test "${owner_status}" = "401"' in deploy
+    assert 'test "${chat_status}" = "401"' in deploy
+    assert 'test "${demo_status}" = "200"' not in deploy
+    assert 'await requireOwnerInference(request, env)' in worker
+    assert 'url.pathname === "/api/auth/owner-status"' in worker
+    assert 'url.pathname === "/api/auth/public-config"' in worker
+    assert "code_challenge_method:\"S256\"" in bridge
+    assert 'https://*.auth0.com' in public_csp
+
+
+def test_glm_release_forces_qwen_off_even_with_legacy_repository_vars():
+    workflow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert '"OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED": "0"' in workflow
+    assert 'vars.OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED' not in workflow
+    assert '"demo_qwen_ready": body.get("demo_qwen_ready") is False' in workflow
+    assert '"demo_gemma_ready": body.get("demo_gemma_ready") is False' in workflow
+    assert "python3 scripts/verify_cloudflare_free.py" in workflow
+    assert workflow.index("python3 scripts/verify_cloudflare_free.py") < workflow.index("Deploy exact public shell")
+
+
+def test_private_billing_read_token_is_scoped_only_to_preflight():
+    flow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    script = Path("scripts/verify_cloudflare_free.py").read_text(encoding="utf-8")
+    assert 'CLOUDFLARE_BILLING_READ_TOKEN: ${{ secrets.CLOUDFLARE_BILLING_READ_TOKEN }}' in flow
+    assert 'token = os.environ.get("CLOUDFLARE_BILLING_READ_TOKEN", "").strip()' in script
+    assert 'os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()' not in script
+    proof = flow.index("python3 scripts/verify_cloudflare_free.py")
+    deploy = flow.index("npm exec --yes wrangler@4.127.1")
+    assert proof < deploy
+    env_start = flow.index("    env:")
+    env_end = flow.index("\n    steps:", env_start)
+    assert "CLOUDFLARE_BILLING_READ_TOKEN" not in flow[env_start:env_end]
+    assert "set -x" not in flow
+
+
+def test_qwen_unverified_auto_canary_is_frozen_no_push():
+    qwen = Path(".github/workflows/activate-qwen-once.yml").read_text(encoding="utf-8")
+    before_jobs = qwen.split("jobs:", 1)[0]
+    assert "  push:" not in before_jobs
+    assert "  workflow_dispatch:" in before_jobs
+    assert "npm exec" not in qwen
+    assert "/api/demo-chat" not in qwen
+    assert "CLOUDFLARE_API_TOKEN" not in qwen
+
+
+def test_ci_e2e_does_not_claim_mock_guest_turn_is_real_owner_chat():
+    flow = Path(".github/workflows/e2e.yml").read_text(encoding="utf-8")
+    tests = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")
+    assert 'test "${status}" = "401"' in flow
+    assert "unauthorizedInferenceCalls" in tests
+    assert "toBeDisabled()" in tests
+    assert "provider failure is an alert" not in tests
+
+
+def test_owner_auth_predeploy_requires_six_private_worker_secret_names():
+    import importlib.util
+    import sys
+
+    module_path = Path("scripts/verify_owner_secret_names.py")
+    spec = importlib.util.spec_from_file_location("olivia_owner_secret_names", module_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    base = [{"name": name, "type": "secret_text"} for name in sorted(module.REQUIRED)]
+    assert len(base) == 6
+    assert module.owner_secrets_present(base)
+    assert not module.owner_secrets_present(base[:-1])
+    assert not module.owner_secrets_present(base + [base[0]])
+    assert not module.owner_secrets_present(None)
+    assert not module.owner_secrets_present([{"name": "OLIVIA_AUTH0_ISSUER", "type": "plain_text"}])
+    assert not module.owner_secrets_present([{"name": "OLIVIA_OWNER_EMAIL", "value": "unexpected"}])
+    for missing in module.REQUIRED:
+        assert not module.owner_secrets_present([item for item in base if item["name"] != missing])
+
+    workflow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert "wrangler@4.127.1 -- secret list --name 0livia --format json" in workflow
+    assert "python3 scripts/verify_owner_secret_names.py" in workflow
+    assert workflow.index("verify_cloudflare_free.py") < workflow.index("verify_owner_secret_names.py")
+    assert workflow.index("verify_owner_secret_names.py") < workflow.index("Deploy exact public shell")
+    assert "secret put" not in workflow
+
+
+def test_real_owner_chat_release_acceptance_is_separate_from_mock_ci():
+    """Production must not be described as functional based on offline checks."""
+    release = Path("docs/OWNER_CHAT_P0_RELEASE.md").read_text(encoding="utf-8")
+    assert "ACEPTACIÓN DEL PROPIETARIO: FAIL" in release
+    assert "REAL OWNER CHAT = FAIL" in release
+    assert "REAL OWNER CHAT = PASS" in release
+    assert "6/6" not in release  # never use the offline mock total as production evidence
+    for criterion in (
+        "release_sha=7e33c19d5410f94fa29e5d62a85a132da2ce755b",
+        "demo_provider_ready=false",
+        "/auth0_bridge.js",
+        "/api/auth/public-config",
+        "Billing Read",
+        "un único `POST /api/demo-chat`",
+        "no simulado",
+        "0 AI.run",
+        "Core OCI",
+    ):
+        assert criterion in release
+    assert "Esta guía **no autoriza**" in release
+
+
+def test_legacy_auth0_gate_uses_canonical_reviewed_action_only():
+    """Never copy a permissive outdated Action snippet into Auth0."""
+    older = Path("docs/AUTH0_OWNER_GATE.md").read_text(encoding="utf-8")
+    action = Path("auth0/actions/owner_google_claims.cjs").read_text(encoding="utf-8")
+    assert "auth0/actions/owner_google_claims.cjs" in older
+    assert "tests/node/test_auth0_action.mjs" in older
+    assert "exports.onExecutePostLogin" not in older
+    worker_auth = Path("cloudflare/owner_auth.mjs").read_text(encoding="utf-8")
+    assert "const expectedAudience = event?.secrets?.OLIVIA_AUTH0_AUDIENCE" in action
+    assert "event.resource_server?.identifier !== expectedAudience" in action
+    assert "API_AUDIENCE" not in action
+    assert "env?.OLIVIA_AUTH0_AUDIENCE" in worker_auth
+    assert "aud === env.OLIVIA_AUTH0_AUDIENCE" in worker_auth
+    assert "OLIVIA_AUTH0_AUDIENCE" in older
+    assert "same byte-for-byte value" in older
+    assert "event.client?.client_id !== expectedSpa" in action
+    assert "event.connection?.strategy !== 'email'" in action
+
+
+def test_dynamic_release_requires_current_main_head_and_separate_model_approval():
+    """Release dispatch must not authorize a GLM call or publish an old main ancestor."""
+    flow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    assert 'test "${release_sha}" = "$(git rev-parse origin/main)"' in flow
+    assert 'git merge-base --is-ancestor "${release_sha}" origin/main' not in flow
+    approval = flow.split("confirm_account_no_overage:", 1)[1].split("permissions:", 1)[0]
+    assert "Cloudflare deployment only" in approval
+    assert "No live model test is authorized here." in approval
+    assert "and live inference smoke" not in approval
+    assert "workflow_dispatch:" in flow.split("permissions:", 1)[0]
+    assert 'test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"' in flow
+    assert 'test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"' in flow
+    assert 'test "${demo_status}" = "401"' in flow
+
+
+def test_dynamic_deploy_requires_auth0_free_quota_confirmation():
+    """One Auth0 Action can still exceed account-wide Free entitlement."""
+    flow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+    header = flow.split("permissions:", 1)[0]
+    assert "confirm_auth0_free_quota:" in header
+    assert "the account-wide active Actions + Forms quota" in header
+    assert header.count("default: false") >= 2
+    assert "CONFIRM_AUTH0_FREE_QUOTA: ${{ inputs.confirm_auth0_free_quota && 'true' || 'false' }}" in flow
+    assert 'test "${CONFIRM_AUTH0_FREE_QUOTA:-}" = "true"' in flow
+    assert flow.index('test "${CONFIRM_AUTH0_FREE_QUOTA:-}" = "true"') < flow.index("Checkout repository")
+    # No false claim that this acknowledgement is an Auth0 API proof.
+    assert "AUTH0_BILLING_READ_TOKEN" not in flow
