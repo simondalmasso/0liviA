@@ -4,14 +4,14 @@ Branch: `main`
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
-## 2026-10-15 UTC — Auth0 retirement and static-only release (PR #125)
+## 2026-10-15 UTC — Auth0 retirement and static-only production release (PR #127)
 
-- Current branch `remove-auth0-public-shell` removes the unreleased Auth0 RS256 Worker gate, synthetic Auth0 tests and setup instructions; canonical Core email/password/session-cookie authorization remains unchanged.
-- The public Worker is static-only: `/healthz` reports no inference, every `/api/*` route returns 503, and unit tests assert zero provider/quota calls regardless of bearer or identity headers.
-- The former interactive Workers AI deployment workflow is retired. `.github/workflows/deploy-public-static.yml` is the only Cloudflare deploy path and runs on canonical `main` updates with no AI/CostGuard binding, immutable SHA verification and GET-only live smoke checks.
-- Browser E2E now validates the explicit unavailable state instead of fabricating a model answer; live mode uses GET health and checks 503 API responses without sending a provider prompt.
-- Local Node Worker tests: 5 passed; JavaScript syntax and `git diff --check` passed. Initial remote CI identified stale source-contract tests that still assumed the removed demo; those tests are being updated to the static-only contract. No production deployment is claimed until CI is green and the main-merge deploy workflow reports live smoke success.
-- Canonical Python Core host deployment remains separate and blocked on privileged SSH / exact-SHA smoke prerequisites; a public Worker deploy is not a Core deployment.
+- PR #127 merged into canonical `main` as `a49314df3e5e158a37fbafd156687f77183ea7b8`; the production Worker was deployed from that exact immutable SHA.
+- The unreleased Auth0 RS256 owner gate, its synthetic issuer tests and setup instructions were removed from the public Worker. Canonical Python Core email/password registration and secure session-cookie authorization were not changed.
+- Public production URL: the configured permanent `workers.dev` endpoint (live-verified). Cloudflare version ID: `f2ca5f42-bb25-4362-a8d8-a40a6b3e9b25`. Deployment workflow run: https://github.com/simondalmasso/0liviA/actions/runs/38704122585 (success).
+- Post-deploy GET verification passed: `/` and `/healthz` return 200; `release_sha` matches the deployed SHA; `static_only=true`, `inference_enabled=false`, `demo_inference_enabled=false`, and `hard_zero_cost=true`; security headers are present.
+- GET checks against `/api/chat`, `/api/demo-chat` and `/api/read-url` returned `503 bridge_disabled`. No model prompts were sent; the static release has no AI or CostGuard binding. Python 3.11/3.12 CI, static security audit and browser E2E passed.
+- The canonical Python Core is still a separate deployment and is **not** claimed deployed by this Worker release. Its workflow remains manual, requires an exact SHA plus pinned SSH trust/secrets, and defaults to read-only preflight; do not bypass those gates to publish the Core.
 
 ## 2026-10-10 UTC — demo safety and deployment-control checkpoint
 
