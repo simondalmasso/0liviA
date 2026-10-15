@@ -8,7 +8,7 @@
 
 This public repository publishes source code and architecture for review. **No root `LICENSE` file is currently present**; public visibility alone is not an open-source license or a grant of reuse rights. The owner must select and publish an appropriate license after copyright/dependency review. Do not describe the project as licensed open source until then.
 
-The public site is a **static-only interface** until a separate verified-free demo is explicitly activated. The authenticated Python Core, persistent memory and tools are not running behind the current public Worker. Deployment and provider readiness are tracked independently; successful frontend CI or deployment does not certify the Core.
+The public site is a **static-only interface**; the public Worker has no Auth0/Google login and no inference route. Authentication belongs to the canonical Python Core, which uses its own owner email/password registration and secure session cookies. The authenticated Python Core, persistent memory and tools are not running behind the current public Worker. Deployment and provider readiness are tracked independently; successful frontend CI or deployment does not certify the Core.
 
 ## Product invariants
 
