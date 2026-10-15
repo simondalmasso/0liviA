@@ -83,7 +83,7 @@ jobs:
           }
           for key, value in expected.items():
               if state.get(key) != value:
-                  raise SystemExit(f"Production is not demo-ready: {key}={state.get(key)!r}, expected {value!r}")
+                  raise SystemExit(f"Production is not static-only-ready: {key}={state.get(key)!r}, expected {value!r}")
           PY
 
           # Static release must reject inference without making provider/quota calls.
