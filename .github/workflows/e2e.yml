@@ -81,7 +81,7 @@ jobs:
           PY
 
           # Anonymous requests must be rejected before model/cost admission.
-          # The complete owner Google flow is tested independently with no mock.
+          # The complete owner passwordless-email flow requires private Auth0 enrollment and is not exercised by this mock E2E.
           status="$(curl -sS --max-time 20 --retry 0 -o /tmp/olivia-deny-body -w '%{http_code}' \
             -X POST "${base}/api/demo-chat" \
             -H "Origin: ${base}" \

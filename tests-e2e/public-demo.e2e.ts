@@ -35,7 +35,7 @@ test('anonymous cannot spend owner inference even if backend reports demo ready'
   await expect(browser.locator('#modeWork')).toHaveCount(0);
   const message = screen.getByRole('textbox', {name:'Mensaje'});
   await expect(message).toBeEnabled();
-  await message.fill('Esto no debe activar inferencia sin Google autorizado');
+  await message.fill('Esto no debe activar inferencia sin email propietario autorizado');
   await expect(screen.getByRole('button', {name:'Enviar'})).toBeDisabled();
   await expect(browser.locator('#messages .msg.assistant:not(.error)')).toHaveCount(0);
   await expect(browser.locator('#messages .provider-pill')).toHaveCount(0);
@@ -44,7 +44,7 @@ test('anonymous cannot spend owner inference even if backend reports demo ready'
 
 if (mockDemo) {
 
-  test('Google owner login entry is reachable without enabling anonymous chat', async ({app,browser,screen}) => {
+  test('Passwordless email owner login entry is reachable without enabling anonymous chat', async ({app,browser,screen}) => {
     await app.clearState();
     await browser.route('**/healthz*', route => route.fulfill({json:{
       process_alive:true,api_mode:'public_shell',public_shell:true,
@@ -62,10 +62,10 @@ if (mockDemo) {
     });
     await app.open('/');
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
-    // Owner-only Google gate is shown automatically on unauthenticated load.
+    // Owner-only passwordless-email gate is shown automatically on unauthenticated load.
     await expect(browser.locator('#ownerLogin.open')).toBeVisible();
-    await expect(browser.locator('#oliviaGoogleLogin')).toBeVisible();
-    await expect(browser.locator('#oliviaGoogleLogin')).toBeEnabled();
+    await expect(browser.locator('#oliviaEmailLogin')).toBeVisible();
+    await expect(browser.locator('#oliviaEmailLogin')).toBeEnabled();
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
     if (attempted !== 0) throw new Error('Anonymous login attempted model inference');
   });
@@ -81,7 +81,7 @@ if (mockDemo) {
     }));
     await app.open('/');
     await expect(browser.locator('#ownerLogin.open')).toBeVisible();
-    await expect(browser.locator('#oliviaGoogleLogin')).not.toBeVisible();
+    await expect(browser.locator('#oliviaEmailLogin')).not.toBeVisible();
     await expect(browser.locator('#messages .msg.assistant:not(.error)')).toHaveCount(0);
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
     await expect(browser.locator('.app')).toHaveCount(1);
@@ -105,7 +105,7 @@ if (mockDemo) {
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
   });
 
-  test('owner Google PKCE callback enables one mocked GLM reply without paid or external AI', async ({app,screen,browser}) => {
+  test('owner passwordless-email PKCE callback enables one mocked GLM reply without paid or external AI', async ({app,screen,browser}) => {
     // Deterministic browser integration: NO Auth0 credentials, AI.run, or model providers.
     await app.clearState();
     const base = (process.env.OLIVIA_E2E_URL || 'http://127.0.0.1:8767').replace(/\/$/, '');
@@ -171,6 +171,7 @@ if (mockDemo) {
       if (url.origin !== 'https://tenant.us.auth0.com' ||
           url.searchParams.get('response_type') !== 'code' ||
           url.searchParams.get('client_id') !== 'publicClient012345678901' ||
+          url.searchParams.get('connection') !== 'email' ||
           url.searchParams.get('audience') !== 'https://0livia.example/api' ||
           url.searchParams.get('redirect_uri') !== base + '/' ||
           url.searchParams.get('code_challenge_method') !== 'S256')
@@ -192,8 +193,8 @@ if (mockDemo) {
     await app.open('/');
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
     await expect(browser.locator('#ownerLogin.open')).toBeVisible();
-    await expect(browser.locator('#oliviaGoogleLogin')).toBeVisible();
-    await browser.locator('#oliviaGoogleLogin').tap();
+    await expect(browser.locator('#oliviaEmailLogin')).toBeVisible();
+    await browser.locator('#oliviaEmailLogin').tap();
 
     // This is the actual app document after an intercepted OAuth redirect.
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeEnabled();
@@ -211,13 +212,13 @@ if (mockDemo) {
     );
     if (leaked) throw Error('OAuth access token leaked into browser storage');
     await browser.locator('.rail-btn[data-side="session"]').tap();
-    await screen.getByRole('button',{name:'Salir de Google'}).tap();
+    await screen.getByRole('button',{name:'Cerrar sesión privada'}).tap();
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
     if (demoPosts !== 1) throw Error('Logout unexpectedly repeated inference');
   });
 
 
-  test('signed-in Google guest remains blocked after offline OAuth callback and spends zero AI calls', async ({app,screen,browser}) => {
+  test('signed-in non-owner email identity remains blocked after offline OAuth callback and spends zero AI calls', async ({app,screen,browser}) => {
     await app.clearState();
     const state='g'.repeat(32), nonce='n'.repeat(32), verifier='A'.repeat(64);
     const guestToken='offline_guest_token_never_owner_012345678901234567890';
@@ -263,10 +264,10 @@ if (mockDemo) {
     await app.open('/?code=guest_code&state='+state);
     await expect(screen.getByRole('button',{name:'Enviar'})).toBeDisabled();
     await expect(browser.locator('#ownerLogin.open')).toBeVisible();
-    await expect(browser.locator('#oliviaGoogleLogin')).toBeVisible();
+    await expect(browser.locator('#oliviaEmailLogin')).toBeVisible();
     const becameOwner=await browser.evaluate(() => window.OliviaOwnerAuth.isOwner());
     if (becameOwner || exchanges!==1 || ownerChecks!==1 || demoPosts!==0)
-      throw Error('Google guest bypassed the owner gate or initiated inference');
+      throw Error('Non-owner email identity bypassed the owner gate or initiated inference');
   });
 
 }

@@ -261,7 +261,7 @@ def test_ci_e2e_does_not_claim_mock_guest_turn_is_real_owner_chat():
     assert "provider failure is an alert" not in tests
 
 
-def test_owner_auth_predeploy_requires_seven_private_worker_secret_names():
+def test_owner_auth_predeploy_requires_six_private_worker_secret_names():
     import importlib.util
     import sys
 
@@ -272,13 +272,13 @@ def test_owner_auth_predeploy_requires_seven_private_worker_secret_names():
     spec.loader.exec_module(module)
 
     base = [{"name": name, "type": "secret_text"} for name in sorted(module.REQUIRED)]
-    assert len(base) == 7
+    assert len(base) == 6
     assert module.owner_secrets_present(base)
     assert not module.owner_secrets_present(base[:-1])
     assert not module.owner_secrets_present(base + [base[0]])
     assert not module.owner_secrets_present(None)
     assert not module.owner_secrets_present([{"name": "OLIVIA_AUTH0_ISSUER", "type": "plain_text"}])
-    assert not module.owner_secrets_present([{"name": "OLIVIA_OWNER_GOOGLE_EMAIL", "value": "unexpected"}])
+    assert not module.owner_secrets_present([{"name": "OLIVIA_OWNER_EMAIL", "value": "unexpected"}])
     for missing in module.REQUIRED:
         assert not module.owner_secrets_present([item for item in base if item["name"] != missing])
 
@@ -319,9 +319,16 @@ def test_legacy_auth0_gate_uses_canonical_reviewed_action_only():
     assert "auth0/actions/owner_google_claims.cjs" in older
     assert "tests/node/test_auth0_action.mjs" in older
     assert "exports.onExecutePostLogin" not in older
-    assert "event.resource_server?.identifier !== API_AUDIENCE" in action
+    worker_auth = Path("cloudflare/owner_auth.mjs").read_text(encoding="utf-8")
+    assert "const expectedAudience = event?.secrets?.OLIVIA_AUTH0_AUDIENCE" in action
+    assert "event.resource_server?.identifier !== expectedAudience" in action
+    assert "API_AUDIENCE" not in action
+    assert "env?.OLIVIA_AUTH0_AUDIENCE" in worker_auth
+    assert "aud === env.OLIVIA_AUTH0_AUDIENCE" in worker_auth
+    assert "OLIVIA_AUTH0_AUDIENCE" in older
+    assert "same byte-for-byte value" in older
     assert "event.client?.client_id !== expectedSpa" in action
-    assert "user.user_id !== `google-oauth2|${googleIdentity.user_id}`" in action
+    assert "event.connection?.strategy !== 'email'" in action
 
 
 def test_dynamic_release_requires_current_main_head_and_separate_model_approval():

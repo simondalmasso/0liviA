@@ -351,7 +351,7 @@ test("browser public Auth0 configuration reveals no owner secrets and never invo
   assert.equal(conf.client_id,f.env.OLIVIA_AUTH0_CLIENT_ID);
   assert.equal(conf.issuer,f.env.OLIVIA_AUTH0_ISSUER);
   assert.equal(conf.audience,f.env.OLIVIA_AUTH0_AUDIENCE);
-  assert.ok(!JSON.stringify(conf).includes(f.env.OLIVIA_OWNER_GOOGLE_EMAIL));
+  assert.ok(!JSON.stringify(conf).includes(f.env.OLIVIA_OWNER_EMAIL));
   assert.ok(!JSON.stringify(conf).includes(f.env.OLIVIA_OWNER_AUTH0_SUB));
   assert.equal((await worker.fetch(new Request(url,{method:"POST"}),f.env)).status,405);
   assert.equal(f.calls.length,0);
@@ -489,7 +489,7 @@ test("OAuth browser callback only releases in-memory token after owner-only back
   const denied=await scenario(false);
   assert.equal(denied.isOwner(),false);
   assert.equal(denied.authorization(),"");
-  await assert.rejects(denied.postDemo("/api/demo-chat",[{role:"user",content:"Guest"}],"glm"),/Entrá con Google/);
+  await assert.rejects(denied.postDemo("/api/demo-chat",[{role:"user",content:"Guest"}],"glm"),/enlace de email autorizado/);
   assert.equal(demoCalls.length,0);
   const approved=await scenario(true);
   assert.equal(approved.isOwner(),true);
@@ -500,12 +500,12 @@ test("OAuth browser callback only releases in-memory token after owner-only back
   assert.equal(demoCalls.length,1);
   approved.invalidate();
   assert.equal(approved.authorization(),"");
-  await assert.rejects(approved.postDemo("/api/demo-chat",[],"glm"),/Entrá con Google/);
+  await assert.rejects(approved.postDemo("/api/demo-chat",[],"glm"),/enlace de email autorizado/);
   assert.equal(demoCalls.length,1);
   assert.deepEqual(seen,["/","/"]);
 });
 
-test("public shell opens Google owner login after auth initialization without automatic OAuth navigation",()=>{
+test("public shell opens passwordless email owner login after auth initialization without automatic OAuth navigation",()=>{
   const source=readFileSync(new URL("../../web/index.html",import.meta.url),"utf8");
   const boot=source.slice(source.lastIndexOf("(async()=>{"));
   assert.match(boot,/await window\.OliviaOwnerAuth\.init\(backendMode==='public_shell'\)/);
@@ -514,7 +514,7 @@ test("public shell opens Google owner login after auth initialization without au
   assert.doesNotMatch(boot,/window\.OliviaOwnerAuth\.start\(/);
 });
 
-test("OAuth gate reports invalid access token separately from wrong Google owner",()=>{
+test("OAuth gate reports invalid access token separately from wrong passwordless email owner",()=>{
   const source=readFileSync(new URL("../../web/auth0_bridge.js",import.meta.url),"utf8");
   assert.match(source,/gate\.status===403/);
   assert.match(source,/gate\.status===401/);

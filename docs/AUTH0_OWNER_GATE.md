@@ -1,7 +1,6 @@
-# Owner-only Auth0 Google authentication gate — P0 (unreleased)
+# Owner-only Auth0 passwordless email authentication gate — P0 (unreleased)
 
-Status: **Google social connection Try Connection PASS, but owner-only API access
-and production chat NOT RELEASED**. This document does **not** enroll an owner,
+Status: **passwordless email flow is implemented in source, but Auth0 tenant configuration, owner enrollment, deployment and production chat are NOT RELEASED**. This document does **not** enroll an owner,
 activate the reviewed Action, publish the Worker/Core or authorize Workers AI. It is
 **impossible to declare a live owner chat** before separate login, provider
 entitlement, no-overage and direct HTTP negative tests in the deployed account.
@@ -13,11 +12,11 @@ downloads JWKS from an exact, pinned HTTPS `*.auth0.com` issuer; it rejects
 unsigned tokens, ID tokens (wrong audience), bearer tokens from the old
 gateway, origin/header assertions, expired tokens, unknown signing keys and
 invalid signatures. The same signed token must have exact configured API
-audience, Google provider, verified email, enrolled Google subject, enrolled
+audience, email passwordless provider, verified owner email, enrolled
 Auth0 subject, unrevoked issuance epoch, and session generation. Only that
 combination passes `requireOwnerInference`. Claims are cryptographically
 signed **by Auth0** and must be minted by a privileged, reviewed Auth0 Action
-from the Google identity provider. Never accept frontend-supplied claims.
+from the passwordless email connection. Never accept frontend-supplied claims.
 
 Every `/api/*` Worker endpoint now enforces that identity on the server.
 On `/api/demo-chat` this check occurs before `COST_GUARD` and `AI.run`.
@@ -41,8 +40,7 @@ they cannot access Core or Workers AI.
 OLIVIA_AUTH0_ISSUER=https://<your-tenant>.<region>.auth0.com/
 OLIVIA_AUTH0_AUDIENCE=https://<private-api-audience>
 OLIVIA_OWNER_AUTH0_SUB=<enrolled-stable-Auth0-sub>
-OLIVIA_OWNER_GOOGLE_SUB=<enrolled-stable-numeric-Google-user-id>
-OLIVIA_OWNER_GOOGLE_EMAIL=<owner's verified Google email>
+OLIVIA_OWNER_EMAIL=<owner's verified email>
 OLIVIA_OWNER_SESSION_VERSION=<random >=128-bit token generation>
 OLIVIA_OWNER_REVOKED_BEFORE=0
 ```
@@ -66,28 +64,41 @@ floor. This policy is a release blocker for real login/logout acceptance.
 2. Create an **API audience** with RS256 access tokens of lifetime <=900s.
    The SPA must explicitly request that audience; an Auth0 ID token, profile
    object, or `/userinfo` email is NOT an API credential.
-3. Enable Google social identity. Under a reviewed **Post Login Action**,
-   after verifying `event.connection.strategy === 'google-oauth2'` and
-   `event.user.email_verified === true`, read the *active* Google identity
+3. Enable passwordless email identity. Under a reviewed **Post Login Action**,
+   after verifying `event.connection.strategy === 'email'` and
+   `event.user.email_verified === true`, read the *active* email identity
    and add the following custom **access token claims** from the Auth0 event
    and Action private secret. Do **not** derive them from `event.request`,
    client metadata, query parameters, URL fragments or frontend headers.
 
-**Single source of truth:** `auth0/actions/owner_google_claims.cjs` in PR #114.
+### Exact API audience: Action secret and Worker configuration must match
+
+Configure an Auth0 Post-Login Action secret named `OLIVIA_AUTH0_AUDIENCE`.
+The Worker reads `env.OLIVIA_AUTH0_AUDIENCE` in `cloudflare/owner_auth.mjs`;
+the Action reads `event.secrets.OLIVIA_AUTH0_AUDIENCE`. Set both independently
+to the same byte-for-byte value, and make that value equal the identifier of
+the Auth0 API resource server. The Action fails closed if its secret is missing,
+malformed, or different from `event.resource_server.identifier`; the Worker
+independently validates access-token `aud` against its own configured value.
+There is no hard-coded audience or fallback. Do not put private owner identifiers
+or configuration values into source control.
+
+**Single source of truth:** `auth0/actions/owner_google_claims.cjs` in PR #114; its login strategy is passwordless email, not Google.
 Copy **that entire reviewed file**, not older snippets or examples, into the Auth0
-Post-Login Action editor. The canonical Action additionally requires the exact
-API audience `https://0livia.app/api`, the configured SPA Client ID, the
-unlinked Google identity with a verified email, and a private session
+Post-Login Action editor. The canonical Action additionally requires the
+configured `OLIVIA_AUTH0_AUDIENCE` secret, which must exactly match the
+Worker configuration and Auth0 API identifier, the configured SPA Client ID,
+the exact verified owner email, and a private session
 generation. Its tests are `tests/node/test_auth0_action.mjs`, executed in
 `.github/workflows/ci.yml`. The Action must not be deployed or added to
 the Post Login flow before its private secrets are correctly provisioned
 and the owner-only release gates are satisfied. Offline tests are **not**
 evidence that an Auth0 Action is installed, deployed or connected to a flow.
 
-4. Enroll Auth0 `sub` and the real Google identity `sub` **privately**
+4. Enroll Auth0 `sub` and the real email identity `sub` **privately**
    after authenticating the owner through the configured connection; never
    automatically promote a new `sub`, newly linked account or changed email.
-   Test a separate real Google guest account: successful login **must** give
+   Test a separate different verified email account: successful login **must** give
    403 on private APIs.
 5. Preserve static/no-inference deployment until direct HTTP tests pass with
    a legitimate owner and a non-owner, tampered/revoked JWTs, websocket/SSE,
@@ -97,7 +108,7 @@ evidence that an Auth0 Action is installed, deployed or connected to a flow.
 
 ## Remaining blockers
 
-- The PR contains the browser Google PKCE bridge and owner-only login controls,
+- This branch contains the browser PKCE bridge and owner-only passwordless email controls,
   tested offline with mocks. This does **not** validate production SPA login,
   mobile behavior, token lifecycle or real owner access until deployment and
   end-to-end authenticated testing.

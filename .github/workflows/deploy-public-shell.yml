@@ -255,7 +255,7 @@ jobs:
               raise SystemExit("public-shell smoke failed: " + ", ".join(failed))
           PY
 
-          # Exact Google OAuth browser contract must exist before reporting success.
+          # Exact Auth0 passwordless-email browser contract must exist before reporting success.
           # Public data only: never send a bearer token or initiate model inference.
           bridge_script="$(curl -fsS --max-time 20 "${base}/auth0_bridge.js?cb=${cb}")"
           grep -Fq 'window.OliviaOwnerAuth' <<<"${bridge_script}"

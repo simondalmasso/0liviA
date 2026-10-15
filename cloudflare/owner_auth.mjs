@@ -41,9 +41,8 @@ export function ownerAuthConfigured(env) {
     typeof env?.OLIVIA_AUTH0_AUDIENCE === "string" &&
     /^https:\/\/[A-Za-z0-9.-]+\/[A-Za-z0-9._/-]+$/.test(env.OLIVIA_AUTH0_AUDIENCE) &&
     typeof env?.OLIVIA_OWNER_AUTH0_SUB === "string" && env.OLIVIA_OWNER_AUTH0_SUB.length > 5 &&
-    typeof env?.OLIVIA_OWNER_GOOGLE_SUB === "string" && /^[0-9]{8,32}$/.test(env.OLIVIA_OWNER_GOOGLE_SUB) &&
-    typeof env?.OLIVIA_OWNER_GOOGLE_EMAIL === "string" &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.OLIVIA_OWNER_GOOGLE_EMAIL) &&
+    typeof env?.OLIVIA_OWNER_EMAIL === "string" &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.OLIVIA_OWNER_EMAIL) &&
     typeof env?.OLIVIA_OWNER_SESSION_VERSION === "string" &&
     /^[A-Za-z0-9_-]{16,128}$/.test(env.OLIVIA_OWNER_SESSION_VERSION) &&
     typeof env?.OLIVIA_OWNER_REVOKED_BEFORE === "string" &&
@@ -170,11 +169,10 @@ export async function requireOwnerInference(request, env) {
   const claims = parsed.claims;
   const owner = (
     claims.sub === env.OLIVIA_OWNER_AUTH0_SUB &&
-    claims[CLAIM + "provider"] === "google-oauth2" &&
-    claims[CLAIM + "google_sub"] === env.OLIVIA_OWNER_GOOGLE_SUB &&
+    claims[CLAIM + "provider"] === "email" &&
     claims[CLAIM + "email_verified"] === true &&
     typeof claims[CLAIM + "email"] === "string" &&
-    claims[CLAIM + "email"].toLowerCase() === env.OLIVIA_OWNER_GOOGLE_EMAIL.toLowerCase() &&
+    claims[CLAIM + "email"].toLowerCase() === env.OLIVIA_OWNER_EMAIL.toLowerCase() &&
     claims[CLAIM + "session_version"] === env.OLIVIA_OWNER_SESSION_VERSION &&
     claims.iat > Number(env.OLIVIA_OWNER_REVOKED_BEFORE)
   );

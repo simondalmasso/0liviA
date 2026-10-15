@@ -35,7 +35,7 @@
     } catch { return null; }
   }
   async function start() {
-    if (!config) throw Error("Google todavía no está configurado.");
+    if (!config) throw Error("El acceso privado por email todavía no está configurado.");
     const state = random(24), nonce = random(24), verifier = random(48);
     const digest = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(verifier));
     const challenge = b64url(new Uint8Array(digest));
@@ -44,7 +44,7 @@
     for (const [key,value] of Object.entries({
       response_type:"code",client_id:config.client_id,
       redirect_uri:location.origin+location.pathname,
-      scope:"openid profile email",audience:config.audience,
+      scope:"openid profile email",audience:config.audience,connection:"email",prompt:"login",
       code_challenge:challenge,code_challenge_method:"S256",state,nonce
     })) u.searchParams.set(key,value);
     location.assign(u.href);
@@ -53,7 +53,7 @@
     if (!url.searchParams.has("code") && !url.searchParams.has("error")) return;
     const raw = sessionStorage.getItem(KEY);
     sessionStorage.removeItem(KEY); // At most one token exchange.
-    if (!config || !raw || url.searchParams.has("error")) throw Error("Google: acceso cancelado o inválido.");
+    if (!config || !raw || url.searchParams.has("error")) throw Error("Acceso por email cancelado o inválido.");
     let p;
     try { p = JSON.parse(raw); } catch { throw Error("Estado OAuth inválido."); }
     if (p.state !== url.searchParams.get("state") || !/^[A-Za-z0-9_-]{64}$/.test(p.verifier||"") ||
@@ -71,7 +71,7 @@
         redirect_uri:location.origin+location.pathname
       })
     });
-    if (!resp.ok) throw Error("Google: no se pudo validar la sesión.");
+    if (!resp.ok) throw Error("El acceso por email no pudo validar la sesión.");
     const data = await resp.json();
     if (data.token_type!=="Bearer" || typeof data.access_token!=="string" ||
         !/^[A-Za-z0-9._-]{30,8192}$/.test(data.access_token) ||
@@ -103,12 +103,12 @@
         } catch {}
       }
       throw Error(gate.status===403
-        ? "Esta cuenta Google no es propietaria de 0liviA."
+        ? "Este email no está autorizado como propietario de 0liviA."
         : gate.status===401
           ? (reason || "No se pudo verificar la firma o las claims del token API.")
           : gate.status===503
             ? "La configuración privada del propietario no está completa."
-            : "No se pudo comprobar la sesión Google. Volvé a intentarlo.");
+            : "No se pudo comprobar la sesión por email. Volvé a intentarlo.");
     }
     token = data.access_token; owner = true;
   }
@@ -130,15 +130,15 @@
     for (const id of ["ownerEmail","ownerPassword","ownerAuthSubmit"])
       document.getElementById(id).hidden=true;
     document.getElementById("ownerRemember").closest("label").hidden=true;
-    document.getElementById("ownerAuthTitle").textContent="Acceso Google";
+    document.getElementById("ownerAuthTitle").textContent="Acceso privado sin contraseña";
     document.getElementById("ownerAuthCopy").textContent=config
-      ? "Sólo el propietario autorizado puede utilizar la IA privada."
-      : "El acceso Google todavía no está configurado.";
-    let btn = document.getElementById("oliviaGoogleLogin");
+      ? "Recibí un enlace de acceso en el email autorizado. No se necesita contraseña."
+      : "El acceso por email todavía no está configurado.";
+    let btn = document.getElementById("oliviaEmailLogin");
     if (!btn) {
       btn=document.createElement("button");
-      btn.id="oliviaGoogleLogin";btn.type="button";btn.className="auth-submit";
-      btn.textContent="Continuar con Google";
+      btn.id="oliviaEmailLogin";btn.type="button";btn.className="auth-submit";
+      btn.textContent="Enviar enlace de acceso";
       form.insertBefore(btn,document.getElementById("ownerLoginError"));
       btn.addEventListener("click",()=>start().catch(e=>{
         document.getElementById("ownerLoginError").textContent=e.message;
@@ -152,7 +152,7 @@
   async function postDemo(path,messages,model,signal){
     if(path!=="/api/demo-chat")throw Error("Ruta de modelo no autorizada.");
     const bearer=authorization();
-    if(!bearer)throw Error("Entrá con Google para usar la IA privada.");
+    if(!bearer)throw Error("Usá el enlace de email autorizado para entrar a la IA privada.");
     return fetch(path,{
       method:"POST",credentials:"same-origin",
       headers:{"Content-Type":"application/json",Authorization:bearer},
