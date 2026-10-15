@@ -79,8 +79,7 @@ Cloudflare may host a thin public shell, but it is not the canonical chat/memory
 - a real owner Sign in with ChatGPT connection/smoke plus owner-side verification that app credit use cannot create overage;
 - production entitlement for any retained DeepSeek NIM coding/model route;
 - exact-SHA **canonical Core** deployment and production smoke; a historical GLM-4.7-Flash demo response was observed on 2026-10-08, but the current public release is **static-only with no model inference** (2026-10-10); the account-level no-overage, owner login and canonical Core deployment remain uncertified; the public Worker continues to reject canonical `/api/chat`;
-- the public Workers AI demo is deployment-gated by explicit zero-cost confirmation; without it `/api/demo-chat` returns 503 rather than consuming unverified capacity.
-- the optional Qwen3.8 27B public-demo lane remains disabled unless `OLIVIA_DEMO_QWEN_ZERO_COST_CONFIRMED=1` is independently justified by a verified account-level no-overage boundary; enabling GLM is not sufficient. The demo returns the real model ID and answers direct model-identity questions locally.
+- the public Cloudflare Worker is static-only; all `/api/*` routes return 503, and no Auth0/Google login or model-inference path is shipped in that Worker.
 
 ## Development
 
