@@ -179,3 +179,13 @@
 - This is not an independent immutable billing safeguard: if Workers Free is upgraded to Paid or Unified Billing is configured, Qwen use must be re-evaluated or disabled. `scripts/verify_cloudflare_free.py` remains available when Billing Read is independently authorized.
 - References: https://developers.cloudflare.com/workers-ai/platform/pricing/ ; https://developers.cloudflare.com/workers-ai/models/qwen3.8-27b/ ; https://developers.cloudflare.com/api/resources/accounts/subresources/subscriptions/methods/get/
 
+
+
+## ADR-0018 — Retire the unreleased Auth0/Google Worker gate; keep the public shell static-only
+- Date: 2026-10-15
+- Status: accepted for this release
+- Decision: remove the unused Auth0 RS256 owner gate and its synthetic-only setup from the Cloudflare public shell. The shell serves static assets and public health metadata only; every `/api/*` route returns 503 and performs zero inference/quota side effects.
+- Identity: canonical owner login remains the Python Core's existing email/password registration and secure session-cookie implementation. This change does not remove or bypass that gate and does not make private Core routes public.
+- Deployment: retire the old interactive public-shell workflow and use the static no-AI deployment workflow. It runs on `main` updates, has no AI or CostGuard binding, and validates the immutable release SHA with GET-only health/asset smoke checks. The retained Durable Object export is inert for compatibility.
+- Rationale: the Auth0/Google browser login was never wired into the frontend/Core and the Auth0 gate was marked unreleased; maintaining two incompatible owner identity systems added dead code and misleading deployment paths.
+- Rollback: restore the retired files and workflow only after a real browser auth flow, owner enrollment, negative authorization tests, account cost boundary and production release review are implemented.

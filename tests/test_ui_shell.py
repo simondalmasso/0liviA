@@ -65,8 +65,8 @@ def test_demo_errors_are_not_presented_as_model_answers():
     assert "status:'error',\n        provider:null," in html
 
     e2e = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")
-    assert "provider failure is an alert, never a successful AI answer" in e2e
-    assert "assistant:not(.error)" in e2e
+    assert "static public shell is usable but clearly refuses inference" in e2e
+    assert "await expect(browser.locator('#messages .msg.assistant')).toHaveCount(0)" in e2e
     assert "toHaveCount(0)" in e2e
 
 
@@ -99,15 +99,15 @@ def test_home_intro_is_time_bounded_and_accessible():
     assert ".app.is-landing{grid-template-rows:1fr}" in html
     assert "publicDemoActive=demoReady" in html
 
-def test_deployment_smoke_tracks_live_monogram_home_not_removed_demo_cta():
-    workflow = Path(".github/workflows/deploy-public-shell.yml").read_text(encoding="utf-8")
+def test_deployment_smoke_tracks_static_home_and_no_inference_release():
+    workflow = Path(".github/workflows/deploy-public-static.yml").read_text(encoding="utf-8")
     assert "grep -Fq 'id=\"entryIntro\"'" in workflow
     assert "grep -Fq 'id=\"text\"'" in workflow
     assert "grep -Fq 'id=\"demoModelSelect\"'" in workflow
-    assert "grep -Fq 'Probar 0liviA ahora'" not in workflow
-    assert "confirm_account_no_overage:" in workflow
-    assert 'test "${CONFIRM_ACCOUNT_NO_OVERAGE:-}" = "true"' in workflow
+    assert "! grep -Fq 'Probar 0liviA ahora'" in workflow
+    assert "branches: [main]" in workflow
     assert '"release_sha": body.get("release_sha") == os.environ["RELEASE_SHA"]' in workflow
+    assert "confirm_account_no_overage:" not in workflow
 
 
 def test_home_monogram_gets_subtle_backlight_without_glowing_the_entire_shell():

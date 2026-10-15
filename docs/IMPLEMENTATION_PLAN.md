@@ -4,6 +4,15 @@ Branch: `main`
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
+## 2026-10-15 UTC — Auth0 retirement and static-only release (PR #125)
+
+- Current branch `remove-auth0-public-shell` removes the unreleased Auth0 RS256 Worker gate, synthetic Auth0 tests and setup instructions; canonical Core email/password/session-cookie authorization remains unchanged.
+- The public Worker is static-only: `/healthz` reports no inference, every `/api/*` route returns 503, and unit tests assert zero provider/quota calls regardless of bearer or identity headers.
+- The former interactive Workers AI deployment workflow is retired. `.github/workflows/deploy-public-static.yml` is the only Cloudflare deploy path and runs on canonical `main` updates with no AI/CostGuard binding, immutable SHA verification and GET-only live smoke checks.
+- Browser E2E now validates the explicit unavailable state instead of fabricating a model answer; live mode uses GET health and checks 503 API responses without sending a provider prompt.
+- Local Node Worker tests: 5 passed; JavaScript syntax and `git diff --check` passed. Initial remote CI identified stale source-contract tests that still assumed the removed demo; those tests are being updated to the static-only contract. No production deployment is claimed until CI is green and the main-merge deploy workflow reports live smoke success.
+- Canonical Python Core host deployment remains separate and blocked on privileged SSH / exact-SHA smoke prerequisites; a public Worker deploy is not a Core deployment.
+
 ## 2026-10-10 UTC — demo safety and deployment-control checkpoint
 
 - Main integration commit: `1c87b8dbeb0aea60a7c72fa89d074473e099c257` (PR #80). Branch CI for Python 3.11/3.12, static security, 360/430-px mobile smoke and mocked local E2E were GREEN; post-merge CI, mobile and local E2E also passed.
