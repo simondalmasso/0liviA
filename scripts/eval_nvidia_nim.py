@@ -10,8 +10,10 @@ import http.client
 import json
 import os
 import sys
+import time
 
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
+REQUEST_TIMEOUT_SECONDS = 120
 MODEL = "deepseek-ai/deepseek-v4.1-flash"
 ALLOWED_MODELS = {
     "deepseek": MODEL,
@@ -42,7 +44,10 @@ def main() -> int:
     }).encode("utf-8")
     # Fixed HTTPS origin/path; http.client never follows redirects, including
     # cross-origin redirects that could otherwise carry a bearer token.
-    conn = http.client.HTTPSConnection("integrate.api.nvidia.com", timeout=30)
+    started_at = time.monotonic()
+    conn = http.client.HTTPSConnection(
+        "integrate.api.nvidia.com", timeout=REQUEST_TIMEOUT_SECONDS
+    )
     try:
         conn.request("POST", "/v1/chat/completions", body, {
             "Authorization": "Bearer " + key,
@@ -52,20 +57,50 @@ def main() -> int:
         response = conn.getresponse()
         if response.status != 200:
             # Never print provider response bodies; they might reflect secrets.
-            print(f"NVIDIA_NIM_EVAL_FAIL: HTTP {response.status}", file=sys.stderr)
+            print(f"NVIDIA_NIM_EVAL_FAIL: HTTP {response.status} after {time.monotonic() - started_at:.1f}s", file=sys.stderr)
             return 1
         data = response.read(32_769)
         if len(data) > 32_768:
-            print("NVIDIA_NIM_EVAL_FAIL: oversized response", file=sys.stderr)
+            print(f"NVIDIA_NIM_EVAL_FAIL: oversized response after {time.monotonic() - started_at:.1f}s", file=sys.stderr)
             return 1
         result = json.loads(data)
         if not isinstance(result, dict) or not result.get("choices"):
-            print("NVIDIA_NIM_EVAL_FAIL: no model completion", file=sys.stderr)
+            print(f"NVIDIA_NIM_EVAL_FAIL: no model completion after {time.monotonic() - started_at:.1f}s", file=sys.stderr)
             return 1
         print("NVIDIA_NIM_TRIAL_EVAL_OK: internal-only; production eligibility NOT verified")
         return 0
-    except (http.client.HTTPException, TimeoutError, OSError, ValueError, json.JSONDecodeError):
-        print("NVIDIA_NIM_EVAL_FAIL: transport or response validation", file=sys.stderr)
+    except TimeoutError:
+        print(
+            f"NVIDIA_NIM_EVAL_FAIL: timeout after {time.monotonic() - started_at:.1f}s "
+            f"(limit {REQUEST_TIMEOUT_SECONDS}s)",
+            file=sys.stderr,
+        )
+        return 1
+    except http.client.HTTPException as exc:
+        print(
+            f"NVIDIA_NIM_EVAL_FAIL: HTTP transport error ({type(exc).__name__}) "
+            f"after {time.monotonic() - started_at:.1f}s",
+            file=sys.stderr,
+        )
+        return 1
+    except OSError as exc:
+        print(
+            f"NVIDIA_NIM_EVAL_FAIL: OS transport error ({type(exc).__name__}) "
+            f"after {time.monotonic() - started_at:.1f}s",
+            file=sys.stderr,
+        )
+        return 1
+    except json.JSONDecodeError:
+        print(
+            f"NVIDIA_NIM_EVAL_FAIL: invalid JSON response after {time.monotonic() - started_at:.1f}s",
+            file=sys.stderr,
+        )
+        return 1
+    except ValueError:
+        print(
+            f"NVIDIA_NIM_EVAL_FAIL: response validation error after {time.monotonic() - started_at:.1f}s",
+            file=sys.stderr,
+        )
         return 1
     finally:
         conn.close()
