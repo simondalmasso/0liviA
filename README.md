@@ -33,7 +33,7 @@ The public site is a **static-only interface**; the public Worker has no Auth0/G
 → isolated on-demand workers for coding, research/browser and voice
 → GitHub for durable engineering state.
 
-Cloudflare may host a thin public shell, but it is not the canonical chat/memory/voice backend. Canonical `/api/chat`, durable state, research and voice remain outside the Worker. The public shell may expose one isolated `/api/demo-chat` route only when account-level zero-cost behavior has been explicitly confirmed; that demo has no private memory/tools/search, uses a global server-side daily guard, and fails closed independently of the Python Core.
+Cloudflare hosts only the thin public static shell; it is not the canonical chat/memory/voice backend. Canonical `/api/chat`, durable state, research and voice remain outside the Worker. Every public Worker `/api/*` route returns 503, with no model inference or quota side effects. A future demo requires a separately reviewed identity contract and cost boundary before it can be reintroduced.
 
 ## Repository map
 
