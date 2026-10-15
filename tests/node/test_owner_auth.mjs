@@ -55,15 +55,13 @@ test("anonymous, spoofed headers, legacy bearer, forged Origin: no quota/model c
   assert.equal(f.calls.quota, 0);
 });
 
-test("signed non-owner Google user and incorrect stable owner identity return 403", async () => {
+test("provider-neutral signed non-owner and incorrect stable owner identity return 403", async () => {
   const f = backend();
   const ns = "https://0livia.app/claims/";
   const signedGuests = [
-    { sub: "google-oauth2|999999999999999999999" },
-    { [ns + "google_sub"]: "999999999999999999999" },
+    { sub: "auth0|different-owner-id" },
     { [ns + "email"]: "guest@example.com" },
     { [ns + "email_verified"]: false },
-    { [ns + "provider"]: "auth0" },
     { [ns + "session_version"]: "replayed-version" },
   ];
   for (const changes of signedGuests) {
@@ -111,7 +109,7 @@ test("revoked issuance epoch denies previously signed JWT and makes no side effe
 
 test("anonymous is 401, signed guest 403, owner gets 503 on private inactive APIs", async () => {
   const f = backend();
-  const guest = await signer.sign({ sub: "google-oauth2|999999999999999999999" });
+  const guest = await signer.sign({ sub: "auth0|non-owner-stable-id" });
   for (const path of [
     "/api/chat", "/api/read-url", "/api/jobs/code",
     "/api/sessions", "/api/auth/session", "/api/unknown",
@@ -129,7 +127,7 @@ test("anonymous is 401, signed guest 403, owner gets 503 on private inactive API
 });
 
 test("missing owner configuration prevents any inference, even with signed owner token", async () => {
-  const f = backend({ OLIVIA_OWNER_GOOGLE_SUB: "" });
+  const f = backend({ OLIVIA_OWNER_EMAIL: "" });
   const response = await worker.fetch(prompt(signer.token), f.env);
   assert.equal(response.status, 503);
   assert.equal(f.calls.ai, 0);
@@ -142,7 +140,7 @@ test("missing owner configuration prevents any inference, even with signed owner
 
 test("50 concurrent authenticated guests cannot consume private quota", async () => {
   const f = backend();
-  const guest = await signer.sign({ sub: "google-oauth2|999999999999999999999" });
+  const guest = await signer.sign({ sub: "auth0|non-owner-stable-id" });
   const responses = await Promise.all(Array.from({ length: 50 },
     () => worker.fetch(prompt(guest), f.env)));
   assert.ok(responses.every((response) => response.status === 403));
