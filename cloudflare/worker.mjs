@@ -2,6 +2,7 @@
 // all private state live in the canonical Python Core; this Worker never accepts
 // an Auth0/Google identity and never invokes a model provider.
 const PUBLIC_SHELL_ONLY = true;
+const TRANSITIONAL_BRIDGE_ENABLED = false;
 const DEMO_MODEL = "@cf/zai-org/glm-4.7-flash";
 const DEMO_QWEN_MODEL = "@cf/qwen/qwen3.8-27b";
 const DEMO_GEMMA_MODEL = "@cf/google/gemma-4-26b-a4b-it";
@@ -39,7 +40,7 @@ function health(env) {
     api_mode: "public_shell",
     public_shell: PUBLIC_SHELL_ONLY,
     static_only: true,
-    bridge_enabled: false,
+    bridge_enabled: TRANSITIONAL_BRIDGE_ENABLED,
     provider_ready: false,
     inference_enabled: false,
     demo_inference_enabled: false,
