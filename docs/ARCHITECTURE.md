@@ -81,22 +81,15 @@ Current implemented design:
 
 The harness is replaceable. OpenCode/other coding agents remain challengers, not permanent dependencies.
 
-## Public shell and isolated demo route
+## Public static shell and canonical Core auth
 
-`cloudflare/worker.mjs` exists as a thin public shell while the canonical Python Core is not yet deployed. It is **not** a replacement Core: canonical `/api/chat`, Projects, Library, Memory, jobs, research, coding and voice remain disabled on this Worker.
+`cloudflare/worker.mjs` serves the public static interface and non-sensitive health metadata only. It does not implement Auth0 or Google login, does not bind a model provider, and does not expose inference. Every `/api/*` route returns HTTP 503 without making provider or quota calls. The retired Auth0/Google Worker gate was unreleased and never wired into the browser or canonical Core.
 
-The shell may expose one explicitly non-canonical `POST /api/demo-chat` route when all of these conditions hold:
+Authentication and private data belong to the canonical Python Core: first-run single-owner email/password registration, a scrypt password verifier in SQLite, throttled login, and Secure/HttpOnly/SameSite session cookies. Never infer owner identity from request headers, browser state, a Google profile, or a public Worker token. The public shell is not the Core or a replacement Core and cannot serve authenticated chats, Projects, Library, Memory, jobs, research or voice.
 
-- Workers AI is bound as `AI`;
-- the SQLite Durable Object `COST_GUARD` is bound;
-- `OLIVIA_DEMO_ZERO_COST_CONFIRMED=1` exists only after account-level zero-cost behavior is verified;
-- requests are globally daily-capped, context/output bounded and secret-shaped text redacted before provider egress;
-- slash commands and all side effects remain rejected;
-- no demo conversation is persisted server-side.
+The no-AI static deployment workflow validates an immutable `main` SHA and uses GET-only live smoke checks for the root asset and `/healthz`. It has no Workers AI binding or Durable Object binding. The historical `CostGuard` export remains inert only to preserve the already-provisioned namespace shape; it is not bound and stores no quota state. Any future demo requires a separately reviewed identity contract, cost boundary, explicit approval, and tests before it can be reintroduced.
 
-The demo currently targets `@cf/zai-org/glm-4.7-flash`. It is a testable public conversation surface, not canonical provider state. `/healthz` therefore keeps `provider_ready:false` and `inference_enabled:false` for the canonical runtime while reporting separate `demo_provider_ready` metadata. `/api/chat` remains fail-closed at 503.
-
-When the canonical Python Core is active, Projects, Chats, Library and Memory are server-side SQLite state and the browser reconciles them through authenticated workspace/session APIs. IndexedDB remains only a disposable cache and one-shot migration layer. In public-demo mode, workspace state remains local-only and must not be presented as durable multi-device state.
+When the canonical Python Core is active, Projects, Chats, Library and Memory are server-side SQLite state and the browser reconciles them through authenticated workspace/session APIs. IndexedDB remains only a disposable cache and one-shot migration layer.
 
 ## Owner identity
 
