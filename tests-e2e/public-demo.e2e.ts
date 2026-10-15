@@ -43,10 +43,9 @@ test('static public shell is usable but clearly refuses inference', async ({ app
 
   const message = screen.getByRole('textbox', { name: 'Mensaje' });
   await expect(message).toBeEnabled();
-  await message.fill('Comprobá que el modo estático no simula una respuesta de IA.');
-  await screen.getByRole('button', { name: 'Enviar' }).tap();
-
-  await expect(browser.locator('#messages [role="alert"]')).toContainText('La demo no respondió');
-  await expect(browser.locator('#messages .msg.assistant:not(.error)')).toHaveCount(0);
+  await expect(browser.locator('#publicStatus')).toBeVisible();
+  await expect(browser.locator('#publicStatus')).toContainText('Chat IA no conectado');
+  await expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
+  await expect(browser.locator('#messages .msg.assistant')).toHaveCount(0);
   await expect(browser.locator('#messages .provider-pill')).toHaveCount(0);
 });
