@@ -13,7 +13,7 @@ def test_product_docs_do_not_claim_stale_build_state():
     assert "MiniMax — voice contracts" not in plan
     assert "olivia/voice/" in readme
     architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
-    assert "Public shell and isolated demo route" in architecture
+    assert "Public static shell and canonical Core auth" in architecture
     assert "replacement Core" in architecture
 
 
