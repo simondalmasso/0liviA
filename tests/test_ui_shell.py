@@ -66,7 +66,7 @@ def test_demo_errors_are_not_presented_as_model_answers():
 
     e2e = Path("tests-e2e/public-demo.e2e.ts").read_text(encoding="utf-8")
     assert "static public shell is usable but clearly refuses inference" in e2e
-    assert "assistant:not(.error)" in e2e
+    assert "await expect(browser.locator('#messages .msg.assistant')).toHaveCount(0)" in e2e
     assert "toHaveCount(0)" in e2e
 
 
