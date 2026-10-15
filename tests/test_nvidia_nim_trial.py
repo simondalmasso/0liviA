@@ -111,3 +111,35 @@ def test_muse_evaluation_is_fixed_origin_bounded_and_does_not_log_output(monkeyp
     assert observed["data"]["max_tokens"] == 64
     assert observed["data"]["messages"] == [{"role": "user", "content": "Respond only with: OK"}]
     assert observed["closed"] is True
+
+
+def test_timeout_has_safe_specific_diagnostic_and_longer_bounded_deadline(monkeypatch, capsys):
+    module = load_probe()
+    monkeypatch.setenv("NVIDIA_NIM_TRIAL_NONBILLABLE_CONFIRMED", "1")
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-fake-never-printed")
+    monkeypatch.setenv("NVIDIA_NIM_EVAL_MODEL", "deepseek")
+    observed = {}
+
+    class Connection:
+        def __init__(self, host, timeout):
+            observed["host"] = host
+            observed["timeout"] = timeout
+
+        def request(self, method, path, body, headers):
+            observed["request"] = (method, path)
+
+        def getresponse(self):
+            raise TimeoutError("provider message must not be logged")
+
+        def close(self):
+            observed["closed"] = True
+
+    monkeypatch.setattr(module.http.client, "HTTPSConnection", Connection)
+    assert module.main() == 1
+    output = capsys.readouterr()
+    assert observed["timeout"] == 120
+    assert observed["closed"] is True
+    assert "NVIDIA_NIM_EVAL_FAIL: timeout" in output.err
+    assert "after" in output.err and "120s" in output.err
+    assert "provider message must not be logged" not in output.out + output.err
+    assert "nvapi-" not in output.out + output.err
