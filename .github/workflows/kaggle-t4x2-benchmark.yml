@@ -1,0 +1,212 @@
+name: 0liviA Kaggle T4×2 Offline Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      kaggle_username:
+        description: "Your Kaggle account slug (not an API token)"
+        required: true
+        type: string
+      dataset_slug:
+        description: "Private dataset slug containing one GGUF and one manifest.json (owner/dataset)"
+        required: true
+        type: string
+      timeout_minutes:
+        description: "Maximum requested Kaggle GPU runtime"
+        required: true
+        type: choice
+        options: ["60", "120", "180", "240"]
+        default: "180"
+      confirm_private_dataset:
+        description: "I verified the selected Kaggle dataset is private"
+        required: true
+        type: boolean
+        default: false
+      confirm_gpu_session:
+        description: "I confirm this will consume my Kaggle GPU quota"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: olivia-kaggle-t4x2-benchmark
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Checkout read-only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Kaggle CLI
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "kaggle==2.2.5"
+          kaggle --version
+
+      - name: Require explicit GPU confirmation and validate inputs
+        env:
+          CONFIRM_PRIVATE: ${{ inputs.confirm_private_dataset }}
+          CONFIRM_GPU: ${{ inputs.confirm_gpu_session }}
+          KAGGLE_USERNAME: ${{ inputs.kaggle_username }}
+          DATASET_SLUG: ${{ inputs.dataset_slug }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -euo pipefail
+          [[ "${CONFIRM_PRIVATE}" == "true" ]] || {
+            echo "Private dataset status not confirmed. No Kaggle kernel was pushed." >&2
+            exit 1
+          }
+          [[ "${CONFIRM_GPU}" == "true" ]] || {
+            echo "GPU session not confirmed. No Kaggle kernel was pushed."
+            exit 1
+          }
+          [[ "${KAGGLE_USERNAME}" =~ ^[A-Za-z0-9_-]{1,30}$ ]] || {
+            echo "Invalid Kaggle username slug." >&2
+            exit 1
+          }
+          [[ "${DATASET_SLUG}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+            echo "Dataset must be owner/dataset-slug." >&2
+            exit 1
+          }
+          case "${TIMEOUT_MINUTES}" in
+            60|120|180|240) ;;
+            *) echo "Unsupported GPU runtime." >&2; exit 1 ;;
+          esac
+
+      - name: Check API access, quota and dataset file prerequisites
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
+          DATASET_SLUG: ${{ inputs.dataset_slug }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KAGGLE_API_TOKEN:-}" ]]; then
+            echo "Missing repository secret OLIVIA_KAGGLE_API_TOKEN." >&2
+            exit 1
+          fi
+          quota_file="${RUNNER_TEMP}/kaggle-quota.csv"
+          kaggle quota -v > "${quota_file}"
+          required_hours="$(python -c 'import os; print(int(os.environ["TIMEOUT_MINUTES"]) / 60)')"
+          python scripts/check_kaggle_quota.py --csv "${quota_file}" --required-hours "${required_hours}" --summary-file "${GITHUB_STEP_SUMMARY}"
+          # This read-only call verifies dataset access and required files. The manual
+          # confirm_private_dataset input is the owner's privacy attestation.
+          kaggle datasets files "${DATASET_SLUG}" -v > "${RUNNER_TEMP}/kaggle-dataset-files.txt"
+          test -s "${RUNNER_TEMP}/kaggle-dataset-files.txt"
+          manifest_count="$(grep -Eic "manifest\\.json" "${RUNNER_TEMP}/kaggle-dataset-files.txt" || true)"
+          gguf_count="$(grep -Eic "\\.gguf([\",[:space:]]|$)" "${RUNNER_TEMP}/kaggle-dataset-files.txt" || true)"
+          [[ "${manifest_count}" == "1" ]] || { echo "Dataset must expose exactly one manifest.json." >&2; exit 1; }
+          [[ "${gguf_count}" -ge 1 ]] || { echo "Dataset must expose at least one GGUF file." >&2; exit 1; }
+          echo "- Dataset access: verified; required files found; privacy confirmed by operator" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Prepare private Kaggle kernel metadata
+        env:
+          KAGGLE_USERNAME: ${{ inputs.kaggle_username }}
+          DATASET_SLUG: ${{ inputs.dataset_slug }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/olivia-kaggle-kernel"
+          cp benchmarks/kaggle_t4/0livia_t4x2_offline_benchmark.ipynb "${RUNNER_TEMP}/olivia-kaggle-kernel/"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metadata = {
+              "id": f'{os.environ["KAGGLE_USERNAME"]}/0livia-t4x2-offline-benchmark',
+              "title": "0liviA T4x2 Offline Benchmark",
+              "code_file": "0livia_t4x2_offline_benchmark.ipynb",
+              "language": "python",
+              "kernel_type": "notebook",
+              "is_private": True,
+              "enable_gpu": True,
+              "enable_internet": True,
+              "machine_shape": "NvidiaTeslaT4",
+              "dataset_sources": [os.environ["DATASET_SLUG"]],
+              "competition_sources": [],
+              "kernel_sources": [],
+              "model_sources": [],
+          }
+          target = Path(os.environ["RUNNER_TEMP"]) / "olivia-kaggle-kernel" / "kernel-metadata.json"
+          target.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Push private T4x2 notebook (GPU quota will be consumed)
+        id: push
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
+          KAGGLE_USERNAME: ${{ inputs.kaggle_username }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -euo pipefail
+          kernel_ref="${KAGGLE_USERNAME}/0livia-t4x2-offline-benchmark"
+          timeout_seconds="$((TIMEOUT_MINUTES * 60))"
+          output_file="${RUNNER_TEMP}/kaggle-push-output.txt"
+          kaggle kernels push \
+            -p "${RUNNER_TEMP}/olivia-kaggle-kernel" \
+            --accelerator NvidiaTeslaT4 \
+            --timeout "${timeout_seconds}" 2>&1 | tee "${output_file}"
+          echo "kernel_ref=${kernel_ref}" >> "${GITHUB_OUTPUT}"
+          echo "kernel_url=https://www.kaggle.com/code/${kernel_ref}" >> "${GITHUB_OUTPUT}"
+          echo "- Kaggle kernel: https://www.kaggle.com/code/${kernel_ref}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Requested accelerator: NvidiaTeslaT4 (T4 ×2)" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Kaggle-side timeout: ${TIMEOUT_MINUTES} minutes" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Wait for Kaggle kernel completion
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
+          KERNEL_REF: ${{ steps.push.outputs.kernel_ref }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -euo pipefail
+          deadline="$((SECONDS + TIMEOUT_MINUTES * 60 + 900))"
+          while (( SECONDS < deadline )); do
+            status_output="$(kaggle kernels status "${KERNEL_REF}" 2>&1)"
+            printf '%s\n' "${status_output}"
+            lower="${status_output,,}"
+            if [[ "${lower}" == *"complete"* ]]; then
+              echo "Kaggle kernel completed." >> "${GITHUB_STEP_SUMMARY}"
+              exit 0
+            fi
+            if [[ "${lower}" == *"error"* || "${lower}" == *"failed"* || "${lower}" == *"cancelled"* ]]; then
+              echo "Kaggle kernel failed. No benchmark PASS is recorded." >> "${GITHUB_STEP_SUMMARY}"
+              exit 1
+            fi
+            if [[ "${lower}" != *"running"* && "${lower}" != *"queued"* && "${lower}" != *"pending"* && "${lower}" != *"initial"* ]]; then
+              echo "Unrecognized Kaggle status; stopping without submitting another run." >&2
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "Timed out waiting for Kaggle. Inspect the private kernel status before retrying." >&2
+          exit 1
+
+      - name: Download and validate sanitized benchmark summary (no raw artifact upload)
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
+          KERNEL_REF: ${{ steps.push.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          output_dir="${RUNNER_TEMP}/kaggle-output"
+          mkdir -p "${output_dir}"
+          kaggle kernels output "${KERNEL_REF}" -p "${output_dir}" --file-pattern '(^|/)metrics[.]json$' --quiet
+          metrics_file="$(find "${output_dir}" -type f -name metrics.json -print -quit)"
+          test -n "${metrics_file}" && test -s "${metrics_file}"
+          if [[ "${metrics_file}" != "${output_dir}/metrics.json" ]]; then
+            cp "${metrics_file}" "${output_dir}/metrics.json"
+          fi
+          python scripts/summarize_kaggle_metrics.py "${output_dir}/metrics.json" --summary-file "${RUNNER_TEMP}/kaggle-result-summary.md"
+          cat "${RUNNER_TEMP}/kaggle-result-summary.md" >> "${GITHUB_STEP_SUMMARY}"
+          rm -rf "${output_dir}" "${RUNNER_TEMP}/olivia-kaggle-kernel"

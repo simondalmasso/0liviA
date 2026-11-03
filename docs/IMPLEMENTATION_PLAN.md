@@ -4,6 +4,16 @@ Branch: `main` (Kaggle/OCI research and benchmark hardening merged through PRs #
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
+## 2026-11-03 JST — Kaggle API automation wiring (pending first account preflight)
+
+- Added a dedicated read-only GitHub Actions preflight that installs Kaggle CLI 2.2.5, authenticates via repository secret `OLIVIA_KAGGLE_API_TOKEN`, and reads weekly GPU quota with `kaggle quota -v`. It does not push or run a notebook and allocates no GPU.
+- Added a separate, manual-only T4×2 workflow. It requires the Kaggle username, an accessible `owner/dataset` slug, 60–240 minute runtime, an explicit owner attestation that the dataset is private, and a separate confirmation that GPU quota may be consumed.
+- Before the push, the workflow checks the secret/authenticated quota, compares remaining quota to the maximum requested runtime, and validates one `manifest.json` plus at least one GGUF file in the attached dataset. Kaggle's T4×2 pool identifier is `NvidiaTeslaT4`; Kaggle staff state one hour of T4×2 notebook runtime consumes one GPU-quota hour.
+- The API token is exposed only to GitHub Actions CLI steps; it is not embedded in notebook metadata or passed into Kaggle's notebook runtime. The kernel is marked private and uses synthetic fixtures only.
+- Added fail-closed parsers/tests for quota hour suffixes (the official CLI emits values such as `7.50h`) and a sanitized benchmark summarizer that retains throughput/VRAM measurements but filters raw paths, filenames, notes and generated output.
+- **PREFLIGHT NOT YET VERIFIED:** the secret value is never read by the assistant. The preflight will test it automatically when this branch is merged to `main`; success/failure and reported remaining quota will be recorded from the run.
+- **GPU BENCHMARK NOT RUN:** no kernel has been pushed and no T4 quota has been consumed. The manual GPU workflow remains gated by the two operator confirmations and actual dataset slug.
+
 ## 2026-11-03 JST — Kaggle benchmark hardening follow-up
 
 - PR #134 merged as `e8333917ff05407ab704b9d0694a220f4c917b0b`: resolved ShellCheck SC2329 for the cleanup function registered through the EXIT trap. Static security audit now passes.
