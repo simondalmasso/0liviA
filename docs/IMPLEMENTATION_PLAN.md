@@ -1,8 +1,18 @@
 # Implementation plan — productization checkpoint
 
-Branch: `main`
+Branch: `main` (current documentation work is staged on `docs/oci-kaggle-research-update`)
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
+
+## 2026-11-03 JST / 2026-11-02 ART — OCI + Kaggle research update (documentation/website only)
+
+- Preserved the OCI capacity baseline prepared on `docs/oci-capacity-baseline`.
+- Read both Sakana Kaggle T4×2 proposals in full and re-opened Kaggle AUP, Terms, Notebook specifications, GPU usage guidance and the Qwen model cards.
+- Added ADR-0019: Kaggle is a private, manual, offline evaluation lab only; no serving endpoint, tunnel, heartbeat or 0liviA worker.
+- Added the 12-stage offline benchmark template, synthetic fixture, model manifest/hash checks and per-GPU memory gates under `benchmarks/kaggle_t4/`.
+- Added a static engineering page under `web/kaggle-t4.html`; the public static deployment workflow can publish it after merge to `main`.
+- No production code, router, model registry, coding workflow, Cloudflare Worker configuration or canonical Core was changed.
+- **NOT RUN:** no Kaggle session/GPU/model benchmark. No deployment is claimed until the main-branch CI and static deploy workflow report success and the live page is fetched.
 
 ## 2026-10-15 UTC — Auth0 retirement and static-only production release (PR #127)
 
