@@ -159,9 +159,11 @@ Latest Live Voice client regression evidence:
 Purpose: compare quantized coding models as an ML evaluation exercise. This does not qualify Kaggle as a 0liviA provider or service.
 
 ### Candidate order
-1. Qwen3.6-35B-A3B (primary).
-2. Qwen3-Coder-30B-A3B-Instruct (coding-specialist comparator).
-3. Qwen3.8-27B (dense comparator, optional second round).
+1. Qwen3-Coder-30B-A3B-Instruct — baseline; 30.5B total / 3.3B active; official ggml-org Q4_K_M GGUF approximately 18 GB; architecture qwen3moe.
+2. Qwen3.6-35B-A3B — challenger; 35B total / 3B active; official ggml-org Q4_K_M GGUF 20.4 GB; architecture qwen35moe.
+3. Qwen3.8-27B — dense comparator; 27.8B; official ggml-org Q4_K_M GGUF approximately 19 GB; architecture qwen35.
+
+The pinned llama.cpp commit 2cbca389f515df455412dafa07e2b1359cc72a6d contains runtime model loaders for all three architecture families. This is source-level compatibility evidence, not a substitute for loading each exact GGUF and completing a first generation on the two T4 devices. File size is not a VRAM measurement; split, CUDA buffers and KV cache must be measured per GPU.
 
 ### Runtime profile
 - Kaggle Notebook accelerator: T4×2; verify two actual Tesla T4 devices, compute capability 7.5, and memory before compiling/loading.
@@ -169,6 +171,10 @@ Purpose: compare quantized coding models as an ML evaluation exercise. This does
 - llama.cpp GGUF, CUDA SM 7.5, pinned commit `2cbca389f515df455412dafa07e2b1359cc72a6d`, `llama-bench` and `llama-cli`.
 - Start with `--split-mode layer` / `-sm layer` and balanced `-ts 1,1`; measure per-GPU VRAM. Do not assume a unified 32 GB memory pool.
 - No `llama-server`, vLLM/SGLang serving process, HTTP endpoint, tunnel, proxy, heartbeat or connection to the 0liviA Core.
+
+### Scope distinction
+
+The current notebook is a model qualification benchmark: GGUF load, prefill/decode throughput, per-GPU VRAM samples and ten restricted single-file synthetic function checks. It does not measure repository-level agent completion, multi-file edits, tool-call correctness or test-guided repair. Aider is intentionally not part of this run because the approved notebook calls llama-cli directly and does not start an HTTP inference server. A separate multi-file harness must be designed before drawing conclusions about 0liviA's full coding-agent quality.
 
 ### Notebook sequence
 1. Policy/scope guardrail.
