@@ -56,10 +56,9 @@ jobs:
           python -m pip install --disable-pip-version-check "six==1.17.0" "kaggle==2.2.5"
           kaggle --version
 
-      - name: Require explicit GPU confirmation and validate inputs
+      - name: Require explicit privacy confirmation and validate inputs
         env:
           CONFIRM_PRIVATE: ${{ inputs.confirm_private_dataset }}
-          CONFIRM_GPU: ${{ inputs.confirm_gpu_session }}
           KAGGLE_USERNAME: ${{ inputs.kaggle_username }}
           DATASET_SLUG: ${{ inputs.dataset_slug }}
           TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
@@ -67,10 +66,6 @@ jobs:
           set -euo pipefail
           [[ "${CONFIRM_PRIVATE}" == "true" ]] || {
             echo "Private dataset status not confirmed. No Kaggle kernel was pushed." >&2
-            exit 1
-          }
-          [[ "${CONFIRM_GPU}" == "true" ]] || {
-            echo "GPU session not confirmed. No Kaggle kernel was pushed."
             exit 1
           }
           [[ "${KAGGLE_USERNAME}" =~ ^[A-Za-z0-9_-]{1,30}$ ]] || {
@@ -111,7 +106,14 @@ jobs:
           [[ "${gguf_count}" -ge 1 ]] || { echo "Dataset must expose at least one GGUF file." >&2; exit 1; }
           echo "- Dataset access: verified; required files found; privacy confirmed by operator" >> "${GITHUB_STEP_SUMMARY}"
 
+      - name: Read-only preflight complete (no GPU launched)
+        if: ${{ inputs.confirm_gpu_session != true }}
+        run: |
+          echo "- GPU launch: not authorized; no Kaggle kernel was pushed and no GPU quota was consumed." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Read-only preflight succeeded. Re-run manually with confirm_gpu_session=true only when ready to launch."
+
       - name: Prepare private Kaggle kernel metadata
+        if: ${{ inputs.confirm_gpu_session == true }}
         env:
           KAGGLE_USERNAME: ${{ inputs.kaggle_username }}
           DATASET_SLUG: ${{ inputs.dataset_slug }}
@@ -144,6 +146,7 @@ jobs:
           PY
 
       - name: Push private T4x2 notebook (GPU quota will be consumed)
+        if: ${{ inputs.confirm_gpu_session == true }}
         id: push
         env:
           KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
@@ -165,6 +168,7 @@ jobs:
           echo "- Kaggle-side timeout: ${TIMEOUT_MINUTES} minutes" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Wait for Kaggle kernel completion
+        if: ${{ inputs.confirm_gpu_session == true }}
         env:
           KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
           KERNEL_REF: ${{ steps.push.outputs.kernel_ref }}
@@ -194,6 +198,7 @@ jobs:
           exit 1
 
       - name: Download and validate sanitized benchmark summary (no raw artifact upload)
+        if: ${{ inputs.confirm_gpu_session == true }}
         env:
           KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
           KERNEL_REF: ${{ steps.push.outputs.kernel_ref }}
