@@ -52,6 +52,7 @@ def test_notebook_has_ten_synthetic_tasks_and_exports_metrics():
     assert "SYNTHETIC_PASS_AT_1" in source
     assert "passed_count" in source
     assert '"metrics.json"' in source
+    assert "llama_bench_results" in source
 
 
 def test_notebook_samples_vram_and_separates_model_output_from_logs():
