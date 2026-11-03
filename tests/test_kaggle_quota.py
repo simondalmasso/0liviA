@@ -68,16 +68,26 @@ def test_writes_github_step_summary_when_requested(tmp_path, monkeypatch):
     assert "Required for requested run: **2 h**" in content
 
 
-def test_required_hours_fails_closed_when_quota_is_too_low(tmp_path, monkeypatch):
+def test_required_hours_fails_closed_and_records_blocked_summary(tmp_path, monkeypatch):
     import sys
 
     quota_csv = tmp_path / "quota.csv"
     quota_csv.write_text("resource,used,remaining,total\nGPU,9.00h,1.00h,10.00h\n", encoding="utf-8")
+    summary = tmp_path / "summary.md"
     monkeypatch.setattr(
         sys,
         "argv",
-        ["check_kaggle_quota.py", "--csv", str(quota_csv), "--required-hours", "2"],
+        [
+            "check_kaggle_quota.py",
+            "--csv",
+            str(quota_csv),
+            "--required-hours",
+            "2",
+            "--summary-file",
+            str(summary),
+        ],
     )
     with pytest.raises(SystemExit) as exc:
         main()
-    assert exc.value.code == 3\n    assert "Launch blocked" in summary.read_text(encoding="utf-8")
+    assert exc.value.code == 3
+    assert "Launch blocked" in summary.read_text(encoding="utf-8")
