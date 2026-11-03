@@ -93,9 +93,13 @@ jobs:
           python scripts/check_kaggle_quota.py --csv "${quota_file}" --required-hours "${required_hours}" --summary-file "${GITHUB_STEP_SUMMARY}"
           # This read-only call also verifies that the supplied private dataset is visible
           # to the account before a GPU session can be requested.
-          kaggle datasets files "${DATASET_SLUG}" -v > "${RUNNER_TEMP}/kaggle-dataset-files.csv"
-          test -s "${RUNNER_TEMP}/kaggle-dataset-files.csv"
-          echo "- Private dataset access: verified for `${DATASET_SLUG}`" >> "${GITHUB_STEP_SUMMARY}"
+          kaggle datasets files "${DATASET_SLUG}" -v > "${RUNNER_TEMP}/kaggle-dataset-files.txt"
+          test -s "${RUNNER_TEMP}/kaggle-dataset-files.txt"
+          manifest_count="$(grep -Eic "manifest\\.json" "${RUNNER_TEMP}/kaggle-dataset-files.txt" || true)"
+          gguf_count="$(grep -Eic "\\.gguf([[:space:]]|$)" "${RUNNER_TEMP}/kaggle-dataset-files.txt" || true)"
+          [[ "${manifest_count}" == "1" ]] || { echo "Dataset must expose exactly one manifest.json." >&2; exit 1; }
+          [[ "${gguf_count}" -ge 1 ]] || { echo "Dataset must expose at least one GGUF file." >&2; exit 1; }
+          echo "- Private dataset access: verified; manifest.json and GGUF present" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Prepare private Kaggle kernel metadata
         env:
@@ -187,8 +191,10 @@ jobs:
           set -euo pipefail
           output_dir="${RUNNER_TEMP}/kaggle-output"
           mkdir -p "${output_dir}"
-          kaggle kernels output "${KERNEL_REF}" -p "${output_dir}" --file-pattern '^metrics\.json$' --quiet
-          test -s "${output_dir}/metrics.json"
+          kaggle kernels output "${KERNEL_REF}" -p "${output_dir}" --file-pattern '(^|/)metrics\\.json$' --quiet
+          metrics_file="$(find "${output_dir}" -type f -name metrics.json -print -quit)"
+          test -n "${metrics_file}" && test -s "${metrics_file}"
+          cp "${metrics_file}" "${output_dir}/metrics.json"
           python scripts/summarize_kaggle_metrics.py "${output_dir}/metrics.json" --summary-file "${RUNNER_TEMP}/kaggle-result-summary.md"
           cat "${RUNNER_TEMP}/kaggle-result-summary.md" >> "${GITHUB_STEP_SUMMARY}"
           rm -rf "${output_dir}" "${RUNNER_TEMP}/olivia-kaggle-kernel"
