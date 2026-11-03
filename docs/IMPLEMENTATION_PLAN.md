@@ -11,6 +11,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Added ADR-0019: Kaggle is a private, manual, offline evaluation lab only; no serving endpoint, tunnel, heartbeat or 0liviA worker.
 - Added the 12-stage offline benchmark template, synthetic fixture, model manifest/hash checks and per-GPU memory gates under `benchmarks/kaggle_t4/`.
 - Added a static engineering page under `web/kaggle-t4.html`; the public static deployment workflow can publish it after merge to `main`.
+- Pinned the mobile Playwright smoke runner to Ubuntu 24.04 after the hosted `ubuntu-latest` image moved to Ubuntu 26.04, which Playwright 1.55.0 does not support.
 - No production code, router, model registry, coding workflow, Cloudflare Worker configuration or canonical Core was changed.
 - **NOT RUN:** no Kaggle session/GPU/model benchmark. No deployment is claimed until the main-branch CI and static deploy workflow report success and the live page is fetched.
 
