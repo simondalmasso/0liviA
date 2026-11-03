@@ -1,23 +1,20 @@
 # Research notes
 
-Last updated: 2026-10-04
+Last updated: 2026-11-03 (JST) / 2026-11-02 (ART)
 
 This file records externally verified facts that can affect architecture. Candidate status is not approval.
 
 ## Target infrastructure
 
-Oracle Cloud Free Tier account inspection reported:
+The 2026-10-04 resource table below was an early account snapshot and is **superseded**. Do not use its historical values (including “0 VMs” or “153 GB free block storage”) as current.
 
-| Resource | Available |
-|---|---:|
-| Region | `sa-saopaulo-1` |
-| Ampere A1 | 2 OCPU / 12 GB RAM free |
-| E2.1.Micro | up to 2 × 1 OCPU / 1 GB |
-| Block storage | 153 GB free of 200 GB |
-| Object Storage | ~20 GiB free |
-| Existing compute | 0 VMs |
+Current read-only account inventory and quota evidence is maintained in [docs/INFRA_CAPACITY_BASELINE.md](INFRA_CAPACITY_BASELINE.md), last checked 2026-11-02:
+- A1 Flex quota: 2 OCPU / 12 GB RAM, usage 0; remaining quota is not proof of physical capacity.
+- E2.1.Micro quota: 2 OCPU, fully used by two running instances; 2 GB RAM total.
+- Two 50 GB boot volumes; no extra block volumes or boot backups found.
+- Total GB block-storage allowance and billing entitlement were not established.
 
-Immediate physical A1 capacity was **not verifiable read-only**. Administrative quota is available.
+Use the dated baseline for current infrastructure decisions; re-check OCI before any provisioning or cost claim.
 
 ## Voice transport
 
@@ -490,3 +487,59 @@ What it does **not** establish:
 - Cloudflare Workers AI supports Qwen3.8 27B with `max_completion_tokens` and optional `reasoning_effort`; Workers Free applies 10,000 neurons/day at no charge and blocked overages. Some *other* models require paid plans, so model identity alone does not prove entitlement.
 - NVIDIA NIM's listed model string is `deepseek-ai/deepseek-v4.1-flash` at `integrate.api.nvidia.com/v1/chat/completions`, not a Cloudflare `@cf/` model. GitHub secrets are not automatically injected into Cloudflare Workers. Free trial rights do not include production use; an optional manual trial-only workflow is safer than exposing a trial key in a public chat route.
 - Evidence sources: Cloudflare docs and NVIDIA official API + trial terms. Actual key validity and trial credits **not tested** at commit time. No production NVIDIA deployment, no paid entitlement inferred.
+
+
+## Kaggle T4×2 offline coding-model evaluation — 2026-11-03 JST / 2026-11-02 ART
+
+This research records the Sakana engineering proposals after reading both complete HTML documents and independently reopening the relevant official sources. It is a design/evidence update, **not a completed GPU benchmark**.
+
+### Platform constraints and policy
+
+Official Kaggle Notebook documentation currently lists:
+- T4×2: two NVIDIA Tesla T4 GPUs, 4 CPU cores and 29 GB RAM;
+- 12 hours maximum execution for CPU/GPU notebook sessions;
+- 20 GB auto-saved storage under `/kaggle/working`, plus scratch storage that is not preserved outside the current session.
+
+Kaggle's Efficient GPU Usage page describes a weekly GPU quota of 30 hours, sometimes higher depending on demand and resources. This is not a guaranteed entitlement for every account or every week; the account's own quota panel is the operational source of truth. GPU availability may also be constrained.
+
+The active Kaggle AUP (version dated 2025-06-22 when checked) expressly lists server farming and activity unrelated to ML/data science among resource-abuse examples. Kaggle Terms (same effective date) limit use to the user's own internal, personal, non-commercial use and not on behalf of or for the benefit of a third party.
+
+**Architecture decision:** do not use Kaggle as a persistent inference API, tunnel-backed endpoint, heartbeat-maintained service, GitHub Actions provider, or 0liviA worker. Use it only as a private, manual, bounded ML evaluation lab, disconnected from the Core. This is a conservative engineering decision based on the policy text, not a claim that Kaggle has issued an individual ruling on every possible inference experiment.
+
+### Model candidates
+
+1. **Qwen3.6-35B-A3B** — primary evaluation candidate. Model card reports 35B total / 3B active, hybrid Gated DeltaNet + attention, native 262K context and Apache-2.0. The published coding results (including SWE-bench Verified 73.4, SWE-bench Pro 49.5 and Terminal-Bench 2.0 51.5) are vendor-reported and use the vendor's own harness/settings; they are not 0liviA measurements. The selected Unsloth UD-Q4_K_XL artifact is estimated around 22.4 GB; confirm the exact file, source, license and SHA-256 before use.
+2. **Qwen3-Coder-30B-A3B-Instruct** — coding-specialist comparator/contingency. Official model card reports 30.5B total / 3.3B active, 48 layers and native 262K context. It recommends reducing context (for example 32K) if OOM occurs. The GGUF quantization and exact hash must be pinned before running.
+3. **Qwen3.8-27B** — dense quality comparator. Official model card reports 27B parameters, native 262K context and a hybrid attention layout; the ggml-org Q4_K_M listing is approximately 19 GB. Treat vendor benchmarks as claims to compare, not as proof of local performance.
+4. **GLM-4.7-Flash / Devstral Small 2 / DeepSeek-Coder-V2-Lite** — later challengers only if the first bake-off reveals a reason to expand. Do not add all candidates to the first session.
+5. **Qwen3-Coder-Next and Kimi K2.5** — excluded from the initial 2×T4 plan because their full weight footprints do not fit the available aggregate memory in the proposed quantizations.
+
+MoE active-parameter counts are not the memory footprint: all required expert weights still need to be resident or otherwise available to the runtime.
+
+### Runtime and memory model
+
+Use llama.cpp + GGUF as the first benchmark runtime, built from a pinned upstream commit and compiled for CUDA SM 7.5. Use the CLI tools `llama-bench` and `llama-cli` only. Begin with multi-GPU `layer` split and a balanced split; do not use `llama-server`, vLLM/SGLang endpoints, tunnels, proxies or network serving in Kaggle.
+
+Two T4s have separate VRAM pools (16 GB nominal each); they are not one unified 32 GB GPU. Weight placement, KV cache and runtime buffers must fit independently on each card. Approximate KV-per-token figures in the engineering proposal (Qwen3.6 ~20 KiB, Qwen3-Coder ~96 KiB, Qwen3.8 ~64 KiB in FP16) are planning estimates and must be checked against the selected runtime/model metadata. Start with 8K/16K context, then 32K; test 64K only if VRAM margin remains.
+
+### Reproducibility and privacy
+
+- Keep model weights in a private Kaggle Dataset attached as notebook input; do not commit weights to Git.
+- Keep the notebook private while evaluating; use only synthetic prompts/fixtures, never user conversations, credentials, repo secrets or private production data.
+- Record model ID, source URL, license, quantization, exact file name, SHA-256, llama.cpp commit, CUDA/driver, GPU names, context, split, seed, command, timings and per-GPU VRAM.
+- Export only sanitized `metrics.json` and synthetic task outputs. No credentials, tokens, private prompts or user data.
+- The public notebook template must never start a server or tunnel. Stop the interactive session manually after exporting results.
+
+### Official sources
+
+- Kaggle AUP: https://www.kaggle.com/aup (version 2025-06-22 when checked).
+- Kaggle Terms: https://www.kaggle.com/terms (effective 2025-06-22 when checked).
+- Kaggle Notebook technical specifications: https://www.kaggle.com/docs/notebooks#technical-specifications
+- Kaggle Efficient GPU Usage: https://www.kaggle.com/docs/efficient-gpu-usage
+- NVIDIA T4: https://www.nvidia.com/en-us/data-center/tesla-t4/
+- Qwen3.6-35B-A3B: https://huggingface.co/Qwen/Qwen3.6-35B-A3B
+- Qwen3-Coder-30B-A3B-Instruct: https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct
+- Qwen3.8-27B: https://huggingface.co/Qwen/Qwen3.8-27B
+- ggml-org Qwen3.8 GGUF: https://huggingface.co/ggml-org/Qwen3.8-27B-GGUF
+- llama.cpp multi-GPU: https://github.com/ggml-org/llama.cpp/blob/master/docs/multi-gpu.md
+- llama.cpp upstream commit pinned in the initial template: https://github.com/ggml-org/llama.cpp/commit/2cbca389f515df455412dafa07e2b1359cc72a6d

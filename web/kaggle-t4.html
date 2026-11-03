@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#10191f">
+<meta name="description" content="Decisión de ingeniería 0liviA: Kaggle T4×2 como laboratorio offline de evaluación de modelos, nunca como API de producción.">
+<title>0liviA — Laboratorio Kaggle T4×2</title>
+<style>
+:root{color-scheme:light;--bg:#e9eef0;--paper:#fbfcfc;--ink:#17242b;--muted:#53636c;--blue:#174f69;--green:#17624a;--amber:#95520a;--red:#8b3027;--line:#cbd5da;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 var(--sans)}a{color:var(--blue);text-underline-offset:3px}.wrap{width:min(1040px,100% - 32px);margin:auto}.hero{background:linear-gradient(145deg,#10191f,#1c3a49);color:#eef4f6;padding:58px 0 42px;border-bottom:5px solid #b57a2c}.eyebrow{font:12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#b9ccd5}.hero h1{font-size:clamp(2.2rem,6vw,4.3rem);line-height:1.04;letter-spacing:-.045em;max-width:18ch;margin:20px 0}.hero p{max-width:68ch;color:#cad8de}.decision{margin-top:26px;padding:18px 20px;border:1px solid #bd8a4b;background:#ffffff0d;border-radius:10px}.decision strong{color:#ffd79e}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:1px;background:#53636c;margin-top:30px;border:1px solid #53636c}.stat{background:#111e25;padding:17px}.stat small{display:block;color:#a9bec8;text-transform:uppercase;font:11px var(--mono);letter-spacing:.1em}.stat b{display:block;font-size:1.55rem;margin-top:6px;color:white}.stat span{display:block;color:#b8c7ce;font-size:.83rem}.content{padding:30px 0 56px}.section{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:24px clamp(18px,4vw,32px);margin:18px 0}.section h2{font-size:clamp(1.4rem,3vw,2rem);letter-spacing:-.025em;margin:0 0 14px}.section h3{font-size:1.05rem;margin:24px 0 8px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.card{border:1px solid var(--line);border-radius:9px;padding:15px;background:#fff}.card h3{margin:0 0 8px}.tag{display:inline-block;font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.06em;border-radius:4px;padding:3px 7px;background:#e0eee8;color:var(--green)}.tag.warn{background:#f5e9d8;color:var(--amber)}.tag.stop{background:#f3e2e0;color:var(--red)}table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid var(--line)}th{font:600 11px var(--mono);text-transform:uppercase;color:var(--muted)}code{font: .88em var(--mono);background:#edf1f3;padding:2px 5px;border-radius:4px}.muted{color:var(--muted)}.callout{border-left:4px solid var(--amber);padding:13px 16px;background:#f6ecdf}.footer{padding:20px 0 44px;color:var(--muted);font-size:.85rem}.footer a{margin-right:16px}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+<div class="eyebrow">0liviA · ingeniería · revisión 03 nov 2026 JST / 02 nov 2026 ART</div>
+<h1>Dos T4 pueden evaluar un modelo. No son el servidor de 0liviA.</h1>
+<p>Decisión técnica basada en las dos propuestas de Sakana, el repositorio actual y la documentación oficial de Kaggle. Separamos el laboratorio efímero del Core permanente y mantenemos el objetivo de coste recurrente cero sin inventar disponibilidad ni resultados.</p>
+<div class="decision"><strong>NO-GO:</strong> Kaggle no se utiliza como API persistente, endpoint tunelizado, heartbeat, worker de GitHub Actions ni proveedor del router. <strong>Uso propuesto:</strong> benchmark privado, manual, acotado y offline con datos sintéticos, sin conversaciones ni secretos.</div>
+<div class="stats">
+<div class="stat"><small>Configuración</small><b>2 × T4</b><span>Dos GPUs independientes; 16 GB nominales por tarjeta.</span></div>
+<div class="stat"><small>Sesión GPU</small><b>12 h</b><span>Máximo documentado por sesión CPU/GPU.</span></div>
+<div class="stat"><small>RAM / CPU</small><b>29 GB</b><span>4 CPU cores para T4×2 según la ficha de Notebooks.</span></div>
+<div class="stat"><small>Primer candidato</small><b>Qwen3.6</b><span>35B totales / 3B activos; GGUF y memoria multi-GPU por medir.</span></div>
+</div></div></header>
+<main class="wrap content">
+<section class="section"><h2>La arquitectura aprobada</h2>
+<div class="grid">
+<div class="card"><span class="tag">Core permanente</span><h3>0liviA</h3><p>Identidad, sesiones, memoria SQLite, jobs, checkpoints, router y coding worker siguen independientes de Kaggle. El Core no recibe tráfico desde notebooks.</p></div>
+<div class="card"><span class="tag warn">Laboratorio efímero</span><h3>Kaggle T4×2</h3><p>Notebook privado para compilar llama.cpp, cargar GGUF desde un dataset privado, ejecutar pruebas sintéticas y exportar métricas. Sin servidor HTTP ni túneles.</p></div>
+</div>
+<p class="callout">La AUP vigente enumera expresamente “server farming” y actividad no relacionada con ML/data science entre los usos abusivos de recursos. Los Terms limitan el servicio a uso propio, interno, personal y no comercial. Por prudencia, no publicamos ni automatizamos un servicio de inferencia desde Kaggle.</p>
+</section>
+<section class="section"><h2>Modelos a comparar</h2>
+<table><thead><tr><th>Orden</th><th>Modelo</th><th>Rol</th><th>Estado</th></tr></thead><tbody>
+<tr><td>1</td><td><a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">Qwen3.6-35B-A3B</a></td><td>MoE, 35B total / 3B activos; candidato principal.</td><td><span class="tag warn">Sin benchmark</span></td></tr>
+<tr><td>2</td><td><a href="https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct">Qwen3-Coder-30B-A3B-Instruct</a></td><td>MoE coder, 30.5B / 3.3B activos; comparador especializado.</td><td><span class="tag warn">Sin benchmark</span></td></tr>
+<tr><td>3</td><td><a href="https://huggingface.co/Qwen/Qwen3.8-27B">Qwen3.8-27B</a></td><td>Denso, 27B; comparador de calidad.</td><td><span class="tag warn">Opcional</span></td></tr>
+</tbody></table>
+<p class="muted">Los puntajes publicados por los fabricantes son resultados de sus propios harnesses y no predicen el rendimiento de 0liviA en T4. El número de parámetros activos de un MoE no equivale al tamaño de sus pesos residentes.</p>
+</section>
+<section class="section"><h2>Memoria y runtime</h2>
+<ul>
+<li>Las dos T4 no comparten una única VRAM: pesos, KV cache y buffers deben caber en cada tarjeta.</li>
+<li>Primera opción: <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> + GGUF, compilado para CUDA SM 7.5.</li>
+<li>Distribución inicial: <code>layer</code> con split equilibrado; medir VRAM por GPU.</li>
+<li>Herramientas: <code>llama-bench</code> y <code>llama-cli</code>. No se inicia <code>llama-server</code>.</li>
+<li>Contexto escalonado: 8K → 16K → 32K. 64K sólo si la medición deja margen.</li>
+<li>Los archivos de pesos se adjuntan como dataset privado: el disco auto-guardado documentado es 20 GB y el GGUF principal puede superar ese tamaño.</li>
+</ul>
+</section>
+<section class="section"><h2>Gates de aceptación</h2>
+<table><thead><tr><th>Métrica</th><th>Objetivo inicial</th><th>Rechazo</th></tr></thead><tbody>
+<tr><td>Hardware</td><td>2 × T4, compute capability 7.5</td><td>Cualquier diferencia</td></tr>
+<tr><td>VRAM sostenida</td><td>≤ 13.5 GiB por GPU</td><td>OOM o menos de 0.5 GiB libres</td></tr>
+<tr><td>Decode</td><td>≥ 20 tokens/s</td><td>&lt; 15 tokens/s</td></tr>
+<tr><td>TTFT con prompt 8K</td><td>p50 ≤ 10 s</td><td>p95 &gt; 30 s</td></tr>
+<tr><td>Contexto</td><td>32K estable</td><td>OOM antes de 16K</td></tr>
+<tr><td>Code fixture</td><td>≥ 6/10 pass@1</td><td>≤ 4/10</td></tr>
+</tbody></table>
+<p class="muted">Son umbrales de ingeniería propuestos, no resultados observados. Todo resultado debe incluir SHA del modelo, cuantización, runtime, driver, contexto, split, p50/p95 y VRAM por GPU.</p>
+</section>
+<section class="section"><h2>Plan de ejecución</h2>
+<ol>
+<li>Confirmar cuota real en el panel de Kaggle y mantener el notebook privado.</li>
+<li>Adjuntar un dataset privado con GGUF y manifest de origen, licencia y SHA-256.</li>
+<li>Validar dos T4 y compilar el commit fijado de llama.cpp.</li>
+<li>Medir Qwen3.6 y luego Qwen3-Coder con los mismos prompts sintéticos.</li>
+<li>Exportar <code>metrics.json</code>, revisar calidad fuera de Kaggle y documentar resultados.</li>
+<li>Integrar un proveedor sólo si existe otra infraestructura autorizada con coste cero verificado; Kaggle no entra al router.</li>
+</ol>
+<p><span class="tag stop">Estado actual: no ejecutado</span> No se inició sesión GPU, no se cargó ningún modelo, no se midió velocidad ni se desplegó producción.</p>
+</section>
+</main>
+<footer class="wrap footer">
+<a href="https://github.com/simondalmasso/0liviA">Repositorio 0liviA</a>
+<a href="https://github.com/simondalmasso/0liviA/blob/main/docs/DECISIONS.md">Decisiones</a>
+<a href="https://github.com/simondalmasso/0liviA/blob/main/docs/RESEARCH.md">Fuentes y evidencia</a>
+<a href="https://github.com/simondalmasso/0liviA/tree/main/benchmarks/kaggle_t4">Notebook y guía</a>
+<p>Fuentes oficiales: <a href="https://www.kaggle.com/aup">Kaggle AUP</a> · <a href="https://www.kaggle.com/terms">Terms</a> · <a href="https://www.kaggle.com/docs/notebooks">Notebook specs</a> · <a href="https://www.kaggle.com/docs/efficient-gpu-usage">GPU usage</a> · <a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">Qwen3.6 model card</a>.</p>
+</footer>
+</body></html>
