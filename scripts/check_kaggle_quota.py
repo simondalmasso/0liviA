@@ -37,11 +37,12 @@ def read_gpu_quota(stream: TextIO) -> dict[str, str | Decimal]:
     if gpu_row is None:
         raise ValueError("Kaggle did not return a GPU quota row; refusing to assume availability")
 
+    refresh_column = normalized.get("refreshat")
     result: dict[str, str | Decimal] = {
         "used": _decimal(gpu_row[normalized["used"]], "used"),
         "remaining": _decimal(gpu_row[normalized["remaining"]], "remaining"),
         "total": _decimal(gpu_row[normalized["total"]], "total"),
-        "refresh_at": (gpu_row.get(normalized.get("refreshat", "")) or "").strip(),
+        "refresh_at": (gpu_row.get(refresh_column, "") if refresh_column else "").strip(),
     }
     if result["used"] < 0 or result["remaining"] < 0 or result["total"] < 0:
         raise ValueError("Kaggle returned a negative GPU quota value")
@@ -51,6 +52,7 @@ def read_gpu_quota(stream: TextIO) -> dict[str, str | Decimal]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True, type=Path, help="Path to output from 'kaggle quota -v'")
+    parser.add_argument("--summary-file", type=Path, help="Optional GitHub Actions Markdown summary path")
     parser.add_argument(
         "--required-hours",
         type=Decimal,
@@ -76,13 +78,32 @@ def main() -> int:
     if refresh_at:
         print(f"GPU quota refresh: {refresh_at}")
 
+    summary_lines = [
+        "## Kaggle API preflight — GPU quota",
+        "",
+        f"- GPU quota used: **{used} h**",
+        f"- GPU quota remaining: **{remaining} h**",
+        f"- GPU quota total: **{total} h**",
+    ]
+    if refresh_at:
+        summary_lines.append(f"- Quota refresh: `{refresh_at}`")
+
     if args.required_hours is not None and remaining < args.required_hours:
         parser.exit(
             3,
             f"refusing GPU launch: {remaining}h remain but {args.required_hours}h are required\n",
         )
+    if args.required_hours is not None:
+        summary_lines.append(f"- Required for requested run: **{args.required_hours} h**")
     if remaining == 0:
-        print("WARNING: no GPU quota remains; preflight only, do not launch a GPU session.")
+        warning = "WARNING: no GPU quota remains; preflight only, do not launch a GPU session."
+        print(warning)
+        summary_lines.extend(["", f"> {warning}"])
+
+    if args.summary_file:
+        args.summary_file.parent.mkdir(parents=True, exist_ok=True)
+        with args.summary_file.open("a", encoding="utf-8") as output:
+            output.write("\n".join(summary_lines) + "\n\n")
     return 0
 
 
