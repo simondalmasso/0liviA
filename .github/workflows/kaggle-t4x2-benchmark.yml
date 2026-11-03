@@ -109,7 +109,7 @@ jobs:
           gguf_count="$(grep -Eic "\\.gguf([\",[:space:]]|$)" "${RUNNER_TEMP}/kaggle-dataset-files.txt" || true)"
           [[ "${manifest_count}" == "1" ]] || { echo "Dataset must expose exactly one manifest.json." >&2; exit 1; }
           [[ "${gguf_count}" -ge 1 ]] || { echo "Dataset must expose at least one GGUF file." >&2; exit 1; }
-          echo "- Private dataset access: verified; manifest.json and GGUF present" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Dataset access: verified; required files found; privacy confirmed by operator" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Prepare private Kaggle kernel metadata
         env:
