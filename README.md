@@ -103,5 +103,7 @@ Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memo
 - [ChatGPT plan setup](docs/CHATGPT_PLAN.md)
 - [Research evidence](docs/RESEARCH.md)
 - [Benchmark gates](docs/BENCHMARKS.md)
+- [Kaggle T4×2 offline benchmark guide](benchmarks/kaggle_t4/README.md)
+- [Public engineering note: Kaggle T4×2](https://0livia.workers.dev/kaggle-t4.html) *(static asset path; live deployment must be verified)*
 - [OCI infrastructure capacity baseline](docs/INFRA_CAPACITY_BASELINE.md)
 - [Canonical build mandate](SUPER_ORDER_END_TO_END.md)
