@@ -4,7 +4,7 @@ from io import StringIO
 
 import pytest
 
-from scripts.check_kaggle_quota import read_gpu_quota
+from scripts.check_kaggle_quota import main, read_gpu_quota
 
 
 CSV = """resource,used,remaining,total,refreshAt
@@ -40,3 +40,41 @@ def test_rejects_invalid_or_negative_values():
         read_gpu_quota(StringIO("resource,used,remaining,total\nGPU,zero,1,2\n"))
     with pytest.raises(ValueError, match="negative"):
         read_gpu_quota(StringIO("resource,used,remaining,total\nGPU,0,-1,2\n"))
+
+
+def test_writes_github_step_summary_when_requested(tmp_path, monkeypatch):
+    import sys
+
+    quota_csv = tmp_path / "quota.csv"
+    quota_csv.write_text(CSV, encoding="utf-8")
+    summary = tmp_path / "nested" / "summary.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "check_kaggle_quota.py",
+            "--csv",
+            str(quota_csv),
+            "--summary-file",
+            str(summary),
+            "--required-hours",
+            "2",
+        ],
+    )
+    assert main() == 0
+    content = summary.read_text(encoding="utf-8")
+    assert "GPU quota remaining: **7.5 h**" in content
+    assert "Required for requested run: **2 h**" in content
+
+
+def test_required_hours_fails_closed_when_quota_is_too_low(tmp_path, monkeypatch):
+    import sys
+
+    quota_csv = tmp_path / "quota.csv"
+    quota_csv.write_text("resource,used,remaining,total\nGPU,9,1,10\n", encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["check_kaggle_quota.py", "--csv", str(quota_csv), "--required-hours", "2"]
+    )
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 3
