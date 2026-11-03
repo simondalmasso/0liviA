@@ -55,11 +55,16 @@ Ejecutar un modelo por notebook/dataset para mantener los hashes y métricas ine
 
 Ver [docs/BENCHMARKS.md](../../docs/BENCHMARKS.md). Resumen:
 - 2 T4 reales, SM 7.5;
-- ≤13.5 GiB sostenidos por GPU;
-- ≥20 tok/s objetivo, rechazo si <15;
-- TTFT p50 ≤10 s a prompt 8K;
-- contexto 32K estable;
-- ≥6/10 fixtures sintéticos pass@1.
+- ≤13.5 GiB por GPU como objetivo, medidos durante la ejecución (muestreo cada 2 s; los picos transitorios más breves pueden no capturarse);
+- ≥20 tok/s de decode como objetivo, rechazo si <15;
+- throughput prefill registrado para prompts 512/2K/4K/8K;
+- contexto 8K/16K/32K escalonado, con 32K como objetivo;
+- ≥6/10 funciones sintéticas pass@1;
+- código generado validado por AST y ejecutado en un subprocess con límites de CPU/memoria y timeout.
+
+## Telemetría y límites de la prueba
+
+La notebook separa `stdout` de `stderr`, captura muestras de VRAM de ambas T4 durante cada proceso e incluye el resultado de `llama-bench` dentro de `metrics.json`. El código generado se ejecuta en un subprocess aislado del kernel, con AST allowlist, 3 s de CPU, 512 MiB de memoria virtual y timeout padre de 10 s. Es defensa en profundidad para este fixture sintético, no un sandbox de propósito general. La plantilla no mide TTFT exacto ni un soak de 20 llamadas; ambos siguen siendo gates separados antes de promover un modelo. Tampoco evalúa cambios multiarchivo.
 
 ## Resultado
 
