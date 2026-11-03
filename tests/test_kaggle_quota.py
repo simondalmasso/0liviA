@@ -80,4 +80,4 @@ def test_required_hours_fails_closed_when_quota_is_too_low(tmp_path, monkeypatch
     )
     with pytest.raises(SystemExit) as exc:
         main()
-    assert exc.value.code == 3
+    assert exc.value.code == 3\n    assert "Launch blocked" in summary.read_text(encoding="utf-8")
