@@ -189,3 +189,18 @@
 - Deployment: retire the old interactive public-shell workflow and use the static no-AI deployment workflow. It runs on `main` updates, has no AI or CostGuard binding, and validates the immutable release SHA with GET-only health/asset smoke checks. The retained Durable Object export is inert for compatibility.
 - Rationale: the Auth0/Google browser login was never wired into the frontend/Core and the Auth0 gate was marked unreleased; maintaining two incompatible owner identity systems added dead code and misleading deployment paths.
 - Rollback: restore the retired files and workflow only after a real browser auth flow, owner enrollment, negative authorization tests, account cost boundary and production release review are implemented.
+
+
+## ADR-0019 — Kaggle is an offline GPU evaluation lab, not a 0liviA service
+- Date: 2026-11-03 JST / 2026-11-02 ART
+- Status: **accepted**
+- Context: two Sakana engineering proposals were read in full. Kaggle's active AUP lists server farming and activity unrelated to ML/data science among resource-abuse examples; Kaggle Terms limit use to the user's own internal, personal, non-commercial use and not on behalf of or for the benefit of a third party.
+- Decision:
+  - Kaggle may be used for private, manual, time-bounded ML/model evaluation with synthetic fixtures and no private production data.
+  - Kaggle must not serve as a persistent inference API, public/private tunnel endpoint, heartbeat-maintained worker, GitHub Actions provider, or runtime dependency of the 0liviA Core.
+  - Do not attempt to disguise a server as a worker or use tunnels/proxies to bypass this boundary.
+  - The first model bake-off is Qwen3.6-35B-A3B vs Qwen3-Coder-30B-A3B-Instruct; Qwen3.8-27B is a dense comparator if quota and memory permit.
+  - Use llama.cpp GGUF CLI tooling, pinned source commit, CUDA SM 7.5, and layer-based two-GPU split. No HTTP server is started in the notebook.
+  - Keep the Core, SQLite state, durable jobs, router, model registry, coding worker and public static shell unchanged by the experiment.
+- Evidence: Kaggle AUP, Terms, Notebook specs and Efficient GPU Usage links are recorded in `docs/RESEARCH.md`.
+- Rollback: remove the benchmark guide/template and this ADR; no runtime schema, provider catalog or production deployment is changed.
