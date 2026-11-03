@@ -76,7 +76,7 @@ jobs:
             *) echo "Unsupported GPU runtime." >&2; exit 1 ;;
           esac
 
-      - name: Check API access, quota and private dataset visibility
+      - name: Check API access, quota and dataset file prerequisites
         env:
           KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
           DATASET_SLUG: ${{ inputs.dataset_slug }}
@@ -191,10 +191,12 @@ jobs:
           set -euo pipefail
           output_dir="${RUNNER_TEMP}/kaggle-output"
           mkdir -p "${output_dir}"
-          kaggle kernels output "${KERNEL_REF}" -p "${output_dir}" --file-pattern '(^|/)metrics[.]json --quiet
+          kaggle kernels output "${KERNEL_REF}" -p "${output_dir}" --file-pattern '(^|/)metrics[.]json$' --quiet
           metrics_file="$(find "${output_dir}" -type f -name metrics.json -print -quit)"
           test -n "${metrics_file}" && test -s "${metrics_file}"
-          if [[ "${metrics_file}" != "${output_dir}/metrics.json" ]]; then\n            cp "${metrics_file}" "${output_dir}/metrics.json"\n          fi
+          if [[ "${metrics_file}" != "${output_dir}/metrics.json" ]]; then
+            cp "${metrics_file}" "${output_dir}/metrics.json"
+          fi
           python scripts/summarize_kaggle_metrics.py "${output_dir}/metrics.json" --summary-file "${RUNNER_TEMP}/kaggle-result-summary.md"
           cat "${RUNNER_TEMP}/kaggle-result-summary.md" >> "${GITHUB_STEP_SUMMARY}"
           rm -rf "${output_dir}" "${RUNNER_TEMP}/olivia-kaggle-kernel"
