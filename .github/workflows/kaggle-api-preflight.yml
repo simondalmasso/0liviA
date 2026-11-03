@@ -1,0 +1,56 @@
+name: 0liviA Kaggle API Preflight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/kaggle-api-preflight.yml"
+      - "scripts/check_kaggle_quota.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: olivia-kaggle-api-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout read-only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Kaggle CLI
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "kaggle==2.2.5"
+          kaggle --version
+
+      - name: Verify API token and inspect quota (no GPU allocation)
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.OLIVIA_KAGGLE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KAGGLE_API_TOKEN:-}" ]]; then
+            echo "Missing repository secret OLIVIA_KAGGLE_API_TOKEN." >&2
+            exit 1
+          fi
+          quota_file="${RUNNER_TEMP}/kaggle-quota.csv"
+          # Read-only account check. This does not push or run a notebook.
+          kaggle quota -v > "${quota_file}"
+          python scripts/check_kaggle_quota.py --csv "${quota_file}" --summary-file "${GITHUB_STEP_SUMMARY}"
+          {
+            echo
+            echo "This workflow did not create/update a Kaggle kernel or allocate GPU."
+            echo "The API token stayed in the GitHub Actions process environment."
+          } >> "${GITHUB_STEP_SUMMARY}"
