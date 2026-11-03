@@ -11,7 +11,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Added ADR-0019: Kaggle is a private, manual, offline evaluation lab only; no serving endpoint, tunnel, heartbeat or 0liviA worker.
 - Added the 12-stage offline benchmark template, synthetic fixture, model manifest/hash checks and per-GPU memory gates under `benchmarks/kaggle_t4/`.
 - Added the static engineering page at `web/kaggle-t4.html` and merged all OCI/Kaggle work via PR #132 (merge SHA `b6934d9113023bb07579445fe1337dc7beabdef1`).
-- Verified the live page at https://0livia.simondalmasso44.workers.dev/kaggle-t4.html; Firecrawl returned the expected title and offline-only decision.
+- Verified the live page at the configured public Workers hostname under `/kaggle-t4.html`; Firecrawl returned the expected title and offline-only decision. The account-specific hostname is intentionally not embedded in public repository files because the repository hygiene test forbids owner identifiers.
 - Main-branch core CI PASS (run `41567868291`), public static deploy PASS (run `41567868308`), mobile UI smoke PASS (run `41567868260`), and E2E PASS (run `41567868424`).
 - Pinned the mobile Playwright smoke runner to Ubuntu 24.04 after the hosted `ubuntu-latest` image moved to Ubuntu 26.04, which Playwright 1.55.0 does not support.
 - No production inference, Core, router, model registry, coding workflow or Cloudflare Worker behavior was changed; the deployment was the existing static-only, no-AI release.
