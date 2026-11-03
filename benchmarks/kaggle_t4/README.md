@@ -1,6 +1,6 @@
 # Kaggle T4×2 — laboratorio offline de 0liviA
 
-Estado: **preparado; no ejecutado**. Este directorio contiene una plantilla reproducible para evaluación de modelos, no un servicio de inferencia.
+Estado: **baseline privado creado en Kaggle; procesamiento en curso al 3 de noviembre de 2026. Benchmark GPU todavía no ejecutado**. Este directorio contiene una plantilla reproducible para evaluación de modelos, no un servicio de inferencia.
 
 ## Límites obligatorios
 
@@ -34,6 +34,19 @@ Ejemplo de manifest (reemplazar los valores por los del artefacto real, no copia
 ```
 
 El nombre del directorio de input de Kaggle no se asume; la notebook busca un único `manifest.json` bajo `/kaggle/input`. Si hay cero o más de uno, se detiene para evitar seleccionar el modelo equivocado.
+
+## Baseline privado creado
+
+Se creó desde los outputs de un notebook privado el dataset Kaggle:
+
+- Slug: `simondalmasso/0livia-qwen3-coder-30b-a3b-q4-k-m`
+- URL: https://www.kaggle.com/datasets/simondalmasso/0livia-qwen3-coder-30b-a3b-q4-k-m
+- Visibilidad observada: **Private**
+- Contenido añadido: `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf` (17.99 GB) y `manifest.json` (504 B)
+- SHA-256 esperado del GGUF: `f6050b4da22869aa3fb9d94bb3314e9fc5a027d4741c1f97761c387d6b2b2335`
+
+Kaggle confirmó la creación y dejó el dataset en **New dataset in progress**, con estimación de procesamiento de hasta una hora. No se debe lanzar el benchmark hasta que la página del dataset deje ese estado y el preflight de solo lectura confirme acceso y ambos archivos. El GGUF se descargó y su tamaño y SHA-256 se verificaron dentro del notebook CPU-only; no se descargó a la PC local ni se consumió cuota GPU.
+
 
 ## Notebook
 
@@ -75,7 +88,7 @@ La notebook separa `stdout` de `stderr`, captura muestras de VRAM de ambas T4 du
 El repositorio incorpora dos workflows independientes:
 
 1. [Kaggle API Preflight](../../.github/workflows/kaggle-api-preflight.yml): al integrar los cambios en `main`, instala la versión fijada del CLI, autentica usando el secret `OLIVIA_KAGGLE_API_TOKEN` y consulta `kaggle quota -v`. **No crea ni actualiza notebooks, no descarga pesos y no asigna GPU.**
-2. [Kaggle T4×2 Offline Benchmark](../../.github/workflows/kaggle-t4x2-benchmark.yml): sólo se ejecuta manualmente desde Actions. Solicita el usuario de Kaggle, el slug `owner/dataset`, una duración entre 60 y 240 minutos, y dos confirmaciones separadas: que el dataset fue verificado como privado y que se autoriza consumir cuota GPU.
+2. [Kaggle T4×2 Offline Benchmark](../../.github/workflows/kaggle-t4x2-benchmark.yml): sólo se ejecuta manualmente desde Actions. Solicita el usuario de Kaggle, el slug `owner/dataset`, una duración entre 60 y 240 minutos y confirmación de que el dataset es privado. Con `confirm_gpu_session=false`, realiza sólo el preflight de acceso/cuota/archivos y termina sin lanzar un kernel; con `confirm_gpu_session=true`, habilita los pasos de metadata, push, ejecución y descarga de métricas.
 
 Antes de enviar el notebook, el workflow comprueba que:
 - el secret esté disponible y la autenticación de Kaggle responda;
@@ -84,7 +97,7 @@ Antes de enviar el notebook, el workflow comprueba que:
 
 La privacidad del dataset es una confirmación explícita del operador; el preflight no afirma verificarla automáticamente. El kernel creado se marca privado. El valor del token permanece en el entorno del runner de GitHub Actions y no se copia a `kernel-metadata.json`, al notebook ni a los datos de entrada de Kaggle.
 
-**Importante:** `kaggle kernels push` inicia la ejecución y consume cuota. No se ejecuta en el preflight. El workflow T4×2 sólo se debe lanzar después de revisar la cuota y el contenido del dataset. El identificador `NvidiaTeslaT4` es el que Kaggle documenta para el pool T4×2; una hora de sesión T4×2 consume una hora de cuota GPU compartida.
+**Importante:** `kaggle kernels push` inicia la ejecución y consume cuota. No se ejecuta en el modo de preflight de solo lectura. El workflow T4×2 sólo se debe lanzar después de revisar la cuota y el contenido del dataset y marcar explícitamente `confirm_gpu_session=true`. El identificador `NvidiaTeslaT4` es el que Kaggle documenta para el pool T4×2; una hora de sesión T4×2 consume una hora de cuota GPU compartida.
 
 Al finalizar, el workflow valida el archivo de métricas y publica únicamente un resumen allowlist en el resumen de GitHub Actions. No sube un artifact con el JSON crudo ni publica pesos, prompts, código generado, notas o rutas internas. Si el polling termina por timeout, inspeccionar el estado del kernel en Kaggle antes de reintentar para evitar una segunda ejecución accidental.
 
