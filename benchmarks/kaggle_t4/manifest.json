@@ -1,0 +1,9 @@
+{
+  "model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "source_url": "https://huggingface.co/ggml-org/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+  "license": "Apache-2.0",
+  "quantization": "Q4_K_M",
+  "file": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+  "sha256": "f6050b4da22869aa3fb9d94bb3314e9fc5a027d4741c1f97761c387d6b2b2335",
+  "notes": "Official ggml-org GGUF; SHA-256 is the Hugging Face LFS object digest; source revision 0ca51122012fe4a20dc82988ee58780b008ce4e3; file size 17988419552 bytes."
+}
