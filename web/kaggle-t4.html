@@ -33,11 +33,11 @@
 </section>
 <section class="section"><h2>Modelos a comparar</h2>
 <table><thead><tr><th>Orden</th><th>Modelo</th><th>Rol</th><th>Estado</th></tr></thead><tbody>
-<tr><td>1</td><td><a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">Qwen3.6-35B-A3B</a></td><td>MoE, 35B total / 3B activos; candidato principal.</td><td><span class="tag warn">Sin benchmark</span></td></tr>
-<tr><td>2</td><td><a href="https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct">Qwen3-Coder-30B-A3B-Instruct</a></td><td>MoE coder, 30.5B / 3.3B activos; comparador especializado.</td><td><span class="tag warn">Sin benchmark</span></td></tr>
-<tr><td>3</td><td><a href="https://huggingface.co/Qwen/Qwen3.8-27B">Qwen3.8-27B</a></td><td>Denso, 27B; comparador de calidad.</td><td><span class="tag warn">Opcional</span></td></tr>
+<tr><td>1 — baseline</td><td><a href="https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct">Qwen3-Coder-30B-A3B-Instruct</a></td><td>MoE 30.5B / 3.3B activos; GGUF Q4_K_M oficial ≈18 GB.</td><td><span class="tag warn">Sin benchmark</span></td></tr>
+<tr><td>2 — challenger</td><td><a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">Qwen3.6-35B-A3B</a></td><td>MoE 35B / 3B activos; GGUF Q4_K_M oficial 20.4 GB.</td><td><span class="tag warn">Sin benchmark</span></td></tr>
+<tr><td>3 — dense</td><td><a href="https://huggingface.co/Qwen/Qwen3.8-27B">Qwen3.8-27B</a></td><td>Denso 27.8B; GGUF Q4_K_M oficial ≈19 GB.</td><td><span class="tag warn">Opcional</span></td></tr>
 </tbody></table>
-<p class="muted">Los puntajes publicados por los fabricantes son resultados de sus propios harnesses y no predicen el rendimiento de 0liviA en T4. El número de parámetros activos de un MoE no equivale al tamaño de sus pesos residentes.</p>
+<p class="muted">El commit de llama.cpp fijado contiene loaders para qwen3moe, qwen35moe y qwen35; esto prueba compatibilidad de arquitectura en código, no el arranque de cada GGUF. Los tamaños son archivos en disco, no VRAM medida. Los parámetros activos de un MoE no reducen el número de pesos que se deben almacenar.</p>
 </section>
 <section class="section"><h2>Memoria y runtime</h2>
 <ul>
@@ -69,18 +69,18 @@
 <p>Antes del push valida la autenticación, la cuota restante, acceso al dataset, exactamente un <code>manifest.json</code> y al menos un GGUF. La privacidad se exige mediante una confirmación explícita del operador; el workflow no afirma comprobar automáticamente la visibilidad privada.</p>
 <p>El token queda en el entorno de los pasos del runner de GitHub Actions: no se incorpora al metadata del kernel, al notebook ni al runtime de Kaggle. El kernel se crea como privado. <code>kaggle kernels push</code> inicia la ejecución y consume cuota, por eso nunca se ejecuta en el preflight.</p>
 <p>El identificador <code>NvidiaTeslaT4</code> corresponde al pool T4×2 de Kaggle. Una hora de sesión T4×2 cuenta como una hora de cuota GPU compartida. Al terminar, sólo se conserva un resumen filtrado de métricas; no se publica el JSON crudo ni un artifact.</p>
-<p><span class="tag stop">Estado actual: preflight pendiente</span> El secret todavía no fue validado contra la API. No se lanzó ningún kernel ni se consumió cuota T4×2.</p>
+<p><span class="tag">Preflight verificado · sin GPU</span> Kaggle API autenticó correctamente. Cuota informada: 30,00 h disponibles de 30,00 h; 0,00 h usadas; renovación 7 de noviembre de 2026. No se lanzó ningún kernel ni se consumió cuota T4×2.</p>
 </section>
 <section class="section"><h2>Plan de ejecución</h2>
 <ol>
 <li>Confirmar cuota real en el panel de Kaggle y mantener el notebook privado.</li>
 <li>Adjuntar un dataset privado con GGUF y manifest de origen, licencia y SHA-256.</li>
 <li>Validar dos T4 y compilar el commit fijado de llama.cpp.</li>
-<li>Medir Qwen3.6 y luego Qwen3-Coder con los mismos prompts sintéticos.</li>
+<li>Medir Qwen3-Coder baseline, Qwen3.6 challenger y luego Qwen3.8 denso con los mismos perfiles.</li>
 <li>Exportar <code>metrics.json</code>, revisar calidad fuera de Kaggle y documentar resultados.</li>
 <li>Integrar un proveedor sólo si existe otra infraestructura autorizada con coste cero verificado; Kaggle no entra al router.</li>
 </ol>
-<p>La notebook separa stdout/stderr, incluye throughput de <code>llama-bench</code> y muestras de VRAM en <code>metrics.json</code>. El código generado pasa por una política AST y un subprocess con límites; es defensa en profundidad para el fixture, no un sandbox general.</p>
+<p>La notebook separa stdout/stderr, incluye throughput de <code>llama-bench</code> y muestras de VRAM en <code>metrics.json</code>. El código generado pasa por una política AST y un subprocess con límites; es defensa en profundidad para el fixture, no un sandbox general. Esta ronda mide el modelo y diez funciones sintéticas de archivo único, no tareas multiarchivo ni la capacidad completa del agente 0liviA; Aider queda fuera de este flujo CLI sin servidor.</p>
 <p><span class="tag stop">Estado actual: no ejecutado</span> No se inició sesión GPU, no se cargó ningún modelo, no se midió velocidad ni se desplegó producción.</p>
 </section>
 </main>
