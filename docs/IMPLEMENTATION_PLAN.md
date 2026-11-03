@@ -1,6 +1,6 @@
 # Implementation plan — productization checkpoint
 
-Branch: `main` (current documentation work is staged on `docs/oci-kaggle-research-update`)
+Branch: `main` (Kaggle/OCI documentation merged in PR #132)
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
@@ -10,10 +10,13 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Read both Sakana Kaggle T4×2 proposals in full and re-opened Kaggle AUP, Terms, Notebook specifications, GPU usage guidance and the Qwen model cards.
 - Added ADR-0019: Kaggle is a private, manual, offline evaluation lab only; no serving endpoint, tunnel, heartbeat or 0liviA worker.
 - Added the 12-stage offline benchmark template, synthetic fixture, model manifest/hash checks and per-GPU memory gates under `benchmarks/kaggle_t4/`.
-- Added a static engineering page under `web/kaggle-t4.html`; the public static deployment workflow can publish it after merge to `main`.
+- Added the static engineering page at `web/kaggle-t4.html` and merged all OCI/Kaggle work via PR #132 (merge SHA `b6934d9113023bb07579445fe1337dc7beabdef1`).
+- Verified the live page at the configured public Workers hostname under `/kaggle-t4.html`; Firecrawl returned the expected title and offline-only decision. The account-specific hostname is intentionally not embedded in public repository files because the repository hygiene test forbids owner identifiers.
+- Main-branch core CI PASS (run `41567868291`), public static deploy PASS (run `41567868308`), mobile UI smoke PASS (run `41567868260`), and E2E PASS (run `41567868424`).
 - Pinned the mobile Playwright smoke runner to Ubuntu 24.04 after the hosted `ubuntu-latest` image moved to Ubuntu 26.04, which Playwright 1.55.0 does not support.
-- No production code, router, model registry, coding workflow, Cloudflare Worker configuration or canonical Core was changed.
-- **NOT RUN:** no Kaggle session/GPU/model benchmark. No deployment is claimed until the main-branch CI and static deploy workflow report success and the live page is fetched.
+- No production inference, Core, router, model registry, coding workflow or Cloudflare Worker behavior was changed; the deployment was the existing static-only, no-AI release.
+- **NOT RUN:** no Kaggle session/GPU/model benchmark. No speed, VRAM, coding-quality or uptime result is claimed.
+- The optional static security audit job was red on pre-existing ShellCheck SC2329 in `scripts/install_chatgpt_plan_profile.sh` (cleanup function called by EXIT trap); all required core CI and static deploy checks passed.
 
 ## 2026-10-15 UTC — Auth0 retirement and static-only production release (PR #127)
 
