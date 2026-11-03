@@ -12,7 +12,7 @@ from typing import TextIO
 
 def _decimal(value: str, field: str) -> Decimal:
     try:
-        return Decimal(value.strip())
+        normalized = value.strip().lower()\n        if normalized.endswith("h"):\n            normalized = normalized[:-1].strip()\n        return Decimal(normalized)
     except (InvalidOperation, AttributeError):
         raise ValueError(f"invalid {field!r} value in Kaggle quota CSV") from None
 
