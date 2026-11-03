@@ -1,8 +1,17 @@
 # Implementation plan — productization checkpoint
 
-Branch: `main` (Kaggle/OCI documentation merged in PR #132)
+Branch: `main` (Kaggle/OCI research and benchmark hardening merged through PRs #132, #133, #134 and #136)
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
+
+## 2026-11-03 JST — Kaggle benchmark hardening follow-up
+
+- PR #134 merged as `e8333917ff05407ab704b9d0694a220f4c917b0b`: resolved ShellCheck SC2329 for the cleanup function registered through the EXIT trap. Static security audit now passes.
+- PR #136 merged as `06b6f6e7c32c165d5fe6d82699f3584d037d33fe`: separated model stdout from stderr; sampled both GPUs' VRAM every 2 seconds while processes run; removed guessed KV-cache/VRAM estimates; added an AST-restricted, resource-limited subprocess for generated code; included llama-bench throughput output and GPU samples in `metrics.json`.
+- The benchmark prompt now follows the restricted runner's allowed syntax. The notebook adds 8K prefill measurement alongside 512/2K/4K profiles.
+- Updated acceptance documentation: exact TTFT and a 20-call soak are not measured by this template and remain separate promotion checks; this round tests single-file synthetic functions, not multi-file changes.
+- Final PR #136 checks: core CI PASS on Python 3.11 and 3.12 (run `41570176637`); static security audit PASS (run `41570176628`). The obsolete PR #131 and intermediate PR #135 were closed after their useful changes were carried forward.
+- **NOT RUN:** no Kaggle session/GPU was started, no GGUF was downloaded or loaded, and no speed/VRAM/quality measurements exist. The real run still requires the owner's private Kaggle dataset and a manually launched T4×2 session.
 
 ## 2026-11-03 JST / 2026-11-02 ART — OCI + Kaggle research update (documentation/website only)
 
@@ -16,7 +25,7 @@ This file is the current execution checkpoint. Architecture choices live in `doc
 - Pinned the mobile Playwright smoke runner to Ubuntu 24.04 after the hosted `ubuntu-latest` image moved to Ubuntu 26.04, which Playwright 1.55.0 does not support.
 - No production inference, Core, router, model registry, coding workflow or Cloudflare Worker behavior was changed; the deployment was the existing static-only, no-AI release.
 - **NOT RUN:** no Kaggle session/GPU/model benchmark. No speed, VRAM, coding-quality or uptime result is claimed.
-- The optional static security audit job was red on pre-existing ShellCheck SC2329 in `scripts/install_chatgpt_plan_profile.sh` (cleanup function called by EXIT trap); all required core CI and static deploy checks passed.
+- The optional static security audit was initially red on ShellCheck SC2329 in `scripts/install_chatgpt_plan_profile.sh`; this was resolved in PR #134, and the current static security audit passes (see follow-up checkpoint above).
 
 ## 2026-10-15 UTC — Auth0 retirement and static-only production release (PR #127)
 
