@@ -29,7 +29,7 @@ def test_gpu_run_requires_manual_dispatch_and_explicit_confirmations():
     assert '[[ "${CONFIRM_GPU}" == "true" ]]' in RUN
     assert "NvidiaTeslaT4" in RUN
     assert "machine_shape" in RUN
-    assert "is_private" in RUN
+    assert "is_private" in RUN\n    assert "confirm_private_dataset" in RUN
 
 
 def test_secret_is_only_mapped_to_cli_steps_not_notebook_metadata():
