@@ -64,7 +64,7 @@ def test_writes_github_step_summary_when_requested(tmp_path, monkeypatch):
     )
     assert main() == 0
     content = summary.read_text(encoding="utf-8")
-    assert "GPU quota remaining: **7.5 h**" in content
+    assert "GPU quota remaining: **7.50 h**" in content
     assert "Required for requested run: **2 h**" in content
 
 
