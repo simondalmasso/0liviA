@@ -53,7 +53,7 @@ jobs:
       - name: Install pinned Kaggle CLI
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check "kaggle==2.2.5"
+          python -m pip install --disable-pip-version-check "six==1.17.0" "kaggle==2.2.5"
           kaggle --version
 
       - name: Require explicit GPU confirmation and validate inputs
