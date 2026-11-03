@@ -91,22 +91,25 @@ def main() -> int:
     if refresh_at:
         summary_lines.append(f"- Quota refresh: `{refresh_at}`")
 
-    if args.required_hours is not None and remaining < args.required_hours:
-        parser.exit(
-            3,
-            f"refusing GPU launch: {remaining}h remain but {args.required_hours}h are required\n",
-        )
+    insufficient = args.required_hours is not None and remaining < args.required_hours
     if args.required_hours is not None:
         summary_lines.append(f"- Required for requested run: **{args.required_hours} h**")
     if remaining == 0:
         warning = "WARNING: no GPU quota remains; preflight only, do not launch a GPU session."
         print(warning)
         summary_lines.extend(["", f"> {warning}"])
+    if insufficient:
+        summary_lines.extend(["", f"> Launch blocked: only {remaining} h remain; {args.required_hours} h required."])
 
     if args.summary_file:
         args.summary_file.parent.mkdir(parents=True, exist_ok=True)
         with args.summary_file.open("a", encoding="utf-8") as output:
             output.write("\n".join(summary_lines) + "\n\n")
+    if insufficient:
+        parser.exit(
+            3,
+            f"refusing GPU launch: {remaining}h remain but {args.required_hours}h are required\n",
+        )
     return 0
 
 
