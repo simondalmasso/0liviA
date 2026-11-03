@@ -103,4 +103,5 @@ Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memo
 - [ChatGPT plan setup](docs/CHATGPT_PLAN.md)
 - [Research evidence](docs/RESEARCH.md)
 - [Benchmark gates](docs/BENCHMARKS.md)
+- [OCI infrastructure capacity baseline](docs/INFRA_CAPACITY_BASELINE.md)
 - [Canonical build mandate](SUPER_ORDER_END_TO_END.md)
