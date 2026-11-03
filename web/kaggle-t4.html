@@ -61,6 +61,16 @@
 </tbody></table>
 <p class="muted">Son umbrales de ingeniería propuestos, no resultados observados. Todo resultado debe incluir SHA del modelo, cuantización, runtime, driver, contexto, split, throughput prefill/decode, wall time y muestras de VRAM por GPU. La plantilla no mide TTFT exacto ni un soak de 20 llamadas; ambos siguen siendo gates separados. Evalúa funciones sintéticas de un solo archivo, no cambios multiarchivo.</p>
 </section>
+<section class="section"><h2>Automatización controlada desde GitHub Actions</h2>
+<div class="grid">
+<div class="card"><span class="tag">Preflight sin GPU</span><h3>Validar token y cuota</h3><p>El workflow de preflight usa <code>OLIVIA_KAGGLE_API_TOKEN</code> desde GitHub Secrets, autentica con Kaggle CLI y consulta la cuota semanal. No crea notebooks, no inicia modelos y no asigna GPU.</p><p><a href="https://github.com/simondalmasso/0liviA/actions/workflows/kaggle-api-preflight.yml">Ver workflow de preflight</a></p></div>
+<div class="card"><span class="tag warn">Manual · consume cuota</span><h3>Ejecutar T4×2</h3><p>El workflow manual requiere usuario Kaggle, slug del dataset privado, duración máxima de 60–240 minutos, confirmación de privacidad y autorización explícita de consumo de GPU.</p><p><a href="https://github.com/simondalmasso/0liviA/actions/workflows/kaggle-t4x2-benchmark.yml">Ver workflow T4×2</a></p></div>
+</div>
+<p>Antes del push valida la autenticación, la cuota restante, acceso al dataset, exactamente un <code>manifest.json</code> y al menos un GGUF. La privacidad se exige mediante una confirmación explícita del operador; el workflow no afirma comprobar automáticamente la visibilidad privada.</p>
+<p>El token queda en el entorno de los pasos del runner de GitHub Actions: no se incorpora al metadata del kernel, al notebook ni al runtime de Kaggle. El kernel se crea como privado. <code>kaggle kernels push</code> inicia la ejecución y consume cuota, por eso nunca se ejecuta en el preflight.</p>
+<p>El identificador <code>NvidiaTeslaT4</code> corresponde al pool T4×2 de Kaggle. Una hora de sesión T4×2 cuenta como una hora de cuota GPU compartida. Al terminar, sólo se conserva un resumen filtrado de métricas; no se publica el JSON crudo ni un artifact.</p>
+<p><span class="tag stop">Estado actual: preflight pendiente</span> El secret todavía no fue validado contra la API. No se lanzó ningún kernel ni se consumió cuota T4×2.</p>
+</section>
 <section class="section"><h2>Plan de ejecución</h2>
 <ol>
 <li>Confirmar cuota real en el panel de Kaggle y mantener el notebook privado.</li>
