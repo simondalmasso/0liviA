@@ -1,6 +1,6 @@
 # Kaggle T4×2 — laboratorio offline de 0liviA
 
-Estado: **baseline privado creado en Kaggle; procesamiento en curso al 3 de noviembre de 2026. Benchmark GPU todavía no ejecutado**. Este directorio contiene una plantilla reproducible para evaluación de modelos, no un servicio de inferencia.
+Estado: **baseline privado creado y verificado; preflight de solo lectura aprobado el 3 de noviembre de 2026. Benchmark GPU todavía no ejecutado**. Este directorio contiene una plantilla reproducible para evaluación de modelos, no un servicio de inferencia.
 
 ## Límites obligatorios
 
@@ -28,8 +28,8 @@ Ejemplo de manifest (reemplazar los valores por los del artefacto real, no copia
   "license": "Apache-2.0",
   "quantization": "Q4_K_M",
   "file": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
-  "sha256": "REEMPLAZAR_CON_SHA256_REAL",
-  "notes": "GGUF oficial de ggml-org; registrar revisión exacta y tamaño real del archivo"
+  "sha256": "f6050b4da22869aa3fb9d94bb3314e9fc5a027d4741c1f97761c387d6b2b2335",
+  "notes": "GGUF oficial de ggml-org; SHA-256 verificado contra Hugging Face LFS; source revision 0ca51122012fe4a20dc82988ee58780b008ce4e3; file size 17988419552 bytes."
 }
 ```
 
@@ -45,7 +45,7 @@ Se creó desde los outputs de un notebook privado el dataset Kaggle:
 - Contenido añadido: `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf` (17.99 GB) y `manifest.json` (504 B)
 - SHA-256 esperado del GGUF: `f6050b4da22869aa3fb9d94bb3314e9fc5a027d4741c1f97761c387d6b2b2335`
 
-Kaggle confirmó la creación y dejó el dataset en **New dataset in progress**, con estimación de procesamiento de hasta una hora. No se debe lanzar el benchmark hasta que la página del dataset deje ese estado y el preflight de solo lectura confirme acceso y ambos archivos. El GGUF se descargó y su tamaño y SHA-256 se verificaron dentro del notebook CPU-only; no se descargó a la PC local ni se consumió cuota GPU.
+Kaggle completó el procesamiento. La página privada muestra **Version 1 (17.99 GB)** y **2 files**: el GGUF y `manifest.json`. La ejecución de GitHub Actions [#41699129980](https://github.com/simondalmasso/0liviA/actions/runs/41699129980) autenticó con Kaggle, verificó el slug, la cuota y los dos tipos de archivo, y finalizó `success` en modo read-only. Reportó GPU `used=0.00h`, `remaining=30.00h`, `reserved=0.00h`, con renovación `2026-11-07T00:00:00Z`. Metadata, `kaggle kernels push`, espera del kernel T4×2 y descarga de métricas quedaron `skipped` porque `confirm_gpu_session=false`. El GGUF se descargó y su tamaño y SHA-256 se verificaron dentro del notebook CPU-only; no se descargó a la PC local ni se consumió cuota GPU.
 
 
 ## Notebook
