@@ -104,6 +104,7 @@ Runtime state defaults to `~/.local/share/0livia`. Never place conversation/memo
 - [Research evidence](docs/RESEARCH.md)
 - [Benchmark gates](docs/BENCHMARKS.md)
 - [Kaggle T4×2 offline benchmark guide](benchmarks/kaggle_t4/README.md)
-- [Public engineering note source](web/kaggle-t4.html) *(static asset; live deployment is verified separately)*
+- [Public engineering note (live)](https://0livia.simondalmasso44.workers.dev/kaggle-t4.html)
+- [Public engineering note source](web/kaggle-t4.html)
 - [OCI infrastructure capacity baseline](docs/INFRA_CAPACITY_BASELINE.md)
 - [Canonical build mandate](SUPER_ORDER_END_TO_END.md)
