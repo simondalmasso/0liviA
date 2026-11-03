@@ -24,12 +24,23 @@ def test_gpu_run_requires_manual_dispatch_and_explicit_confirmations():
     assert "confirm_gpu_session" in RUN
     assert "default: false" in RUN
     assert "CONFIRM_PRIVATE: ${{ inputs.confirm_private_dataset }}" in RUN
-    assert "CONFIRM_GPU: ${{ inputs.confirm_gpu_session }}" in RUN
     assert '[[ "${CONFIRM_PRIVATE}" == "true" ]]' in RUN
-    assert '[[ "${CONFIRM_GPU}" == "true" ]]' in RUN
     assert "NvidiaTeslaT4" in RUN
     assert "machine_shape" in RUN
     assert "is_private" in RUN
+
+
+def test_read_only_preflight_can_run_without_authorizing_gpu():
+    assert "Read-only preflight complete (no GPU launched)" in RUN
+    assert "if: ${{ inputs.confirm_gpu_session != true }}" in RUN
+    assert RUN.count("if: ${{ inputs.confirm_gpu_session == true }}") >= 4
+    validation = RUN.split("Require explicit privacy confirmation and validate inputs", 1)[1].split(
+        "Check API access, quota and dataset file prerequisites", 1
+    )[0]
+    assert "CONFIRM_PRIVATE: ${{ inputs.confirm_private_dataset }}" in validation
+    assert "CONFIRM_GPU" not in validation
+    push = RUN.split("Push private T4x2 notebook", 1)[1]
+    assert "if: ${{ inputs.confirm_gpu_session == true }}" in push
 
 
 def test_secret_is_only_mapped_to_cli_steps_not_notebook_metadata():
