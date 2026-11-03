@@ -65,7 +65,7 @@ def test_generated_model_code_runs_in_restricted_subprocess():
     source = _source()
     assert "resource.RLIMIT_CPU" in source
     assert "resource.RLIMIT_AS" in source
-    assert "ast.Attribute" not in source
+    assert "Attribute access is forbidden" in source
     assert "Only direct function calls are allowed" in source
     assert '[sys.executable, "-I", "-S"' in source
 
