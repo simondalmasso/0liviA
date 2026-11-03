@@ -152,3 +152,55 @@ Latest Live Voice client regression evidence:
 - mobile UI smoke run: `37273932907` PASS;
 - artifact: `olivia-mobile-ui-smoke`, ID `11328992551`;
 - this run includes the canonical direct-WSS UI client while preserving the same 360×800 / 430×900 layout gates.
+
+
+## Kaggle T4×2 offline model evaluation (experimental; not executed)
+
+Purpose: compare quantized coding models as an ML evaluation exercise. This does not qualify Kaggle as a 0liviA provider or service.
+
+### Candidate order
+1. Qwen3.6-35B-A3B (primary).
+2. Qwen3-Coder-30B-A3B-Instruct (coding-specialist comparator).
+3. Qwen3.8-27B (dense comparator, optional second round).
+
+### Runtime profile
+- Kaggle Notebook accelerator: T4×2; verify two actual Tesla T4 devices, compute capability 7.5, and memory before compiling/loading.
+- 4 CPU cores, 29 GB RAM, 12-hour maximum CPU/GPU session, 20 GB auto-saved `/kaggle/working` plus ephemeral scratch. The primary GGUF artifact may exceed the auto-saved disk; attach it as a private Kaggle Dataset.
+- llama.cpp GGUF, CUDA SM 7.5, pinned commit `2cbca389f515df455412dafa07e2b1359cc72a6d`, `llama-bench` and `llama-cli`.
+- Start with `--split-mode layer` / `-sm layer` and balanced `-ts 1,1`; measure per-GPU VRAM. Do not assume a unified 32 GB memory pool.
+- No `llama-server`, vLLM/SGLang serving process, HTTP endpoint, tunnel, proxy, heartbeat or connection to the 0liviA Core.
+
+### Notebook sequence
+1. Policy/scope guardrail.
+2. Detect actual GPUs, CPU and RAM; abort unless exactly two T4 GPUs are visible.
+3. Record Python/CUDA/driver/runtime/model/seed manifest.
+4. Discover the private attached model dataset and its manifest.
+5. Verify model artifact SHA-256 and license/source metadata.
+6. Build the pinned llama.cpp commit for CUDA SM 7.5.
+7. Estimate weights + KV cache + runtime headroom per GPU; begin at 8K/16K context.
+8. Run `llama-bench` prefill/decode profiles (512/2K/4K prompts, 128 output tokens, 3 repetitions).
+9. Run a context staircase (8K → 16K → 32K; 64K only with measured headroom).
+10. Generate a synthetic code-repair response using `llama-cli`.
+11. Run a fixed local test fixture; record pass/fail without exposing user code.
+12. Export sanitized `metrics.json`, capture checksums and stop the session manually.
+
+### Acceptance gates (targets, not claims)
+| Metric | Target | Abort / reject |
+|---|---:|---:|
+| Hardware | 2 × Tesla T4, SM 7.5 | Any mismatch |
+| Cold load | p50 ≤ 10 min (3 starts) | Repeated load failure |
+| VRAM | ≤ 13.5 GiB per GPU sustained | OOM or < 0.5 GiB free |
+| Decode | ≥ 20 tokens/s, 128 tokens, 3 reps | < 15 tokens/s |
+| 8K prompt TTFT | p50 ≤ 10 s | p95 > 30 s |
+| Stable context | 32K target | OOM below 16K |
+| Synthetic code tasks | ≥ 6/10 pass@1 | ≤ 4/10 |
+| Multi-file synthetic tasks | ≥ 2/3 completed without regression | ≤ 1/3 |
+| Stability | 20 sequential calls, no crash/corruption | Any reproducible crash |
+
+All targets are provisional engineering thresholds, not vendor claims. Report measured values even when they fail. A model is not promoted solely because it fits in memory or has strong vendor benchmark scores.
+
+### Evidence and privacy
+Record model/source/license/quant/hash, runtime SHA, driver, GPU identity, context, split, commands, p50/p95 latency, prefill/decode throughput, per-GPU VRAM, test outcomes and session quota before/after. Use only synthetic fixtures. Never commit weights, secrets, production conversations or private repo content. Export only sanitized JSON.
+
+### Current status
+**NOT RUN.** No Kaggle session was started, no GPU was allocated, no model was downloaded or loaded, and no speed/quality/VRAM result is claimed. The executable template and preparation guide are in `benchmarks/kaggle_t4/`.
