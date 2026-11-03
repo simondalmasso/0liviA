@@ -177,30 +177,30 @@ Purpose: compare quantized coding models as an ML evaluation exercise. This does
 4. Discover the private attached model dataset and its manifest.
 5. Verify model artifact SHA-256 and license/source metadata.
 6. Build the pinned llama.cpp commit for CUDA SM 7.5.
-7. Estimate weights + KV cache + runtime headroom per GPU; begin at 8K/16K context.
-8. Run `llama-bench` prefill/decode profiles (512/2K/4K prompts, 128 output tokens, 3 repetitions).
+7. Treat GGUF size as a storage signal only; do not infer VRAM from file size. Start at 8K and sample actual per-GPU memory while each process runs.
+8. Run `llama-bench` prefill/decode profiles (512/2K/4K/8K prompts, 128 output tokens, 3 repetitions).
 9. Run a context staircase (8K → 16K → 32K; 64K only with measured headroom).
 10. Generate a synthetic code-repair response using `llama-cli`.
-11. Run a fixed local test fixture; record pass/fail without exposing user code.
+11. Run ten synthetic single-file function checks in a restricted subprocess; imports, attribute access, classes and `while` loops are rejected, with CPU/memory limits and a parent timeout.
 12. Export sanitized `metrics.json`, capture checksums and stop the session manually.
 
 ### Acceptance gates (targets, not claims)
 | Metric | Target | Abort / reject |
 |---|---:|---:|
 | Hardware | 2 × Tesla T4, SM 7.5 | Any mismatch |
-| Cold load | p50 ≤ 10 min (3 starts) | Repeated load failure |
+| Load + first generation | ≤ 10 min per context profile | Any timeout or repeated load failure |
 | VRAM | ≤ 13.5 GiB per GPU sustained | OOM or < 0.5 GiB free |
 | Decode | ≥ 20 tokens/s, 128 tokens, 3 reps | < 15 tokens/s |
-| 8K prompt TTFT | p50 ≤ 10 s | p95 > 30 s |
+| Prefill | Record 512/2K/4K/8K throughput from `llama-bench` | Any missing or malformed profile |
 | Stable context | 32K target | OOM below 16K |
 | Synthetic code tasks | ≥ 6/10 pass@1 | ≤ 4/10 |
-| Multi-file synthetic tasks | ≥ 2/3 completed without regression | ≤ 1/3 |
-| Stability | 20 sequential calls, no crash/corruption | Any reproducible crash |
+| Output safety | All generated code passes the restricted AST policy before execution | Any rejected or unsafe syntax |
+| Context stability | 8K/16K/32K profiles complete without crash/corruption | OOM or reproducible crash |
 
 All targets are provisional engineering thresholds, not vendor claims. Report measured values even when they fail. A model is not promoted solely because it fits in memory or has strong vendor benchmark scores.
 
 ### Evidence and privacy
-Record model/source/license/quant/hash, runtime SHA, driver, GPU identity, context, split, commands, p50/p95 latency, prefill/decode throughput, per-GPU VRAM, test outcomes and session quota before/after. Use only synthetic fixtures. Never commit weights, secrets, production conversations or private repo content. Export only sanitized JSON.
+Record model/source/license/quant/hash, runtime SHA, driver, GPU identity, context, split, commands, prefill/decode throughput, per-GPU VRAM samples (sampled every 2 seconds while each process runs), wall time, test outcomes and session quota before/after. Sampling can miss shorter transient peaks. The template does not measure exact TTFT or a 20-call soak; both remain separate promotion checks. It tests single-file synthetic tasks, not multi-file changes. Generated code is checked against an AST allowlist and run in a short-lived resource-limited subprocess; this is defense-in-depth, not a general-purpose sandbox. Use only synthetic fixtures. Never commit weights, secrets, production conversations or private repo content. Export only sanitized JSON.
 
 ### Current status
 **NOT RUN.** No Kaggle session was started, no GPU was allocated, no model was downloaded or loaded, and no speed/quality/VRAM result is claimed. The executable template and preparation guide are in `benchmarks/kaggle_t4/`.
