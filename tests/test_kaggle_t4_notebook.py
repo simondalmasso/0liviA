@@ -86,3 +86,12 @@ def test_notebook_does_not_start_a_server_or_tunnel():
         "socketserver",
     )
     assert not [token for token in forbidden if token in source]
+
+
+
+def test_generation_output_filename_matches_all_consumers():
+    """The generator's output artifact must be the same path the next cells read."""
+    source = _source()
+    assert 'f"synthetic_ctx_{ctx}.py.txt"' in source
+    assert 'OUTPUT_DIR / "synthetic_ctx_32768.txt"' not in source
+    assert 'f"synthetic_ctx_{c}.txt"' not in source

@@ -4,14 +4,24 @@ Branch: `main` (Kaggle/OCI research and benchmark hardening merged through PRs #
 
 This file is the current execution checkpoint. Architecture choices live in `docs/DECISIONS.md`; historical council prompts live under `docs/history/`.
 
-## 2026-11-03 JST — Kaggle API automation wiring (pending first account preflight)
+## 2026-11-03 JST — Kaggle preflight verified and model/runner review
+
+- Main commit 940996996db388aa038107a511498a897a6e18f2 ran the read-only Kaggle API preflight successfully (Actions run 41572666343). Kaggle CLI authenticated with OLIVIA_KAGGLE_API_TOKEN; kaggle quota -v returned **0.00 h used / 30.00 h remaining / 30.00 h total**, refresh at 2026-11-07T00:00:00+00:00. No kernel was pushed and no GPU quota was consumed.
+- Core CI (Python 3.11/3.12) and public static deployment succeeded for that main commit (runs 41572666282 and 41572666248). The live public page was re-fetched and verified; its old preflight-pending status is corrected in this PR.
+- Verified current Hugging Face model cards and official ggml-org GGUF repositories: Qwen3-Coder 30.5B/3.3B active, Q4_K_M approximately 18 GB; Qwen3.6 35B/3B active, Q4_K_M 20.4 GB; Qwen3.8 dense 27.8B, Q4_K_M approximately 19 GB. The pinned llama.cpp commit includes runtime loaders for qwen3moe, qwen35moe and qwen35; exact GGUF load/first-generation still must be proven on T4×2.
+- Reordered the evaluation plan: Qwen3-Coder baseline → Qwen3.6 challenger → Qwen3.8 dense comparator. Each model gets its own private dataset/manifest/hash. File size is not treated as measured VRAM.
+- Found and reproduced a notebook defect before using quota: generation writes synthetic_ctx_{ctx}.py.txt, while cell 9 read stale .txt names and would stop before the sandbox. A regression test was observed failing in PR #140; this branch corrects the selection and makes the sandbox reuse the already-selected artifact.
+- Scope guard: this notebook does not yet evaluate multi-file repository edits or the full 0liviA coding agent. It measures loading, speed, VRAM and ten single-file synthetic functions. Aider is not added to this no-server CLI workflow; a separate direct-llama-cli patch/test/repair harness is required before making agent-level claims.
+- **GPU benchmark NOT RUN:** the 30.00 h quota is available as measured at the preflight, but no private model dataset is attached and no T4×2 session was started.
+
+## 2026-11-03 JST — Kaggle API automation wiring (preflight verified)
 
 - Added a dedicated read-only GitHub Actions preflight that installs Kaggle CLI 2.2.5, authenticates via repository secret `OLIVIA_KAGGLE_API_TOKEN`, and reads weekly GPU quota with `kaggle quota -v`. It does not push or run a notebook and allocates no GPU.
 - Added a separate, manual-only T4×2 workflow. It requires the Kaggle username, an accessible `owner/dataset` slug, 60–240 minute runtime, an explicit owner attestation that the dataset is private, and a separate confirmation that GPU quota may be consumed.
 - Before the push, the workflow checks the secret/authenticated quota, compares remaining quota to the maximum requested runtime, and validates one `manifest.json` plus at least one GGUF file in the attached dataset. Kaggle's T4×2 pool identifier is `NvidiaTeslaT4`; Kaggle staff state one hour of T4×2 notebook runtime consumes one GPU-quota hour.
 - The API token is exposed only to GitHub Actions CLI steps; it is not embedded in notebook metadata or passed into Kaggle's notebook runtime. The kernel is marked private and uses synthetic fixtures only.
 - Added fail-closed parsers/tests for quota hour suffixes (the official CLI emits values such as `7.50h`) and a sanitized benchmark summarizer that retains throughput/VRAM measurements but filters raw paths, filenames, notes and generated output.
-- **PREFLIGHT NOT YET VERIFIED:** the secret value is never read by the assistant. The preflight will test it automatically when this branch is merged to `main`; success/failure and reported remaining quota will be recorded from the run.
+- **PREFLIGHT VERIFIED:** see the 2026-11-03 follow-up above; the secret authenticated successfully and quota was 30.00 h remaining.
 - **GPU BENCHMARK NOT RUN:** no kernel has been pushed and no T4 quota has been consumed. The manual GPU workflow remains gated by the two operator confirmations and actual dataset slug.
 
 ## 2026-11-03 JST — Kaggle benchmark hardening follow-up
