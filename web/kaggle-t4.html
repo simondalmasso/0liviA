@@ -21,7 +21,7 @@
 <div class="stat"><small>Configuración</small><b>2 × T4</b><span>Dos GPUs independientes; 16 GB nominales por tarjeta.</span></div>
 <div class="stat"><small>Sesión GPU</small><b>12 h</b><span>Máximo documentado por sesión CPU/GPU.</span></div>
 <div class="stat"><small>RAM / CPU</small><b>29 GB</b><span>4 CPU cores para T4×2 según la ficha de Notebooks.</span></div>
-<div class="stat"><small>Primer candidato</small><b>Qwen3.6</b><span>35B totales / 3B activos; GGUF y memoria multi-GPU por medir.</span></div>
+<div class="stat"><small>Baseline</small><b>Qwen3-Coder</b><span>30.5B totales / 3.3B activos; GGUF Q4_K_M de 17.99 GB verificado.</span></div>
 </div></div></header>
 <main class="wrap content">
 <section class="section"><h2>La arquitectura aprobada</h2>
@@ -69,19 +69,20 @@
 <p>Antes del push valida la autenticación, la cuota restante, acceso al dataset, exactamente un <code>manifest.json</code> y al menos un GGUF. La privacidad se exige mediante una confirmación explícita del operador; el workflow no afirma comprobar automáticamente la visibilidad privada.</p>
 <p>El token queda en el entorno de los pasos del runner de GitHub Actions: no se incorpora al metadata del kernel, al notebook ni al runtime de Kaggle. El kernel se crea como privado. <code>kaggle kernels push</code> inicia la ejecución y consume cuota, por eso nunca se ejecuta en el preflight.</p>
 <p>El identificador <code>NvidiaTeslaT4</code> corresponde al pool T4×2 de Kaggle. Una hora de sesión T4×2 cuenta como una hora de cuota GPU compartida. Al terminar, sólo se conserva un resumen filtrado de métricas; no se publica el JSON crudo ni un artifact.</p>
-<p><span class="tag">Preflight verificado · sin GPU</span> Kaggle API autenticó correctamente. Cuota informada: 30,00 h disponibles de 30,00 h; 0,00 h usadas; renovación 7 de noviembre de 2026. No se lanzó ningún kernel ni se consumió cuota T4×2.</p>
+<p><span class="tag">Dataset privado listo</span> Baseline Qwen3-Coder creado en Kaggle con GGUF Q4_K_M y <code>manifest.json</code>. La versión 1 muestra 2 archivos (17.99 GB en total para el GGUF).</p>
+<p><span class="tag">Preflight verificado · sin GPU</span> GitHub Actions run <a href="https://github.com/simondalmasso/0liviA/actions/runs/41699129980">#41699129980</a> autenticó con Kaggle, verificó acceso al dataset y ambos tipos de archivo, y finalizó en success. Cuota: 30.00 h disponibles, 0.00 h usadas y 0.00 h reservadas; renovación 7 de noviembre de 2026. La ejecución T4×2 quedó sin autorizar y todos los pasos GPU se omitieron.</p>
 </section>
 <section class="section"><h2>Plan de ejecución</h2>
 <ol>
 <li>Confirmar cuota real en el panel de Kaggle y mantener el notebook privado.</li>
-<li>Adjuntar un dataset privado con GGUF y manifest de origen, licencia y SHA-256.</li>
+<li>Dataset privado baseline preparado: GGUF y manifest de origen, licencia y SHA-256 verificados.</li>
 <li>Validar dos T4 y compilar el commit fijado de llama.cpp.</li>
 <li>Medir Qwen3-Coder baseline, Qwen3.6 challenger y luego Qwen3.8 denso con los mismos perfiles.</li>
 <li>Exportar <code>metrics.json</code>, revisar calidad fuera de Kaggle y documentar resultados.</li>
 <li>Integrar un proveedor sólo si existe otra infraestructura autorizada con coste cero verificado; Kaggle no entra al router.</li>
 </ol>
 <p>La notebook separa stdout/stderr, incluye throughput de <code>llama-bench</code> y muestras de VRAM en <code>metrics.json</code>. El código generado pasa por una política AST y un subprocess con límites; es defensa en profundidad para el fixture, no un sandbox general. Esta ronda mide el modelo y diez funciones sintéticas de archivo único, no tareas multiarchivo ni la capacidad completa del agente 0liviA; Aider queda fuera de este flujo CLI sin servidor.</p>
-<p><span class="tag stop">Estado actual: no ejecutado</span> No se inició sesión GPU, no se cargó ningún modelo, no se midió velocidad ni se desplegó producción.</p>
+<p><span class="tag stop">Benchmark GPU: pendiente de autorización</span> No se inició sesión T4×2, no se cargó el modelo en llama.cpp y no se midió velocidad. El GGUF se descargó y verificó en una sesión CPU-only; producción sigue sin cambios.</p>
 </section>
 </main>
 <footer class="wrap footer">
