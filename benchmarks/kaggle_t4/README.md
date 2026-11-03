@@ -23,13 +23,13 @@ Ejemplo de manifest (reemplazar los valores por los del artefacto real, no copia
 
 ```json
 {
-  "model_id": "Qwen/Qwen3.6-35B-A3B",
-  "source_url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
-  "license": "Apache-2.0 (confirmar en la ficha del artefacto)",
-  "quantization": "UD-Q4_K_XL",
-  "file": "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+  "model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "source_url": "https://huggingface.co/ggml-org/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+  "license": "Apache-2.0",
+  "quantization": "Q4_K_M",
+  "file": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
   "sha256": "REEMPLAZAR_CON_SHA256_REAL",
-  "notes": "Registrar la revisión exacta de la ficha y el tamaño del archivo"
+  "notes": "GGUF oficial de ggml-org; registrar revisión exacta y tamaño real del archivo"
 }
 ```
 
@@ -45,11 +45,15 @@ El notebook usa CUDA SM 7.5, `llama-bench` y `llama-cli`, con split multi-GPU po
 
 ## Secuencia de modelos
 
-1. Qwen3.6-35B-A3B (primario).
-2. Qwen3-Coder-30B-A3B-Instruct (coder comparador).
-3. Qwen3.8-27B (comparador denso opcional).
+1. Baseline — Qwen3-Coder-30B-A3B-Instruct, MoE 30.5B total / 3.3B activos; GGUF Q4_K_M oficial de ggml-org ≈18 GB.
+2. Challenger — Qwen3.6-35B-A3B, MoE 35B total / 3B activos; GGUF Q4_K_M oficial de ggml-org 20.4 GB.
+3. Comparator — Qwen3.8-27B, denso ≈27.8B; GGUF Q4_K_M oficial de ggml-org ≈19 GB.
 
-Ejecutar un modelo por notebook/dataset para mantener los hashes y métricas inequívocos. Los puntajes del fabricante no sustituyen los resultados de esta prueba.
+El commit fijado de llama.cpp (2cbca389f515df455412dafa07e2b1359cc72a6d) contiene loaders/runtime para las arquitecturas qwen3moe, qwen35moe y qwen35, por lo que cubre la familia Qwen3-Coder, Qwen3.6 y Qwen3.8 a nivel de arquitectura. Esto no garantiza que cada artefacto concreto cargue sin errores: cada GGUF debe superar la validación de hash, carga y primera generación.
+
+Los tamaños GGUF son tamaño en disco, no memoria VRAM exacta. El split layer distribuye pesos, pero buffers CUDA, KV cache y reparto por tarjeta deben medirse. No asumir que 2×16 GB forman una única VRAM de 32 GB.
+
+Ejecutar un modelo por dataset privado para mantener hashes y métricas inequívocos. La primera ronda actual es un benchmark de carga, velocidad y funciones sintéticas de archivo único. No es un benchmark de agente autónomo ni de cambios multiarchivo. Aider no se usa en esta notebook: la ruta aprobada invoca llama-cli directamente y no inicia un servidor HTTP. Un harness multiarchivo con reparación por tests será una fase separada, implementada sin exponer un endpoint. Los puntajes del fabricante no sustituyen resultados propios.
 
 ## Gates
 
