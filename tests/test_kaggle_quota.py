@@ -8,8 +8,8 @@ from scripts.check_kaggle_quota import main, read_gpu_quota
 
 
 CSV = """resource,used,remaining,total,refreshAt
-GPU,2.5,7.5,10.0,2026-11-08T00:00:00Z
-TPU,0,20,20,2026-11-08T00:00:00Z
+GPU,2.50h,7.50h,10.00h,2026-11-08T00:00:00Z
+TPU,0.00h,20.00h,20.00h,2026-11-08T00:00:00Z
 """
 
 
@@ -21,7 +21,7 @@ def test_reads_gpu_quota_not_tpu_quota():
 
 
 def test_accepts_csv_header_case_and_whitespace():
-    result = read_gpu_quota(StringIO(" Resource , Used , Remaining , Total \nGPU,1,2,3\n"))
+    result = read_gpu_quota(StringIO(" Resource , Used , Remaining , Total \nGPU,1.00h,2.00h,3.00h\n"))
     assert result["remaining"] == 2.0
 
 
