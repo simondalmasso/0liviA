@@ -44,6 +44,7 @@ def test_notebook_requires_two_real_t4_gpus_and_checks_model_hash():
     assert "compute_capability" in source
     assert "sha256_file" in source
     assert "actual_sha == expected_sha" in source
+    assert '"512,2048,4096,8192"' in source
 
 
 def test_notebook_has_ten_synthetic_tasks_and_exports_metrics():
