@@ -204,3 +204,24 @@
   - Keep the Core, SQLite state, durable jobs, router, model registry, coding worker and public static shell unchanged by the experiment.
 - Evidence: Kaggle AUP, Terms, Notebook specs and Efficient GPU Usage links are recorded in `docs/RESEARCH.md`.
 - Rollback: remove the benchmark guide/template and this ADR; no runtime schema, provider catalog or production deployment is changed.
+
+
+## ADR-0020 — Gemma 4 26B A4B via OpenRouter Free in the canonical Core
+
+- Date: 2026-11-24
+- Status: **Phase 1 implemented on a draft PR; activation and live canary gated**
+- Scope: optional text-chat provider only, using the exact model ID `google/gemma-4-26b-a4b-it:free` at `https://openrouter.ai/api/v1`.
+- Admission:
+  - `cost_mode=free_hard_cap`, with a positive local daily request ceiling;
+  - OpenRouter endpoints marked free must retain the explicit `:free` model suffix;
+  - the canonical OpenRouter HTTPS endpoint is required;
+  - server-side Bearer key `OPENROUTER_API_KEY` is required; never commit or expose it to the browser;
+  - `fallback_policy=stop` prevents 0liviA from switching to another configured model after a Gemma failure;
+  - Phase 1 capability is `chat` only, with 512 max output tokens and a proposed 35 admitted attempts/day.
+- Quota: OpenRouter currently documents 20 requests/minute and 50 requests/day for free-model access before credit purchases. The 35/day local ceiling counts admitted attempts, including failed requests, to preserve account headroom. It is not an account-wide limiter: OpenRouter applies its cap across the account's free-model usage, so other clients can consume the remaining allowance. Keep the canary account dedicated to 0liviA.
+- Zero-cost boundary: the exact `:free` model variant is required. If the free route is unavailable, fail closed; do not change the model ID, remove `:free`, buy credits, or switch to a paid model. The local cost guard remains enabled. OpenRouter's published zero price and account rate limits are external service terms, not an independent proof that a future provider or account change cannot alter availability.
+- Not in scope: function calling/tool execution, vision/video, public demo routes, production deployment, or automatic provider enablement. These remain separate phases and require their own tests and approval.
+- Live proof gate: do not call the provider in production until the owner installs the key in the private server environment. A deliberate synthetic/harmless smoke must verify the selected model ID and zero cost in OpenRouter activity/usage. If that evidence is unavailable or ambiguous, keep the provider disabled.
+- Rollback: remove the provider entry or clear `OPENROUTER_API_KEY`; no database migration or runtime-state transformation is required.
+
+References: https://openrouter.ai/google/gemma-4-26b-a4b-it:free ; https://openrouter.ai/docs/limits ; https://openrouter.ai/pricing
