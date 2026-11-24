@@ -29,6 +29,7 @@ _PROVIDER_COST_MODES = ZERO_COST_ALLOWED_MODES | frozenset({"free_unverified", "
 _PROVIDER_CAPABILITIES = frozenset({"chat", "code", "review", "research", "vision"})
 _FALLBACK_POLICIES = frozenset({"allow", "stop"})
 _AUTH_MODES = frozenset({"bearer", "none"})
+OPENROUTER_API_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 def _forbidden_model_route(*values: object) -> bool:
@@ -170,6 +171,34 @@ class ProviderSpec:
             raise ProviderConfigError("max_output_tokens must be an integer in 1..4096")
         if self.cost_mode == "local" and not _strict_loopback_url(self.base_url):
             raise ProviderConfigError("cost_mode=local requires loopback HTTP endpoint")
+
+        parsed_url = urlsplit(self.base_url)
+        if parsed_url.hostname and parsed_url.hostname.casefold() == "openrouter.ai":
+            if (
+                parsed_url.scheme != "https"
+                or parsed_url.netloc.casefold() != "openrouter.ai"
+                or parsed_url.path.rstrip("/") != "/api/v1"
+                or parsed_url.query
+                or parsed_url.fragment
+                or parsed_url.username is not None
+                or parsed_url.password is not None
+            ):
+                raise ProviderConfigError(
+                    "OpenRouter base_url must be https://openrouter.ai/api/v1"
+                )
+            if self.cost_mode == "free_hard_cap":
+                if not self.model.endswith(":free"):
+                    raise ProviderConfigError(
+                        "OpenRouter free_hard_cap requires an explicit :free model ID"
+                    )
+                if self.fallback_policy != "stop":
+                    raise ProviderConfigError(
+                        "OpenRouter free_hard_cap requires fallback_policy=stop"
+                    )
+                if self.auth_mode != "bearer" or not self.api_key_env:
+                    raise ProviderConfigError(
+                        "OpenRouter free_hard_cap requires server-side bearer authentication"
+                    )
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ProviderSpec":
